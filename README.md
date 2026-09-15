@@ -1,5 +1,7 @@
 # LAN Games
 
+> **No longer maintained by BEACN — September 2026.** The games still run self-hosted exactly as described below, but they won't receive updates. [BEACN archive](https://beacnpool.github.io/ABCDE/pool/)
+
 A self-hosted **game hub for your local network**. One premium lobby, 28 games,
 bots to fill empty seats, and one identity across the entire arcade. Everyone
 plays from their own phone/laptop on the same Wi‑Fi — **no accounts, no cloud,
