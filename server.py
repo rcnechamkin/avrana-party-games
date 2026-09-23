@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 
 import uvicorn
@@ -32,7 +33,7 @@ logging.basicConfig(level=logging.INFO,
 log = logging.getLogger("gamehub")
 
 WEB = Path(__file__).parent / "web"
-PORT = 8096
+PORT = int(os.environ.get("LANGAMES_PORT", "8096"))   # override to run a second instance
 
 app = FastAPI(title="GAMEHUB")
 bindings: dict[str, GameBinding] = {}

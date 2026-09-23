@@ -22,3 +22,6 @@ nohup.out
 # os / editor
 .DS_Store
 Thumbs.db
+
+# local dev instance (avrana)
+dev.pid

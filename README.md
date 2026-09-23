@@ -1,3 +1,17 @@
+# Avrana Party Games
+
+**The native, browser-based multiplayer games of Avrana Party**, a portable
+local-multiplayer appliance where every phone is a complete game client. This
+repository is a fork of **LAN Games** by **BEACNpool** (upstream retired
+September 2026), which remains its foundation. Upstream's README follows
+unchanged below.
+
+- **Licence:** MIT (`LICENSE`, unchanged from upstream). See [`NOTICE.md`](NOTICE.md)
+  for attribution and third-party components.
+- **Run a second instance** alongside an existing one: `LANGAMES_PORT=8196 python server.py`.
+
+---
+
 # LAN Games
 
 > **No longer maintained by BEACN — September 2026.** The games still run self-hosted exactly as described below, but they won't receive updates. [BEACN archive](https://beacnpool.github.io/ABCDE/pool/)
