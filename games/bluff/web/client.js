@@ -11,22 +11,23 @@ const el = (tag, cls, text) => {
   return e;
 };
 
-let ST = null, clockOffset = 0;
+let ST = null;
+let leaveArmed = 0;         // two-tap confirm for "Leave game"
 let picking = null;          // action awaiting a target tap
 let sheet = null;            // "claim" when the claim menu is open
 let keepSel = [], keepKey = "";
 let drawerOpen = false, celebrated = false;
-
-if (!Hub.identity.name) Hub.identity.name = "PLAYER";
 
 const conn = Hub.connect("/games/bluff/ws", {
   onFx: (fx) => {
     if (fx.kind === "toast") Hub.toast((fx.icon ? fx.icon + " " : "") + fx.msg);
     if (fx.kind === "invalid") Hub.toast(fx.msg, "err");
   },
-  onState: (st) => { clockOffset = Date.now() - st.now; ST = st; render(); },
+  onState: (st) => { ST = st; render(); },
 });
 const send = (m) => conn.send(m);
+// game answers carry the prompt step, so a late tap can never land in a newer prompt
+const gsend = (m) => send(Object.assign({ step: g() && g().pending.step }, m));
 
 $("home").onclick = () => { location.href = "/"; };
 $("history").onclick = () => { drawerOpen = true; render(); };
@@ -65,7 +66,8 @@ function compactSeats(box, n) {
 const playerOf = (pid) => (ST.players || []).find((p) => p.pid === pid) || {};
 const g = () => ST.game;
 const seatOf = (pid) => g() && g().seats.find((s) => s.pid === pid);
-const nameOf = (pid) => (pid === (g() && g().me && g().me.pid) ? "You" : (seatOf(pid) || playerOf(pid)).name || "?");
+const isMe = (pid) => !!(pid && g() && g().me && g().me.pid === pid);
+const nameOf = (pid) => (isMe(pid) ? "You" : (seatOf(pid) || playerOf(pid)).name || "?");
 const role = (r) => (g() ? g().roles[r] : null) || { icon: "❔", text: "" };
 
 function avatarEl(pid, size) {
@@ -100,8 +102,13 @@ function actBtn(icon, label, onclick, cls, disabled) {
 setInterval(() => {
   const t = $("timer");
   if (!ST || !ST.deadline || !g() || ST.phase !== "playing") { t.hidden = true; return; }
-  const left = Math.max(0, Math.ceil((ST.deadline - (Date.now() - clockOffset)) / 1000));
+  const left = Math.max(0, Math.ceil((ST.deadline - conn.now()) / 1000));
   t.hidden = false;
+  if (g().paused) {
+    t.textContent = "⏸ " + Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0");
+    t.classList.remove("urgent");
+    return;
+  }
   t.textContent = "⏱ " + left;
   t.classList.toggle("urgent", left <= 5);
 }, 250);
@@ -147,6 +154,8 @@ function renderOpponents() {
     if (g().winner === s.pid) av.appendChild(el("div", "crown", "👑"));
     seat.appendChild(av);
     seat.appendChild(el("div", "nm", s.name + (s.bot ? " 🤖" : "")));
+    const pres = { reconnecting: "reconnecting…", away: "away · autopilot", left: "left" }[s.presence];
+    if (pres && s.alive) seat.appendChild(el("div", "presence " + s.presence, pres));
     const info = el("div", "info"), cards = el("div", "cards");
     for (let k = 0; k < s.influence; k++) cards.appendChild(el("div", "back mini"));
     for (const r of s.revealed) cards.appendChild(cardFace(r, "mini dead"));
@@ -155,7 +164,7 @@ function renderOpponents() {
     seat.appendChild(info);
     if (targets.has(s.pid)) seat.onclick = () => {
       const a = picking; picking = null;
-      send({ t: "act", action: a, target: s.pid });
+      gsend({ t: "act", action: a, target: s.pid });
     };
     box.appendChild(seat);
   });
@@ -174,25 +183,26 @@ function renderCenter() {
   let text = "";
   const actor = nameOf(p.actor), tgt = p.target ? " → " + nameOf(p.target) : "";
   if (p.stage === "over") {
-    play.appendChild(el("div", "winner", g().winner ? `👑 ${nameOf(g().winner)} ${nameOf(g().winner) === "You" ? "win" : "wins"}!` : "Game over"));
+    play.appendChild(el("div", "winner", g().winner ? `👑 ${nameOf(g().winner)} ${isMe(g().winner) ? "win" : "wins"}!` : "Game over"));
   } else if (picking) {
     text = "Tap a glowing player to target them";
   } else if (p.stage === "turn") {
     text = p.actor === (g().me && g().me.pid) ? "Your turn" : `${actor}'s turn`;
   } else if (p.stage === "challenge") {
     play.appendChild(cardFace(p.claim_role, "claimed"));
-    text = `${actor} claim${actor === "You" ? "" : "s"} ${p.claim_role}: ${p.label}${tgt}`;
+    text = `${actor} claim${isMe(p.actor) ? "" : "s"} ${p.claim_role}: ${p.label}${tgt}`;
   } else if (p.stage === "block") {
     if (p.claim_role) play.appendChild(cardFace(p.claim_role, "claimed"));
     text = p.action === "aid" ? `${actor} wants Foreign Aid (+2)` : `${actor}: ${p.label}${tgt}`;
   } else if (p.stage === "block_challenge") {
     play.appendChild(cardFace(p.block_role, "claimed block"));
-    text = `${nameOf(p.blocker)} block${nameOf(p.blocker) === "You" ? "" : "s"} with ${p.block_role}`;
+    text = `${nameOf(p.blocker)} block${isMe(p.blocker) ? "" : "s"} with ${p.block_role}`;
   } else if (p.stage === "lose") {
     text = `${nameOf(p.loser)} must give up a card`;
   } else if (p.stage === "exchange") {
-    text = `${actor} ${actor === "You" ? "are" : "is"} exchanging cards`;
+    text = `${actor} ${isMe(p.actor) ? "are" : "is"} exchanging cards`;
   }
+  if (g().paused) text = "Game paused: everyone stepped away. It ends unless someone returns.";
   cap.textContent = text;
   $("center").classList.toggle("row", !!play.querySelector(".claimed") && $("opponents").clientHeight < 360);
   // a decision waiting on me: say so in gold, and say what the question is
@@ -236,7 +246,7 @@ function renderMe() {
   hand.className = choosing ? "choosing" : "";
   me.cards.forEach((r, i) => {
     const c = cardFace(r);
-    if (choosing) c.onclick = () => send({ t: "lose", card: i });
+    if (choosing) c.onclick = () => gsend({ t: "lose", card: i });
     hand.appendChild(c);
   });
   if (!me.cards.length) hand.appendChild(el("div", "chip", "You're out: watching the rest"));
@@ -253,6 +263,7 @@ function renderBar() {
   const msg = (t) => bar.appendChild(el("div", "bar-msg", t));
   if (p.stage === "over") { msg("Back to the lobby in a moment…"); return; }
   if (!me) { msg("Watching"); return; }
+  if (me.left) { msg("You left this game: watching"); return; }
 
   const acts = me.actions || [];
   if (acts.length) {
@@ -266,7 +277,7 @@ function renderBar() {
     const choose = (a) => () => {
       sheet = null;
       if (a.targets) { picking = a.action; render(); }
-      else send({ t: "act", action: a.action });
+      else gsend({ t: "act", action: a.action });
     };
     if (acts.length === 1 && by.coup) {
       msg("10+ coins: you must Coup");
@@ -283,17 +294,17 @@ function renderBar() {
   sheet = null;
   const pr = me.prompt;
   if (pr && pr.kind === "challenge") {
-    bar.appendChild(actBtn("⚔️", "CHALLENGE", () => send({ t: "respond", choice: "challenge" }), "danger"));
-    bar.appendChild(actBtn("👍", "Pass", () => send({ t: "respond", choice: "pass" })));
+    bar.appendChild(actBtn("⚔️", "CHALLENGE", () => gsend({ t: "respond", choice: "challenge" }), "danger"));
+    bar.appendChild(actBtn("👍", "Pass", () => gsend({ t: "respond", choice: "pass" })));
   } else if (pr && pr.kind === "block") {
     for (const r of pr.roles)
-      bar.appendChild(actBtn(role(r).icon, "Block as " + r, () => send({ t: "respond", choice: "block", role: r }), "blue"));
-    bar.appendChild(actBtn("👍", "Allow", () => send({ t: "respond", choice: "allow" })));
+      bar.appendChild(actBtn(role(r).icon, "Block as " + r, () => gsend({ t: "respond", choice: "block", role: r }), "blue"));
+    bar.appendChild(actBtn("👍", "Allow", () => gsend({ t: "respond", choice: "allow" })));
   } else if (pr && pr.kind === "lose") {
     msg("Tap one of your cards to give it up");
   } else if (pr && pr.kind === "exchange") {
     renderExchangeSheet(pr);
-    const ok = actBtn("✔", `Keep ${keepSel.length}/${pr.keep}`, () => send({ t: "keep", cards: keepSel }), "primary", keepSel.length !== pr.keep);
+    const ok = actBtn("✔", `Keep ${keepSel.length}/${pr.keep}`, () => gsend({ t: "keep", cards: keepSel }), "primary", keepSel.length !== pr.keep);
     bar.appendChild(ok);
   } else {
     const w = (p.waiting || []).map(nameOf);
@@ -336,6 +347,21 @@ function renderExchangeSheet(pr) {
 
 function renderDrawer() {
   if (!drawerOpen) return;
+  let box = $("drawer-actions");
+  if (!box) { box = el("div"); box.id = "drawer-actions"; $("log").before(box); }
+  box.textContent = "";
+  const me = g().me;
+  if (me && !me.left && me.cards.length && !g().winner) {
+    const armed = Date.now() - leaveArmed < 4000;
+    box.appendChild(actBtn("🏳", armed ? "Tap again to leave" : "Leave game", () => {
+      if (Date.now() - leaveArmed < 4000) { leaveArmed = 0; send({ t: "leave_game" }); }
+      else { leaveArmed = Date.now(); setTimeout(render, 4100); }
+      render();
+    }, armed ? "danger" : ""));
+  }
+  if (me && !g().winner)
+    box.appendChild(actBtn("⏹", "End game", () => send({ t: "end_game" }), "",
+      false));
   const ol = $("log");
   ol.textContent = "";
   for (const line of g().log.slice().reverse()) ol.appendChild(el("li", null, line));

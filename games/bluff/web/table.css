@@ -203,3 +203,17 @@ button { font: inherit; color: inherit; border: 0; cursor: pointer; }
 @keyframes lift { 50% { translate: 0 -6px; } }
 
 #play .chip.last { white-space: normal; font-size: 11px; font-weight: 600; opacity: .85; text-align: center; }
+
+/* ---- presence, drawer controls, reconnect banner, reduced motion ------------- */
+.presence { font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 8px;
+  background: rgba(0,0,0,.6); color: #ffd54a; white-space: nowrap; }
+.presence.reconnecting { color: #cfe8ff; animation: bob 1.4s infinite; }
+.presence.left { color: #bbb; }
+#drawer-actions { display: flex; gap: 8px; margin: 4px 0 10px; }
+#drawer-actions .act { min-height: 48px; }
+.conn-banner { position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(96px + env(safe-area-inset-bottom)); z-index: 60; background: #8c1f3a;
+  color: #fff; font-weight: 800; font-size: 12px; letter-spacing: .12em;
+  border-radius: 999px; padding: 8px 18px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+.lg-reduced-fx *, .lg-reduced-fx *::before, .lg-reduced-fx *::after { animation: none !important; transition: none !important; }
