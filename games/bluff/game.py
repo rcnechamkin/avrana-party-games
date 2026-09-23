@@ -37,6 +37,7 @@ Lifecycle (phones sleep, so sockets come and go):
 
 from __future__ import annotations
 
+import re
 import time
 
 from core.session import GameSession
@@ -82,6 +83,7 @@ PAUSE_TAKEOVER = 60           # ...but after this long anyone connected may end 
 RESUME_MIN = 10               # a resumed stage gets at least this many seconds
 LOG_KEEP = 40
 RESERVED_NAMES = {"you", "bot", "test bot"}
+RESERVED_RE = re.compile(r"^test ?bot( ?\d+)?$")
 
 
 def _str(x, n=32):
@@ -132,7 +134,7 @@ class BluffSession(GameSession):
             "away_since": {},        # token -> time its last socket closed
             "left": set(),           # tokens that forfeited
             "paused": None,          # {"remaining": seconds} while the table is empty
-            "due": None,             # (step, token, due_at) for bot/autopilot scheduling
+            "due": None,             # {"step": n, "at": {token: due_at}} for bots/autopilot
         }
         self.phase = "playing"
         self._log("Game on: %d players, %d coins each." % (len(seats), START_COINS))
@@ -489,6 +491,8 @@ class BluffSession(GameSession):
         self.g["left"].add(tok)
         self._log("🏳 %s is leaving (autopilot until the turn ends)." % self._name(tok))
         self.g["due"] = None
+        if self._table_empty():
+            return self.game_player_left(tok)       # nobody left at the table: pause
         return []
 
     def _end_game_request(self, tok):
@@ -573,19 +577,21 @@ class BluffSession(GameSession):
             return None
         now = time.time() if now is None else now
         cands = [self._actor()] if p["stage"] == "turn" else list(p.get("waiting", []))
+        # remember when each seat became due for this step, so repeated pushes (e.g.
+        # message spam) re-schedule the SAME moment instead of pushing it back
+        if not g["due"] or g["due"]["step"] != g["step"]:
+            g["due"] = {"step": g["step"], "at": {}}
+        memo, best = g["due"]["at"], None
         for tok in cands:
             wait = self._needs_autopilot(tok, now)
             if wait is None:
+                memo.pop(tok, None)
                 continue
-            base = BOT_DELAY if self._is_bot(tok) else wait
-            # remember when this seat became due for this step, so repeated pushes
-            # (e.g. message spam) re-schedule the SAME moment instead of delaying it
-            if not (g["due"] and g["due"][0] == g["step"] and g["due"][1] == tok):
-                g["due"] = (g["step"], tok, now + base)
-            elif not self._is_bot(tok):
-                g["due"] = (g["step"], tok, min(g["due"][2], now + base))
-            return tok, g["due"][2]
-        return None
+            at = now + (BOT_DELAY if self._is_bot(tok) else wait)
+            memo[tok] = min(memo.get(tok, at), at)
+            if best is None or memo[tok] < best[1]:
+                best = (tok, memo[tok])       # the EARLIEST due seat acts first
+        return best
 
     def next_bot_action(self):
         due = self._bot_due()
@@ -619,13 +625,35 @@ class BluffSession(GameSession):
 
     # ------------------------------------------------------------------ connection
 
+    def _table_empty(self):
+        """Some non-forfeited human holds a seat, and none of them is connected."""
+        humans = [t for t in self._seated_humans() if t in self.players]
+        return (not self.g["paused"] and bool(humans)
+                and not any(self.players[t].connected for t in humans))
+
+    def _takeover_open(self):
+        return bool(self.g and self.g["paused"]
+                    and time.time() >= self.g["paused"]["since"] + PAUSE_TAKEOVER)
+
+    def _prune_lobby_ghosts(self):
+        if self.phase == "lobby":
+            for t in [t for t, p in self.players.items() if not p.is_bot and not p.connected]:
+                del self.players[t]
+
     def _seated_humans(self):
-        return [t for t in (self.g["seats"] if self.g else []) if not self._is_bot(t)]
+        """Humans who still hold (or held) a seat and haven't forfeited."""
+        return [t for t in (self.g["seats"] if self.g else [])
+                if not self._is_bot(t) and t not in self.g["left"]]
 
     def join(self, token, name=None, avatar=None):
         p0 = self.players.get(token)
         old_name = p0.name if p0 else None
-        player, fx = super().join(token, name, avatar)
+        if p0 is None and self.in_game() and self._takeover_open():
+            self.MAX_HUMANS = MAX_SEATS + 1          # one spot to end an empty full table
+        try:
+            player, fx = super().join(token, name, avatar)
+        finally:
+            self.__dict__.pop("MAX_HUMANS", None)
         if player is not None:
             if self.in_game() and old_name is not None:
                 player.name = old_name            # no renaming mid-game
@@ -645,7 +673,7 @@ class BluffSession(GameSession):
     def _fix_name(self, player):
         """Names are public identity: no reserved words, no duplicates."""
         base = player.name
-        if base.strip().lower() in RESERVED_NAMES:
+        if base.strip().lower() in RESERVED_NAMES or RESERVED_RE.match(base.strip().lower()):
             base = "Player"
         taken = {q.name.lower() for q in self.players.values() if q is not player}
         name, n = base, 2
@@ -657,7 +685,8 @@ class BluffSession(GameSession):
     def game_player_back(self, token):
         if not self.g:
             return []
-        self.g["away_since"].pop(token, None)
+        if self.g["away_since"].pop(token, None) is None and not self.g["paused"]:
+            return []                               # a second tab / re-hello, not a return
         self.g["due"] = None
         fx = [self.fx("toast", msg="%s is back" % self._name(token))]
         if self.g["paused"]:
@@ -671,10 +700,9 @@ class BluffSession(GameSession):
         """A seated human's last socket closed: start the grace clock, pause if empty."""
         if not self.g or self.phase != "playing":
             return []
-        self.g["away_since"][token] = time.time()
+        self.g["away_since"].setdefault(token, time.time())
         self.g["due"] = None
-        if not self.g["paused"] and not any(
-                self.players[t].connected for t in self._seated_humans() if t in self.players):
+        if self._table_empty():
             remaining = max(0.0, (self.deadline or time.time()) - time.time())
             self.g["paused"] = {"remaining": remaining, "since": time.time()}
             self._bump(time.time() + EMPTY_TABLE_ABANDON)      # a real deadline, never None
@@ -693,7 +721,7 @@ class BluffSession(GameSession):
                 p.ready = False
             return self.game_player_left(token)
         if self.phase == "countdown" and token in self.players \
-                and not self.players[token].is_bot:
+                and not self.players[token].is_bot and self.players[token].ready:
             # a refresh during the 3-2-1 must not cost the seat: keep the player (and
             # their ready flag); ghosts that never come back are pruned at game_start
             self.seq += 1
@@ -701,17 +729,25 @@ class BluffSession(GameSession):
             if len(self._connected_ready()) < self.MIN_PLAYERS:
                 self._bump(None)
                 self.phase = "lobby"
+                self._prune_lobby_ghosts()
                 return [self.fx("toast", msg="Launch aborted — not enough players")]
             return []
         return super().leave(token)
+
+    def set_ready(self, token, ready):
+        fx = super().set_ready(token, ready)
+        self._prune_lobby_ghosts()                   # an aborted countdown leaves no ghosts
+        return fx
 
     def tick(self, gen):
         # only the results-screen timer itself may end game_end (see to_lobby)
         self._results_timer = self.phase == "game_end" and gen == self.gen
         try:
-            return super().tick(gen)
+            fx = super().tick(gen)
         finally:
             self._results_timer = False
+        self._prune_lobby_ghosts()                   # e.g. a countdown that aborted
+        return fx
 
     def to_lobby(self):
         # The results screen always runs its course: core.net's "again" verb (which any

@@ -12,7 +12,8 @@ const el = (tag, cls, text) => {
 };
 
 let ST = null;
-let leaveArmed = 0;         // two-tap confirm for "Leave game"
+let leaveArmed = 0, endArmed = 0;   // two-tap confirms for "Leave game" / "End game"
+let takeoverTimer = null;
 let picking = null;          // action awaiting a target tap
 let sheet = null;            // "claim" when the claim menu is open
 let keepSel = [], keepKey = "";
@@ -23,7 +24,12 @@ const conn = Hub.connect("/games/bluff/ws", {
     if (fx.kind === "toast") Hub.toast((fx.icon ? fx.icon + " " : "") + fx.msg);
     if (fx.kind === "invalid") Hub.toast(fx.msg, "err");
   },
-  onState: (st) => { ST = st; render(); },
+  onState: (st) => {
+    const step = (x) => x && x.game && x.game.pending ? x.game.pending.step : null;
+    if (step(ST) !== step(st)) { picking = null; sheet = null; }
+    ST = st;
+    render();
+  },
 });
 const send = (m) => conn.send(m);
 // game answers carry the prompt step, so a late tap can never land in a newer prompt
@@ -43,8 +49,9 @@ const LAYOUT = {
   3: [[14, 30], [50, 0], [86, 30]],
   4: [[13, 36], [32, 0], [68, 0], [87, 36]],
   5: [[12, 52], [16, 0], [50, 0], [84, 0], [88, 52]],
+  6: [[12, 52], [12, 0], [37, 0], [63, 0], [88, 0], [88, 52]],   // spectator of a full table
 };
-const seatPos = (n, i) => ((LAYOUT[Math.min(n, 5)] || [])[i] || [50, 0]);
+const seatPos = (n, i) => ((LAYOUT[Math.min(n, 6)] || [])[i] || [50, 0]);
 
 // keep the real visible height in a CSS variable (older iOS lacks dvh; this also
 // follows Safari's toolbars showing/hiding and rotation)
@@ -265,7 +272,11 @@ function renderBar() {
   if (!me) {
     if (g().paused) {                      // an empty table: a newcomer may start fresh
       const wait = Math.ceil(((g().takeover_at || 0) - conn.now()) / 1000);
-      if (wait > 0) { msg(`Table empty: you can start a new game in ${wait} s`); setTimeout(render, 1000); }
+      if (wait > 0) {
+        msg(`Table empty: you can start a new game in ${wait} s`);
+        clearTimeout(takeoverTimer);
+        takeoverTimer = setTimeout(render, 1000);
+      }
       else bar.appendChild(actBtn("▶", "Start a new game", () => send({ t: "end_game" }), "primary"));
       return;
     }
@@ -368,9 +379,14 @@ function renderDrawer() {
       render();
     }, armed ? "danger" : ""));
   }
-  if (me && !g().winner)
-    box.appendChild(actBtn("⏹", "End game", () => send({ t: "end_game" }), "",
-      false));
+  if (me && !g().winner) {
+    const armedE = Date.now() - endArmed < 4000;
+    box.appendChild(actBtn("⏹", armedE ? "Tap again to end" : "End game", () => {
+      if (Date.now() - endArmed < 4000) { endArmed = 0; send({ t: "end_game" }); }
+      else { endArmed = Date.now(); setTimeout(render, 4100); }
+      render();
+    }, armedE ? "danger" : ""));
+  }
   const ol = $("log");
   ol.textContent = "";
   for (const line of g().log.slice().reverse()) ol.appendChild(el("li", null, line));

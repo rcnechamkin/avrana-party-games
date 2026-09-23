@@ -338,3 +338,68 @@ def test_newcomer_cannot_end_a_live_table(clock):
     s.join(S, "Stranger")
     clock.adv(PAUSE_TAKEOVER * 10)
     assert s.game_action(S, {"t": "end_game"})[0]["kind"] == "invalid" and s.phase == "playing"
+
+
+# ---------------------------------------------------------------- final-review regressions
+
+def test_earliest_due_seat_acts_first(clock):
+    s = game(n=2, bots=1)                       # seats [A, B, bot]
+    rig(s, A, A=["Banker", "Agent"])
+    s.leave(B)                                  # B reconnecting (30 s grace)
+    act(s, A, "tax")                            # waiting: [B, bot]
+    delay, tok = s.next_bot_action()
+    assert s.players[tok].is_bot and delay < 1
+
+
+def test_newcomer_can_take_over_an_empty_full_table(clock):
+    s = BluffSession(rng=random.Random(2))
+    toks = ["seat%d_token" % i for i in range(6)]
+    for i, t in enumerate(toks):
+        s.join(t, "P%d" % i); s.set_ready(t, True)
+    s.start(toks[0]); s.tick(s.gen)
+    for t in toks:
+        s.leave(t)
+    clock.adv(PAUSE_TAKEOVER + 1)
+    player, _ = s.join(S, "Stranger")
+    assert player is not None and s.MAX_HUMANS == 6
+    s.game_action(S, {"t": "end_game"})
+    assert s.phase == "lobby"
+
+
+def test_aborted_countdown_leaves_no_ghosts(clock):
+    s = BluffSession(rng=random.Random(1))
+    s.join(A, "Solo"); s.set_ready(A, True)
+    s.join(B, "Watcher")
+    s.start(A)
+    s.leave(B); s.leave(A)
+    assert s.phase == "lobby" and not s.players
+
+
+def test_human_cannot_take_a_bot_name(clock):
+    s = BluffSession(rng=random.Random(1))
+    p, _ = s.join(A, "Test bot 1")
+    assert p.name == "Player"
+
+
+def test_rehello_while_connected_does_not_postpone_bots_or_toast(clock):
+    s = game(n=1, bots=2)
+    rig(s, s.g["seats"][1])                     # a bot's turn
+    d1, _ = s.next_bot_action()
+    clock.adv(0.5)
+    _, fx = s.join(A, "Alice")                  # second tab / re-hello, A never left
+    assert not [f for f in fx if f["kind"] == "toast"]
+    d2, _ = s.next_bot_action()
+    assert abs((d1 - d2) - 0.5) < 1e-6
+
+
+def test_solo_forfeit_against_bots_finishes_instead_of_pausing(clock):
+    s = game(n=1, bots=2)
+    s.game_action(A, {"t": "leave_game"})
+    s.leave(A)
+    assert not s.g["paused"]
+    for _ in range(300):
+        if s.phase != "playing":
+            break
+        if run_due(s) is None:
+            s.tick(s.gen)
+    assert s.phase == "game_end" and not s.g["hand"][A]
