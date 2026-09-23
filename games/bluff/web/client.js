@@ -32,15 +32,33 @@ $("home").onclick = () => { location.href = "/"; };
 $("history").onclick = () => { drawerOpen = true; render(); };
 $("drawer-close").onclick = () => { drawerOpen = false; render(); };
 
-// Opponent positions (% of the screen), listed clockwise from your left.
+// Opponent seats as [x, y] % of the opponents' zone (#opponents: header row down to
+// your own avatar row), each seat anchored at its top-centre, listed clockwise
+// from your left. MAX_SEATS is 6, so at most 5 opponents. The centre card sits in
+// the lower middle of the zone; side seats stay clear of it horizontally.
 const LAYOUT = {
-  1: [[50, 15]],
-  2: [[24, 17], [76, 17]],
-  3: [[12, 42], [50, 15], [88, 42]],
-  4: [[12, 46], [30, 16], [70, 16], [88, 46]],
-  5: [[12, 55], [12, 30], [50, 15], [88, 30], [88, 55]],
-  6: [[12, 58], [12, 34], [34, 15], [66, 15], [88, 34], [88, 58]],
+  1: [[50, 0]],
+  2: [[27, 0], [73, 0]],
+  3: [[14, 30], [50, 0], [86, 30]],
+  4: [[13, 36], [32, 0], [68, 0], [87, 36]],
+  5: [[12, 52], [16, 0], [50, 0], [84, 0], [88, 52]],
 };
+const seatPos = (n, i) => ((LAYOUT[Math.min(n, 5)] || [])[i] || [50, 0]);
+
+// keep the real visible height in a CSS variable (older iOS lacks dvh; this also
+// follows Safari's toolbars showing/hiding and rotation)
+function syncHeight() {
+  const h = Math.round(window.innerHeight);
+  $("app").style.setProperty("--apph", h + "px");
+  $("app").style.height = h + "px";
+}
+syncHeight();
+window.addEventListener("resize", () => { syncHeight(); if (ST) render(); });
+
+// 3+ opponents, or a short opponents' zone, get compact seats
+function compactSeats(box, n) {
+  box.classList.toggle("compact", n >= 3 || box.clientHeight < 400);
+}
 
 // ---------------------------------------------------------------- helpers
 
@@ -115,11 +133,12 @@ function orderedOpponents() {
 function renderOpponents() {
   const box = $("opponents");
   box.textContent = "";
-  const opp = orderedOpponents(), pos = LAYOUT[Math.min(opp.length, 6)] || [];
+  const opp = orderedOpponents();
+  compactSeats(box, opp.length);
   const waiting = new Set(g().pending.waiting || []);
   const targets = targetsFor(picking);
   opp.forEach((s, i) => {
-    const [x, y] = pos[i] || [50, 50];
+    const [x, y] = seatPos(opp.length, i);
     const seat = el("div", "seat" + (s.turn ? " turn" : "") + (s.alive ? "" : " out")
       + (targets.has(s.pid) ? " targetable" : ""));
     seat.style.left = x + "%"; seat.style.top = y + "%";
@@ -128,11 +147,12 @@ function renderOpponents() {
     if (g().winner === s.pid) av.appendChild(el("div", "crown", "👑"));
     seat.appendChild(av);
     seat.appendChild(el("div", "nm", s.name + (s.bot ? " 🤖" : "")));
-    const cards = el("div", "cards");
+    const info = el("div", "info"), cards = el("div", "cards");
     for (let k = 0; k < s.influence; k++) cards.appendChild(el("div", "back mini"));
     for (const r of s.revealed) cards.appendChild(cardFace(r, "mini dead"));
-    seat.appendChild(cards);
-    seat.appendChild(el("div", "chip", "🪙 " + s.coins));
+    info.appendChild(cards);
+    info.appendChild(el("div", "chip", "🪙 " + s.coins));
+    seat.appendChild(info);
     if (targets.has(s.pid)) seat.onclick = () => {
       const a = picking; picking = null;
       send({ t: "act", action: a, target: s.pid });
@@ -156,7 +176,7 @@ function renderCenter() {
   if (p.stage === "over") {
     play.appendChild(el("div", "winner", g().winner ? `👑 ${nameOf(g().winner)} ${nameOf(g().winner) === "You" ? "win" : "wins"}!` : "Game over"));
   } else if (picking) {
-    text = "Tap a player to target";
+    text = "Tap a glowing player to target them";
   } else if (p.stage === "turn") {
     text = p.actor === (g().me && g().me.pid) ? "Your turn" : `${actor}'s turn`;
   } else if (p.stage === "challenge") {
@@ -174,9 +194,30 @@ function renderCenter() {
     text = `${actor} ${actor === "You" ? "are" : "is"} exchanging cards`;
   }
   cap.textContent = text;
+  $("center").classList.toggle("row", !!play.querySelector(".claimed") && $("opponents").clientHeight < 360);
+  // a decision waiting on me: say so in gold, and say what the question is
+  const q = callQuestion(p);
+  cap.classList.toggle("call", !!q);
+  if (q) { if (!text) cap.textContent = ""; cap.appendChild(el("span", "q", q)); }
   // what just happened: only while nothing else is on the table (avoids repeating the caption)
   const last = g().log[g().log.length - 1];
   if (last && p.stage === "turn" && !picking) play.appendChild(el("div", "chip last", last));
+}
+
+// The question behind my current prompt, spelled out (claim and block are two
+// separate windows: a Steal/Strike target first answers the claim, then may block).
+function callQuestion(p) {
+  const pr = g().me && g().me.prompt;
+  if (!pr) return "";
+  const actor = nameOf(p.actor), mine = p.target && p.target === g().me.pid;
+  if (pr.kind === "challenge" && p.stage === "challenge")
+    return "Your call: challenge or pass?" + (mine && p.action !== "exchange" ? " (block comes next)" : "");
+  if (pr.kind === "challenge") return "Your call: challenge the block?";
+  if (pr.kind === "block")
+    return (p.action === "aid" ? "" : "Claim stands. ") + `Block (as ${pr.roles.join(" / ")}) or allow?`;
+  if (pr.kind === "lose") return "Your call: tap a card to give up";
+  if (pr.kind === "exchange") return `Your call: keep ${pr.keep}`;
+  return "";
 }
 
 function renderMe() {
@@ -207,6 +248,7 @@ function renderMe() {
 function renderBar() {
   const bar = $("bar"), me = g().me, p = g().pending;
   bar.textContent = "";
+  bar.classList.toggle("call", !!(me && me.prompt));
   $("sheet").hidden = true;
   const msg = (t) => bar.appendChild(el("div", "bar-msg", t));
   if (p.stage === "over") { msg("Back to the lobby in a moment…"); return; }
@@ -215,7 +257,8 @@ function renderBar() {
   const acts = me.actions || [];
   if (acts.length) {
     if (picking) {
-      msg("Tap a glowing player");
+      const pa = (acts.find((x) => x.action === picking) || {}).label || "";
+      msg(`${pa}: tap a glowing player`);
       bar.appendChild(actBtn("✕", "Cancel", () => { picking = null; render(); }));
       return;
     }
@@ -308,11 +351,11 @@ function renderLobby(st) {
   $("hand").textContent = ""; $("lost").textContent = ""; $("sheet").hidden = true;
   $("coins").hidden = true; $("me-seat").textContent = "";
   const opp = st.players.filter((p) => !st.you || p.pid !== st.you.pid);
-  const pos = LAYOUT[Math.min(Math.max(opp.length, 1), 6)] || [];
   const box = $("opponents");
   box.textContent = "";
+  compactSeats(box, opp.length);
   opp.forEach((p, i) => {
-    const [x, y] = pos[i] || [50, 50];
+    const [x, y] = seatPos(opp.length, i);
     const seat = el("div", "seat");
     seat.style.left = x + "%"; seat.style.top = y + "%";
     const av = avatarEl(p.pid);
@@ -328,6 +371,7 @@ function renderLobby(st) {
   }
   const play = $("play");
   play.textContent = "";
+  $("center").classList.remove("row");
   play.appendChild(el("div", "lobby-title", "BLUFF"));
   const bots = (st.settings && st.settings.bots) || 0;
   const step = el("div", "stepper");
