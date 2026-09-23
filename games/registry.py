@@ -40,6 +40,7 @@ from games.wordrush.game import WordRushSession
 from games.dodgeball.game import DodgeballSession
 from games.brickade.game import BrickadeSession
 from games._template.game import HighCardSession
+from games.bluff.game import BluffSession          # Avrana Party Games
 
 GAMES_DIR = Path(__file__).parent
 
@@ -496,6 +497,22 @@ REGISTRY = [
         "session": HighCardSession,
         "web": GAMES_DIR / "_template" / "web",
         "hidden": True,          # visible only with ?dev=1 on the hub
+    },
+    # ---- Avrana Party Games --------------------------------------------
+    {
+        "slug": "bluff",
+        "category": "party", "accent": "#e879f9",
+        "tagline": "Claim anything. Get caught, lose a card.",
+        "min_p": 1, "max_p": 6, "solo": True,
+        "title": "BLUFF",
+        "icon": "🎭",
+        "blurb": "Prototype bluffing card game (working title). Two hidden roles, "
+                 "claim any power, challenge the liars, block the attacks. Last "
+                 "one with a card left wins. Test bots can fill seats.",
+        "players": "1–6 (+ test bots)",
+        "session": BluffSession,
+        "web": GAMES_DIR / "bluff" / "web",
+        "hidden": False,
     },
 ]
 
