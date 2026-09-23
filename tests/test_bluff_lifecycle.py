@@ -361,7 +361,7 @@ def test_newcomer_can_take_over_an_empty_full_table(clock):
         s.leave(t)
     clock.adv(PAUSE_TAKEOVER + 1)
     player, _ = s.join(S, "Stranger")
-    assert player is not None and s.MAX_HUMANS == 6
+    assert player is not None and s.MAX_HUMANS == 6          # cap restored after join
     s.game_action(S, {"t": "end_game"})
     assert s.phase == "lobby"
 
@@ -403,3 +403,14 @@ def test_solo_forfeit_against_bots_finishes_instead_of_pausing(clock):
         if run_due(s) is None:
             s.tick(s.gen)
     assert s.phase == "game_end" and not s.g["hand"][A]
+
+
+def test_mid_game_spectators_allowed_beyond_seat_cap_but_bounded(clock):
+    s = BluffSession(rng=random.Random(2))
+    toks = ["seat%d_token" % i for i in range(6)]
+    for i, t in enumerate(toks):
+        s.join(t, "P%d" % i); s.set_ready(t, True)
+    s.start(toks[0]); s.tick(s.gen)
+    got = [s.join("watch%02d_tok" % i, "W%d" % i)[0] for i in range(8)]
+    assert all(p is not None for p in got[:6]) and got[6] is None
+    assert all(s.state_for(p.token)["game"]["me"] is None for p in got[:6])

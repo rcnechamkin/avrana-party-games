@@ -86,8 +86,8 @@ Phone-size screenshots were taken with headless Playwright/Chromium (2–6 playe
   loses it.
 - **Framework-level issues (not fixed; they'd need `core/`):** oversized WebSocket frames are
   dropped only after being received; every message pushes full state to every socket
-  (amplification); one device can fill all 6 seats with invented tokens; spectators count
-  toward the 6-player cap.
+  (amplification); one device can fill all 6 *lobby* seats with invented tokens.
+  (Mid-game watchers are allowed beyond the 6 seats, up to 6 more; the lobby itself holds 6.)
 - **UX:** portrait only; placeholder emoji art; no confirmation after tapping a target (a
   mis-tap can spend a Coup); the claim sheet hides roles you can't afford instead of
   greying them out; a refresh in the lobby (not the countdown) gives you a new player id.

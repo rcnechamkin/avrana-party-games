@@ -55,6 +55,7 @@ START_COINS = 2
 MUST_COUP_AT = 10
 COSTS = {"coup": 7, "strike": 3}
 MAX_SEATS = 6
+MAX_SPECTATORS = 6            # mid-game watchers allowed beyond the seats
 
 # action -> (claimed role or None, needs target, who may block, roles that block)
 ACTIONS = {
@@ -648,8 +649,10 @@ class BluffSession(GameSession):
     def join(self, token, name=None, avatar=None):
         p0 = self.players.get(token)
         old_name = p0.name if p0 else None
-        if p0 is None and self.in_game() and self._takeover_open():
-            self.MAX_HUMANS = MAX_SEATS + 1          # one spot to end an empty full table
+        if p0 is None and self.in_game():
+            # mid-game arrivals are never seated (spectators), so the 6-seat cap doesn't
+            # apply to them; bounded so one device can't flood the room with tokens
+            self.MAX_HUMANS = MAX_SEATS + MAX_SPECTATORS
         try:
             player, fx = super().join(token, name, avatar)
         finally:
