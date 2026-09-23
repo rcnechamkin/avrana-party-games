@@ -16,7 +16,22 @@ Flow (all driven by the server):
     losing a card may pause for a `lose` choice; the exchange pauses for an `exchange` choice.
 Every waiting stage has a deadline; when it fires, remaining responders pass/allow,
 a lose choice takes the first card, an exchange keeps the current hand, and an idle
-turn takes Income (or the forced Coup).
+turn takes Income (Coup only when forced at 10+).
+
+Every prompt has a `step` number; clients echo it so a late answer meant for an
+earlier prompt is rejected instead of landing in a new one.
+
+Lifecycle (phones sleep, so sockets come and go):
+    here ──last socket closes──▶ reconnecting ──AWAY_GRACE──▶ away (autopilot)
+      ▲──────────────── same token says hello again ───────────────┘
+    * autopilot plays passively for away seats and `left` seats: Income (Coup only
+      when forced), pass, allow, first card, keep hand. It never claims or bluffs.
+    * if every seated human is disconnected the table PAUSES (timers frozen); if nobody
+      returns within EMPTY_TABLE_ABANDON the game is abandoned and the room returns to
+      the lobby. Anyone coming back resumes it exactly.
+    * a player may forfeit (`leave_game`): their seat goes on autopilot at once and is
+      eliminated at the next turn boundary.
+    * `end_game` returns the room to the lobby when every other alive human is away/left.
 """
 
 from __future__ import annotations
@@ -58,7 +73,12 @@ RESPONSE_SECONDS = 20
 LOSE_SECONDS = 30
 EXCHANGE_SECONDS = 45
 BOT_DELAY = 0.8
+AWAY_GRACE = 30               # seconds without a socket before autopilot takes the seat
+AUTOPILOT_DELAY = 2.0         # autopilot answers this fast once it is in charge
+EMPTY_TABLE_ABANDON = 300     # all seated humans gone this long -> abandon the game
+RESUME_MIN = 10               # a resumed stage gets at least this many seconds
 LOG_KEEP = 40
+RESERVED_NAMES = {"you", "bot", "test bot"}
 
 
 def _str(x, n=32):
@@ -84,6 +104,10 @@ class BluffSession(GameSession):
     # ------------------------------------------------------------------ setup
 
     def game_start(self):
+        # drop lobby ghosts (disconnected during the countdown and not seated)
+        for t in [t for t, p in self.players.items()
+                  if not p.is_bot and not p.connected and t not in self.participants]:
+            del self.players[t]
         seats = list(self.participants)[:MAX_SEATS]
         want = max(self.settings.get("bots", 0), 2 - len(seats))
         for i in range(max(0, min(want, MAX_SEATS - len(seats)))):
@@ -98,9 +122,14 @@ class BluffSession(GameSession):
             "coins": {t: START_COINS for t in seats},
             "turn": 0,
             "pending": None,
+            "step": 0,
             "log": [],
             "winner": None,
             "exchange_draw": None,                                    # PRIVATE
+            "away_since": {},        # token -> time its last socket closed
+            "left": set(),           # tokens that forfeited
+            "paused": None,          # {"remaining": seconds} while the table is empty
+            "due": None,             # (step, token, due_at) for bot/autopilot scheduling
         }
         self.phase = "playing"
         self._log("Game on: %d players, %d coins each." % (len(seats), START_COINS))
@@ -129,19 +158,35 @@ class BluffSession(GameSession):
     def _actor(self):
         return self.g["seats"][self.g["turn"]]
 
+    def _is_bot(self, tok):
+        p = self.players.get(tok)
+        return bool(p and p.is_bot)
+
+    def _new_step(self):
+        self.g["step"] += 1
+
     def _set_stage(self, stage, seconds, **kw):
         p = self.g["pending"] or {}
         p.update(kw)
         p["stage"] = stage
         self.g["pending"] = p
+        self._new_step()
         self._bump(time.time() + seconds)
+
+    def _clear(self, *keys):
+        for k in keys:
+            (self.g["pending"] or {}).pop(k, None)
 
     # ------------------------------------------------------------------ turn flow
 
     def _begin_turn(self):
+        self._apply_forfeits()
         if self._check_winner():
             return self.end_game()
+        if not self._alive(self._actor()):
+            return self._end_turn()
         self.g["pending"] = {"stage": "turn", "actor": self._actor()}
+        self._new_step()
         self._bump(time.time() + TURN_SECONDS)
         return []
 
@@ -157,6 +202,15 @@ class BluffSession(GameSession):
         self.g["turn"] = i
         return self._begin_turn()
 
+    def _apply_forfeits(self):
+        """Forfeited seats are eliminated at a turn boundary, never mid-claim."""
+        for tok in list(self.g["left"]):
+            if self._alive(tok):
+                self.g["revealed"][tok].extend(self.g["hand"][tok])
+                self.g["hand"][tok] = []
+                self.g["coins"][tok] = 0
+                self._log("🏳 %s left the game." % self._name(tok))
+
     def _check_winner(self):
         alive = self._alive_seats()
         if len(alive) <= 1 and self.g["winner"] is None:
@@ -168,7 +222,7 @@ class BluffSession(GameSession):
 
     def legal_actions(self, tok):
         """Actions `tok` may take now, with valid targets (pids)."""
-        if self.phase != "playing" or not self._alive(tok) \
+        if self.phase != "playing" or self.g["paused"] or not self._alive(tok) \
                 or (self.g["pending"] or {}).get("stage") != "turn" or self._actor() != tok:
             return []
         coins = self.g["coins"][tok]
@@ -209,6 +263,7 @@ class BluffSession(GameSession):
 
     def _open_block(self):
         p = self.g["pending"]
+        self._clear("claimant", "blocker", "block_role")
         _, _, who_blocks, roles = ACTIONS[p["action"]]
         if who_blocks == "target":
             eligible = [p["target"]] if self._alive(p["target"]) else []
@@ -229,6 +284,7 @@ class BluffSession(GameSession):
 
     def _resolve(self):
         g, p = self.g, self.g["pending"]
+        self._clear("blocker", "block_role", "block_roles")
         tok, a, target = p["actor"], p["action"], p.get("target")
         if a == "aid":
             g["coins"][tok] += 2
@@ -257,6 +313,10 @@ class BluffSession(GameSession):
         self._log("%s's %s fails." % (self._name(p["actor"]),
                                       LABELS[p["action"]].split(" (")[0]))
         return self._end_turn()
+
+    def _block_stands(self):
+        self._log("The block stands.")
+        return self._action_fails()
 
     # ------------------------------------------------------------------ challenges
 
@@ -294,6 +354,7 @@ class BluffSession(GameSession):
 
     def _reveal(self, tok, idx, why, then):
         g = self.g
+        self._clear("loser", "lose_why", "lose_then")
         card = g["hand"][tok].pop(idx)
         g["revealed"][tok].append(card)
         self._log("%s loses %s %s (%s)." % (self._name(tok), ROLES[card]["icon"], card, why))
@@ -306,7 +367,8 @@ class BluffSession(GameSession):
 
     def _continue(self, step):
         return {"end_turn": self._end_turn, "claim_ok": self._after_claim_ok,
-                "fails": self._action_fails, "resolve": self._resolve}[step]()
+                "fails": self._action_fails, "block_stands": self._block_stands,
+                "resolve": self._resolve}[step]()
 
     # ------------------------------------------------------------------ input
 
@@ -315,6 +377,23 @@ class BluffSession(GameSession):
             return [self.fx("invalid", to=token, msg="No game in progress")]
         if token not in self.g["seats"]:
             return [self.fx("invalid", to=token, msg="You are watching this game")]
+        t = msg.get("t")
+        if t == "leave_game":
+            return self._forfeit(token)
+        if t == "end_game":
+            return self._end_game_request(token)
+        if self.g["paused"]:
+            return [self.fx("invalid", to=token, msg="The game is paused")]
+        if token in self.g["left"]:
+            return [self.fx("invalid", to=token, msg="You left this game")]
+        # a stale answer (meant for an earlier prompt) must not land in a new one
+        step = msg.get("step")
+        if step is not None and step != self.g["step"]:
+            return [self.fx("invalid", to=token, msg="Too late: that moment has passed")]
+        return self._apply(token, msg)
+
+    def _apply(self, token, msg):
+        """Apply a validated player/autopilot/bot message. Never raises on bad input."""
         t = msg.get("t")
         p = self.g["pending"] or {}
         stage = p.get("stage")
@@ -342,15 +421,15 @@ class BluffSession(GameSession):
                 if not p["waiting"]:
                     if stage == "challenge":
                         return self._after_claim_ok()
-                    self._log("The block stands.")
-                    return self._action_fails()
+                    return self._block_stands()
                 return []
             if choice == "challenge":
                 if stage == "challenge":
                     return self._challenge(token, p["claimant"], p["claim_role"],
                                            ok_then="claim_ok", fail_then="fails")
-                return self._challenge(token, p["blocker"], p["block_role"],
-                                       ok_then="fails", fail_then="resolve")
+                blocker, role = p["blocker"], p["block_role"]
+                return self._challenge(token, blocker, role,
+                                       ok_then="block_stands", fail_then="resolve")
             return bad
 
         if t == "respond" and stage == "block":
@@ -397,22 +476,50 @@ class BluffSession(GameSession):
         g["exchange_draw"] = None
         return self._end_turn()
 
+    # ------------------------------------------------------------------ leaving / ending
+
+    def _forfeit(self, tok):
+        if not self._alive(tok) or tok in self.g["left"] or self._is_bot(tok):
+            return [self.fx("invalid", to=tok, msg="You're not in this game")]
+        self.g["left"].add(tok)
+        self._log("🏳 %s is leaving (autopilot until the turn ends)." % self._name(tok))
+        self.g["due"] = None
+        return []
+
+    def _end_game_request(self, tok):
+        """Return the room to the lobby, allowed when nobody else alive is still here."""
+        others = [t for t in self._alive_seats() if t != tok and not self._is_bot(t)
+                  and t not in self.g["left"] and self.players.get(t)
+                  and self.players[t].connected]
+        if self._is_bot(tok) or others:
+            return [self.fx("invalid", to=tok,
+                            msg="Other players are still here: they can use Leave game")]
+        self._log("Game ended by %s." % self._name(tok))
+        fx = [self.fx("toast", msg="Game ended by %s" % self._name(tok))]
+        return fx + self._abandon()
+
+    def _abandon(self):
+        self.g["paused"] = None
+        return self.to_lobby()
+
     # ------------------------------------------------------------------ timers
 
     def game_tick(self):
+        if self.g["paused"]:
+            self._log("Game abandoned: the table was empty for %d minutes." % (EMPTY_TABLE_ABANDON // 60))
+            return [self.fx("toast", msg="Game abandoned: nobody came back")] + self._abandon()
         p = self.g["pending"] or {}
         stage = p.get("stage")
         if stage == "turn":
             tok = self._actor()
             self._log("⏱ %s took too long." % self._name(tok))
-            return self._auto_turn(tok)
+            return self._passive_turn(tok)
         if stage == "challenge":
             p["waiting"] = []
             return self._after_claim_ok()
         if stage == "block_challenge":
             p["waiting"] = []
-            self._log("The block stands.")
-            return self._action_fails()
+            return self._block_stands()
         if stage == "block":
             p["waiting"] = []
             return self._resolve()
@@ -423,88 +530,222 @@ class BluffSession(GameSession):
             return self._finish_exchange(tok, list(range(len(self.g["hand"][tok]))))
         return []
 
-    def _auto_turn(self, tok):
-        if self.g["coins"][tok] >= COSTS["coup"]:
+    def _passive_turn(self, tok, coup_at=MUST_COUP_AT):
+        """Income, or a Coup when rich enough (forced at 10+ for humans/autopilot)."""
+        if self.g["coins"][tok] >= max(coup_at, COSTS["coup"]):
             targets = [t for t in self._alive_seats() if t != tok]
-            return self._start_action(tok, "coup", self.rng.choice(targets))
+            most = max(len(self.g["hand"][t]) for t in targets)
+            return self._start_action(tok, "coup", self.rng.choice(
+                [t for t in targets if len(self.g["hand"][t]) == most]))
         return self._start_action(tok, "income", None)
 
-    # ------------------------------------------------------------------ test bots
+    # ------------------------------------------------------------------ bots + autopilot
 
-    def _bot_due(self):
-        p = self.g["pending"] if self.g else None
-        if not p or self.phase != "playing":
+    def _needs_autopilot(self, tok, now):
+        if self._is_bot(tok) or tok in self.g["left"]:
+            return 0.0 if self._is_bot(tok) else AUTOPILOT_DELAY
+        since = self.g["away_since"].get(tok)
+        if since is None:
             return None
-        if p["stage"] == "turn":
-            tok = self._actor()
-            return tok if self.players[tok].is_bot else None
-        for tok in p.get("waiting", []):
-            if self.players.get(tok) and self.players[tok].is_bot:
-                return tok
+        return max(AUTOPILOT_DELAY, since + AWAY_GRACE - now)
+
+    def _bot_due(self, now=None):
+        """(token, due_at) for the seat autopilot/bots must act for next, or None."""
+        g = self.g
+        p = g["pending"] if g else None
+        if not p or self.phase != "playing" or g["paused"]:
+            return None
+        now = time.time() if now is None else now
+        cands = [self._actor()] if p["stage"] == "turn" else list(p.get("waiting", []))
+        for tok in cands:
+            wait = self._needs_autopilot(tok, now)
+            if wait is None:
+                continue
+            base = BOT_DELAY if self._is_bot(tok) else wait
+            # remember when this seat became due for this step, so repeated pushes
+            # (e.g. message spam) re-schedule the SAME moment instead of delaying it
+            if not (g["due"] and g["due"][0] == g["step"] and g["due"][1] == tok):
+                g["due"] = (g["step"], tok, now + base)
+            elif not self._is_bot(tok):
+                g["due"] = (g["step"], tok, min(g["due"][2], now + base))
+            return tok, g["due"][2]
         return None
 
     def next_bot_action(self):
-        tok = self._bot_due()
-        return (BOT_DELAY, tok) if tok else None
+        due = self._bot_due()
+        if due is None:
+            return None
+        tok, at = due
+        return (max(0.0, at - time.time()), tok)
 
     def run_bot(self, bot_token):
-        """Test bots never claim a role: Income (Coup when rich), always pass/allow,
-        lose their first card, keep their hand on exchange."""
-        if self._bot_due() != bot_token:
+        """Bots and autopilot play passively: they never claim, challenge or block."""
+        # core.net only calls this after the scheduled delay and drops stale calls (seq)
+        due = self._bot_due()
+        if due is None or due[0] != bot_token:
             return []
+        self.seq += 1                              # upstream convention (see spades)
         p = self.g["pending"]
         stage = p["stage"]
         if stage == "turn":
-            return self._auto_turn(bot_token)
+            # test bots Coup as soon as they can (so bot games end); autopilot only when forced
+            return self._passive_turn(bot_token, coup_at=COSTS["coup"] if self._is_bot(bot_token)
+                                      else MUST_COUP_AT)
         if stage in ("challenge", "block_challenge"):
-            return self.game_action(bot_token, {"t": "respond", "choice": "pass"})
+            return self._apply(bot_token, {"t": "respond", "choice": "pass"})
         if stage == "block":
-            return self.game_action(bot_token, {"t": "respond", "choice": "allow"})
+            return self._apply(bot_token, {"t": "respond", "choice": "allow"})
         if stage == "lose":
-            return self.game_action(bot_token, {"t": "lose", "card": 0})
+            return self._apply(bot_token, {"t": "lose", "card": 0})
+        if stage == "exchange":
+            return self._finish_exchange(bot_token, list(range(len(self.g["hand"][bot_token]))))
         return []
 
     # ------------------------------------------------------------------ connection
 
+    def _seated_humans(self):
+        return [t for t in (self.g["seats"] if self.g else []) if not self._is_bot(t)]
+
+    def join(self, token, name=None, avatar=None):
+        p0 = self.players.get(token)
+        old_name = p0.name if p0 else None
+        player, fx = super().join(token, name, avatar)
+        if player is not None:
+            if self.in_game() and old_name is not None:
+                player.name = old_name            # no renaming mid-game
+            else:
+                self._fix_name(player)
+        return player, fx
+
+    def set_profile(self, token, name=None, avatar=None):
+        if self.in_game():
+            name = None                           # names are locked during a game
+        fx = super().set_profile(token, name, avatar)
+        p = self.players.get(token)
+        if p is not None and not self.in_game():
+            self._fix_name(p)
+        return fx
+
+    def _fix_name(self, player):
+        """Names are public identity: no reserved words, no duplicates."""
+        base = player.name
+        if base.strip().lower() in RESERVED_NAMES:
+            base = "Player"
+        taken = {q.name.lower() for q in self.players.values() if q is not player}
+        name, n = base, 2
+        while name.lower() in taken:
+            name = "%s %d" % (base[:11], n)
+            n += 1
+        player.name = name
+
+    def game_player_back(self, token):
+        if not self.g:
+            return []
+        self.g["away_since"].pop(token, None)
+        self.g["due"] = None
+        fx = [self.fx("toast", msg="%s is back" % self._name(token))]
+        if self.g["paused"]:
+            rem = max(self.g["paused"]["remaining"], RESUME_MIN)
+            self.g["paused"] = None
+            self._bump(time.time() + rem)
+            self._log("%s is back: game resumed." % self._name(token))
+        return fx
+
+    def game_player_left(self, token):
+        """A seated human's last socket closed: start the grace clock, pause if empty."""
+        if not self.g or self.phase != "playing":
+            return []
+        self.g["away_since"][token] = time.time()
+        self.g["due"] = None
+        if not self.g["paused"] and not any(
+                self.players[t].connected for t in self._seated_humans() if t in self.players):
+            remaining = max(0.0, (self.deadline or time.time()) - time.time())
+            self.g["paused"] = {"remaining": remaining}
+            self._bump(time.time() + EMPTY_TABLE_ABANDON)      # a real deadline, never None
+            self._log("Everyone stepped away: game paused.")
+        return []
+
     def leave(self, token):
-        # phones sleep: never abandon a running game when every socket drops;
-        # deadlines keep it moving (idle players auto-act).
+        # Only difference from the base class: a running game is never abandoned the
+        # instant every socket drops (phones sleep). Presence handling lives in
+        # game_player_left / game_player_back.
         if self.in_game() and token in self.participants:
             self.seq += 1
             p = self.players.get(token)
             if p is not None:
                 p.connected = False
                 p.ready = False
+            return self.game_player_left(token)
+        if self.phase == "countdown" and token in self.players \
+                and not self.players[token].is_bot:
+            # a refresh during the 3-2-1 must not cost the seat: keep the player (and
+            # their ready flag); ghosts that never come back are pruned at game_start
+            self.seq += 1
+            self.players[token].connected = False
+            if len(self._connected_ready()) < self.MIN_PLAYERS:
+                self._bump(None)
+                self.phase = "lobby"
+                return [self.fx("toast", msg="Launch aborted — not enough players")]
             return []
         return super().leave(token)
 
+    def tick(self, gen):
+        # only the results-screen timer itself may end game_end (see to_lobby)
+        self._results_timer = self.phase == "game_end" and gen == self.gen
+        try:
+            return super().tick(gen)
+        finally:
+            self._results_timer = False
+
+    def to_lobby(self):
+        # The results screen always runs its course: core.net's "again" verb (which any
+        # connected token, even a spectator, may send) is ignored during game_end.
+        if self.phase == "game_end" and not getattr(self, "_results_timer", False):
+            return []
+        return super().to_lobby()
+
     # ------------------------------------------------------------------ state (masked)
+
+    def _presence(self, tok, now):
+        if self._is_bot(tok):
+            return "bot"
+        if tok in self.g["left"]:
+            return "left"
+        p = self.players.get(tok)
+        if p is not None and p.connected:
+            return "here"
+        since = self.g["away_since"].get(tok, now)
+        return "reconnecting" if now - since < AWAY_GRACE else "away"
 
     def game_state(self, viewer_token):
         g = self.g
         if g is None:
             return None
+        now = time.time()
         p = (g["pending"] or {}) if self.phase == "playing" else {"stage": "over"}
+        stage = p.get("stage")
         pend = {                                 # PUBLIC view of the pending step
-            "stage": p.get("stage"),
+            "stage": stage,
+            "step": g["step"],
             "actor": self._pid(p.get("actor")),
             "action": p.get("action"),
             "label": LABELS.get(p.get("action"), ""),
             "target": self._pid(p.get("target")),
             "claim_role": p.get("claim_role"),
-            "blocker": self._pid(p.get("blocker")),
-            "block_role": p.get("block_role"),
-            "loser": self._pid(p.get("loser")),
+            "blocker": self._pid(p.get("blocker")) if stage == "block_challenge" else None,
+            "block_role": p.get("block_role") if stage == "block_challenge" else None,
+            "loser": self._pid(p.get("loser")) if stage == "lose" else None,
             "waiting": [self._pid(t) for t in p.get("waiting", [])],
         }
         seats = [{
             "pid": self._pid(t), "name": self._name(t),
-            "bot": bool(self.players.get(t) and self.players[t].is_bot),
+            "bot": self._is_bot(t),
             "coins": g["coins"][t],
             "influence": len(g["hand"][t]),        # a COUNT only, never the cards
             "revealed": list(g["revealed"][t]),
             "alive": self._alive(t),
             "turn": self._alive(t) and t == self._actor() and self.phase == "playing",
+            "presence": self._presence(t, now),
         } for t in g["seats"]]
         st = {
             "kind": "bluff",
@@ -512,6 +753,7 @@ class BluffSession(GameSession):
             "seats": seats,
             "deck_count": len(g["deck"]),
             "pending": pend,
+            "paused": bool(g["paused"]),
             "log": list(g["log"][-15:]),
             "winner": self._pid(g["winner"]),
             "me": None,
@@ -522,9 +764,10 @@ class BluffSession(GameSession):
                 "cards": list(g["hand"][viewer_token]),
                 "actions": self.legal_actions(viewer_token),
                 "prompt": None,
+                "left": viewer_token in g["left"],
             }
-            if viewer_token in p.get("waiting", []):
-                stage = p.get("stage")
+            if viewer_token in p.get("waiting", []) and not g["paused"] \
+                    and viewer_token not in g["left"]:
                 if stage in ("challenge", "block_challenge"):
                     me["prompt"] = {"kind": "challenge"}
                 elif stage == "block":

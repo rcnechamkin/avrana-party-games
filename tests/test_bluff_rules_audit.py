@@ -338,14 +338,17 @@ def test_six_coins_no_coup():
     assert invalid(act(s, A, "coup", B))
 
 
-def test_AMBIGUOUS_timeout_with_seven_coins_auto_coups_not_income():
-    """Documents current behaviour: an idle actor with 7-9 coins (Coup NOT mandatory)
-    is auto-Couped at a random target. The module docstring says 'an idle turn takes
-    Income (or the forced Coup)'; the rules only force Coup at 10+."""
+def test_idle_turn_takes_income_below_forced_coup():
+    """Decided 2026-09-23: an idle/absent actor plays passively. With 7-9 coins
+    (Coup NOT mandatory) a timeout takes Income; only at 10+ is the Coup forced."""
     s = game(n=2)
     rig(s, coins={"A": 7}, A=["Banker", "Agent"], B=["Guardian", "Smuggler"])
     s.tick(s.gen)
-    assert s.g["coins"][A] == 0 and stage(s) == "lose"
+    assert s.g["coins"][A] == 8 and s.g["pending"]["actor"] == B
+    s = game(n=2)
+    rig(s, coins={"A": 10}, A=["Banker", "Agent"], B=["Guardian", "Smuggler"])
+    s.tick(s.gen)
+    assert s.g["coins"][A] == 3 and stage(s) == "lose"
 
 
 def test_strike_needs_three_coins_and_cannot_target_self_or_dead():
@@ -687,9 +690,6 @@ def test_malformed_responses_in_block_stage(msg):
 
 # ---------------------------------------------------------------- UI-facing state hygiene
 
-@pytest.mark.xfail(strict=True, reason="BUG: pending dict is reused across stages by "
-                   "_set_stage/_lose; stale 'loser' (and blocker/block_role) leak into "
-                   "later stages' public pending view")
 def test_public_pending_has_no_stale_loser_after_lose_stage():
     s = game(n=3)
     rig(s, coins={"A": 3}, A=["Agent", "Banker"], B=["Guardian", "Smuggler"],

@@ -487,10 +487,8 @@ def test_names_are_sanitized(raw):
         assert "<" not in line and ">" not in line.replace("→", "")
 
 
-# ======================================================== known issues (xfail)
+# ======================================================== fixed issues (were xfail)
 
-@pytest.mark.xfail(strict=True, reason="BUG P2: core/net.py dispatch 'again' lets ANY connected "
-                   "token (incl. a mid-game non-participant) end the game_end results screen")
 def test_non_participant_cannot_cut_results_screen():
     from core.net import GameBinding
     s = game(n=2)
@@ -502,9 +500,6 @@ def test_non_participant_cannot_cut_results_screen():
     assert s.phase == "game_end"
 
 
-@pytest.mark.xfail(strict=True, reason="BUG P2: a player may take another seat's exact name or "
-                   "the client's reserved 'You' label (games/bluff/web/client.js nameOf) "
-                   "-> others see 'You claim ...' / '👑 You win!' for someone else")
 def test_names_cannot_impersonate():
     s = game(n=3)
     s.set_profile(C, "Bob")
