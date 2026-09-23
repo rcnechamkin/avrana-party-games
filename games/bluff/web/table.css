@@ -1,5 +1,6 @@
 /* BLUFF table: a card-table look drawn entirely in CSS (no external art). */
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #3b220f;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #fff;
   user-select: none; -webkit-user-select: none; touch-action: manipulation; }
@@ -7,12 +8,25 @@ button { font: inherit; color: inherit; border: 0; cursor: pointer; }
 #confetti { position: fixed; inset: 0; pointer-events: none; z-index: 50; }
 
 /* ---- wood + felt ---------------------------------------------------------- */
-#app { position: relative; height: 100dvh; overflow: hidden;
+/* Vertical bands, bottom-up: action bar, your hand, your "me row" (coins, avatar,
+   deck), then the opponents' zone up to the header row. Everything derives from
+   the real app height (--apph, kept current by client.js), so short Safari
+   viewports shrink the table instead of piling things on top of each other. */
+#app { --apph: 100dvh;
+  --top: calc(58px + env(safe-area-inset-top));
+  --bar: calc(96px + env(safe-area-inset-bottom));
+  --hcw: min(27vw, 128px, calc(var(--apph) * .155));
+  --hand: calc(var(--hcw) * 1.42 + 10px);
+  --merow: 62px;
+  --zb: calc(var(--bar) + var(--hand) + var(--merow));
+  --zoneH: calc(var(--apph) - var(--top) - var(--zb));
+  position: relative; height: 100vh; height: 100dvh; overflow: hidden;
   background:
     repeating-linear-gradient(95deg, rgba(0,0,0,.05) 0 3px, transparent 3px 11px),
     repeating-linear-gradient(88deg, rgba(255,255,255,.035) 0 2px, transparent 2px 17px),
     linear-gradient(180deg, #8a5226, #6b3d1a 60%, #5a3417); }
-#felt { position: absolute; left: 5%; right: 5%; top: 10%; bottom: 31%;
+#felt { position: absolute; left: 5%; right: 5%; top: calc(var(--top) + 18px);
+  bottom: calc(var(--bar) + var(--hand) * .6);
   border-radius: 48px; overflow: hidden;
   background: radial-gradient(ellipse at 50% 42%, #2f8f3e 0%, #237a31 45%, #17602a 100%);
   box-shadow: inset 0 0 0 5px #4a2a10, inset 0 0 40px rgba(0,0,0,.45), 0 6px 18px rgba(0,0,0,.45); }
@@ -23,15 +37,18 @@ button { font: inherit; color: inherit; border: 0; cursor: pointer; }
 .round-btn { position: absolute; width: 44px; height: 44px; border-radius: 50%;
   background: rgba(20,12,6,.85); font-size: 20px; z-index: 20;
   box-shadow: 0 2px 6px rgba(0,0,0,.4); }
-.round-btn.small { position: static; width: 34px; height: 34px; font-size: 15px; }
+.round-btn.small { position: static; width: 44px; height: 44px; font-size: 16px; }
 #home { left: 12px; top: calc(10px + env(safe-area-inset-top)); }
 #history { right: 12px; top: calc(10px + env(safe-area-inset-top)); }
 .corner-box { position: absolute; z-index: 15; padding: 8px 16px; border-radius: 12px;
   font-weight: 800; font-size: 22px; box-shadow: 0 3px 8px rgba(0,0,0,.45); }
-.corner-box.red { right: 12px; top: calc(64px + env(safe-area-inset-top));
-  background: #8c1f3a; border: 3px solid #6d1329; }
-.corner-box.blue { left: 12px; bottom: 34%; background: #1f4fa3; border: 3px solid #173b7a; }
-.corner-box.urgent { animation: pulse 1s infinite; }
+/* timer: a pill in the header row, clear of every seat; red only when it matters */
+.corner-box.red { right: 64px; top: calc(10px + env(safe-area-inset-top)); height: 44px;
+  padding: 0 12px; display: flex; align-items: center; font-size: 18px; border-radius: 22px;
+  background: rgba(20,12,6,.85); border: 2px solid rgba(255,255,255,.18); }
+.corner-box.red.urgent { background: #8c1f3a; border-color: #ff5a6e; animation: pulse 1s infinite; }
+.corner-box.blue { left: 12px; bottom: calc(var(--bar) + var(--hand) + 8px); padding: 6px 12px;
+  font-size: 20px; background: #1f4fa3; border: 3px solid #173b7a; }
 
 /* ---- cards ---------------------------------------------------------------- */
 .card { position: relative; width: var(--cw, 92px); height: calc(var(--cw, 92px) * 1.42);
@@ -57,8 +74,21 @@ button { font: inherit; color: inherit; border: 0; cursor: pointer; }
 .card.dead { filter: grayscale(.9) brightness(.8); }
 
 /* ---- opponents ------------------------------------------------------------ */
-.seat { position: absolute; transform: translate(-50%, -50%); z-index: 5;
+/* the opponents' zone: seat coordinates (client.js LAYOUT) are % of this box,
+   anchored at each seat's top-centre */
+#opponents { position: absolute; left: 0; right: 0; top: var(--top); bottom: var(--zb);
+  pointer-events: none; }
+.seat { position: absolute; transform: translateX(-50%); z-index: 5; pointer-events: auto;
+  width: max-content;
   display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.seat .info { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+/* compact seats: 3+ opponents or a short screen (about 94px tall instead of 140) */
+#opponents.compact .seat { gap: 2px; }
+#opponents.compact .avatar { width: 46px; height: 46px; font-size: 27px; border-radius: 12px; }
+#opponents.compact .seat .nm { font-size: 11px; max-width: 84px; }
+#opponents.compact .seat .info { flex-direction: row; gap: 4px; }
+#opponents.compact .back.mini, #opponents.compact .card.mini { --cw: 21px; }
+#opponents.compact .chip { font-size: 11px; padding: 1px 5px; }
 .avatar { position: relative; width: 58px; height: 58px; border-radius: 14px;
   display: grid; place-items: center; font-size: 34px;
   background: var(--col, #2d3a8c); box-shadow: 0 3px 8px rgba(0,0,0,.45);
@@ -69,7 +99,7 @@ button { font: inherit; color: inherit; border: 0; cursor: pointer; }
 .seat.targetable .avatar { animation: pulse 0.9s infinite; border-color: #ff5a6e; cursor: pointer; }
 .seat .nm { font-size: 12px; font-weight: 700; text-shadow: 0 1px 2px #000; max-width: 90px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chip { font-size: 12px; font-weight: 800; padding: 1px 7px; border-radius: 10px;
+.chip { white-space: nowrap; font-size: 12px; font-weight: 800; padding: 1px 7px; border-radius: 10px;
   background: rgba(0,0,0,.55); }
 .seat .cards { display: flex; gap: 3px; }
 .bubble { position: absolute; right: -10px; top: -10px; background: #fff; color: #333;
@@ -78,9 +108,14 @@ button { font: inherit; color: inherit; border: 0; cursor: pointer; }
 .crown { position: absolute; left: 50%; top: -18px; transform: translateX(-50%); font-size: 20px; }
 
 /* ---- centre play area -------------------------------------------------------- */
-#center { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); z-index: 4;
-  display: flex; flex-direction: column; align-items: center; gap: 8px; width: 56%; }
-#piles { position: absolute; left: 78%; top: 57%; z-index: 3; }
+#center { position: absolute; left: 50%; top: calc(var(--top) + var(--zoneH) * .62);
+  transform: translate(-50%, -50%); z-index: 4;
+  display: flex; flex-direction: column; align-items: center; gap: 8px; width: 50%; }
+/* short opponents' zone (Safari with toolbars, small phones): the claimed card sits
+   beside its caption instead of above it, so the centre stays clear of the seats */
+#center.row { flex-direction: row; top: calc(var(--top) + var(--zoneH) * .66); }
+#center.row #caption { text-align: left; font-size: 13px; padding: 6px 9px; }
+#piles { position: absolute; right: 26px; bottom: calc(var(--bar) + var(--hand) + 18px); z-index: 3; }
 #piles.hide { display: none; }
 .pile { position: relative; width: 34px; height: 46px; }
 .pile .back { position: absolute; }
@@ -88,7 +123,7 @@ button { font: inherit; color: inherit; border: 0; cursor: pointer; }
 .pile .back:nth-child(3) { left: 4px; top: -4px; }
 #deck-n { position: absolute; top: 48px; left: 0; font-size: 11px; font-weight: 800; }
 #play { min-height: 20px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
-#play .claimed { --cw: 104px; transform: rotate(-4deg); }
+#play .claimed { --cw: clamp(60px, calc(var(--zoneH) * .25), 104px); transform: rotate(-4deg); }
 #play .claimed::after { content: "CLAIMED"; position: absolute; left: 50%; top: -12px;
   transform: translateX(-50%); background: #ffd54a; color: #3a2a00; font-size: 10px;
   font-weight: 900; padding: 2px 6px; border-radius: 6px; letter-spacing: .08em; }
@@ -96,18 +131,25 @@ button { font: inherit; color: inherit; border: 0; cursor: pointer; }
 #caption { text-align: center; font-weight: 700; font-size: 14px; text-shadow: 0 1px 3px #000;
   background: rgba(0,0,0,.35); padding: 6px 12px; border-radius: 12px; max-width: 100%; }
 #caption:empty { display: none; }
+/* a decision is waiting on YOU: the caption turns gold and spells out the question */
+#caption.call { background: #ffd54a; color: #2a1d00; text-shadow: none; font-size: 15px;
+  box-shadow: 0 0 0 3px #ffd54a55, 0 3px 10px rgba(0,0,0,.45); }
+#caption .q { display: block; font-weight: 900; margin-top: 2px; }
+#bar.call { box-shadow: 0 0 0 3px #ffd54a, 0 -2px 10px rgba(0,0,0,.35); }
 .winner { font-size: 26px; font-weight: 900; text-align: center; }
 
 /* ---- me: avatar, coins, hand ------------------------------------------------- */
-#me-seat { position: absolute; left: 50%; bottom: calc(96px + 27% + 2px); transform: translateX(-50%); z-index: 9; }
-#hand { position: absolute; left: 0; right: 0; bottom: 96px; height: 27%;
-  display: flex; justify-content: center; align-items: flex-end; z-index: 8; padding-bottom: 4px; }
-#hand .card { --cw: min(27vw, 128px); margin: 0 -14px; transform-origin: 50% 110%;
+#me-seat { position: absolute; left: 50%; bottom: calc(var(--bar) + var(--hand) + 6px); transform: translateX(-50%); z-index: 9; }
+#hand { position: absolute; left: 0; right: 0; bottom: var(--bar); height: var(--hand);
+  display: flex; justify-content: center; align-items: flex-end; z-index: 8; padding-bottom: 4px;
+  pointer-events: none; }
+#hand > * { pointer-events: auto; }
+#hand .card { --cw: var(--hcw); margin: 0 -6px; transform-origin: 50% 110%;
   transition: transform .15s; }
 #hand .card:nth-child(1):not(:only-child) { transform: rotate(-5deg); }
 #hand .card:nth-child(2) { transform: rotate(5deg); }
 #hand.choosing .card { cursor: pointer; outline: 3px solid #ff5a6e; animation: lift 1s infinite; }
-#lost { position: absolute; right: 12px; bottom: calc(96px + 27% - 40px); display: flex; gap: 4px; z-index: 7; }
+#lost { position: absolute; left: calc(50% + 34px); bottom: calc(var(--bar) + var(--hand) + 10px); display: flex; gap: 4px; z-index: 7; }
 
 /* ---- bottom action bar + sheet ------------------------------------------------ */
 #bar { position: absolute; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom));
@@ -124,8 +166,8 @@ button { font: inherit; color: inherit; border: 0; cursor: pointer; }
 .act:disabled { opacity: .4; }
 .bar-msg { flex: 1; display: grid; place-items: center; text-align: center; font-weight: 700;
   font-size: 15px; opacity: .85; padding: 0 8px; }
-#sheet { position: absolute; left: 10px; right: 10px; bottom: calc(96px + 27% + 60px);
-  border-radius: 16px; background: rgba(25,16,8,.96); z-index: 13; padding: 12px;
+#sheet { position: absolute; left: 10px; right: 10px; bottom: calc(var(--zb) - 2px);
+  max-height: calc(var(--zoneH) + 10px); overflow-y: auto; border-radius: 16px; background: rgba(25,16,8,.96); z-index: 13; padding: 12px;
   box-shadow: 0 -4px 16px rgba(0,0,0,.5); }
 #sheet h3 { margin: 0 0 8px; font-size: 14px; letter-spacing: .06em; opacity: .8; }
 .sheet-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
@@ -145,8 +187,8 @@ button { font: inherit; color: inherit; border: 0; cursor: pointer; }
 
 /* ---- lobby ------------------------------------------------------------------- */
 .lobby-title { font-size: 40px; font-weight: 900; letter-spacing: .08em; text-shadow: 0 3px 6px #000; }
-.stepper { display: flex; align-items: center; gap: 10px; font-weight: 700; }
-.stepper button { width: 38px; height: 38px; border-radius: 50%; background: rgba(0,0,0,.45); font-size: 20px; }
+.stepper { white-space: nowrap; display: flex; align-items: center; gap: 10px; font-weight: 700; }
+.stepper button { flex: none; width: 44px; height: 44px; border-radius: 50%; background: rgba(0,0,0,.45); font-size: 20px; }
 .ready-tick { position: absolute; right: -8px; bottom: -8px; font-size: 18px; }
 
 /* ---- toasts (hubnet.js creates #toasts) --------------------------------------- */
@@ -160,4 +202,4 @@ button { font: inherit; color: inherit; border: 0; cursor: pointer; }
 @keyframes bob { 50% { transform: translateY(-3px); } }
 @keyframes lift { 50% { translate: 0 -6px; } }
 
-#play .chip.last { font-size: 11px; font-weight: 600; opacity: .85; text-align: center; }
+#play .chip.last { white-space: normal; font-size: 11px; font-weight: 600; opacity: .85; text-align: center; }
