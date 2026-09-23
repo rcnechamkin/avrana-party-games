@@ -9,8 +9,9 @@ import time
 import pytest
 
 from games.bluff import game as bluff
-from games.bluff.game import (AWAY_GRACE, AUTOPILOT_DELAY, EMPTY_TABLE_ABANDON,
-                              RESUME_MIN, BluffSession)
+from games.bluff.game import (AWAY_GRACE, AWAY_TURN_GRACE, AUTOPILOT_DELAY,
+                              EMPTY_TABLE_ABANDON, PAUSE_TAKEOVER, RESUME_MIN,
+                              BluffSession)
 
 A, B, C, S = "tokenA_alice", "tokenB_bob", "tokenC_cara", "tokenS_stranger"
 
@@ -107,8 +108,10 @@ def test_within_grace_no_autopilot_then_autopilot(clock):
     rig(s, A, A=["Banker", "Agent"])
     s.leave(A)                                  # the ACTIVE player's phone sleeps
     delay, tok = s.next_bot_action()
-    assert tok == A and abs(delay - AWAY_GRACE) < 0.01
-    clock.adv(AWAY_GRACE)
+    assert tok == A and abs(delay - AWAY_TURN_GRACE) < 0.01   # own turn: longer grace
+    clock.adv(45)                               # a 45 s app switch keeps the turn
+    assert s.next_bot_action()[0] > 0
+    clock.adv(AWAY_TURN_GRACE - 45)
     delay, tok = s.next_bot_action()
     assert tok == A and delay == 0
     s.run_bot(A)
@@ -170,7 +173,7 @@ def test_autopilot_coups_only_when_forced(clock):
     s = game()
     rig(s, A, A=["Banker", "Agent"])
     s.g["coins"][A] = 9
-    s.leave(A); clock.adv(AWAY_GRACE + 1)
+    s.leave(A); clock.adv(AWAY_TURN_GRACE + 1)
     run_due(s)
     assert s.g["coins"][A] == 10                # Income, not Coup
     rig(s, A)
@@ -316,3 +319,22 @@ def test_presence_values_and_no_tokens_in_payload(clock):
     assert vals == {"Alice": "here", "Bob": "reconnecting", "Test bot 1": "bot"}
     blob = json.dumps([s.state_for(t) for t in (A, B, None)])
     assert A not in blob and B not in blob
+
+
+def test_newcomer_can_end_an_empty_table_only_after_takeover_delay(clock):
+    s = game(n=2)
+    s.leave(A); s.leave(B)
+    s.join(S, "Stranger")
+    out = s.game_action(S, {"t": "end_game"})
+    assert out[0]["kind"] == "invalid" and s.phase == "playing"      # short sleeps protected
+    assert s.state_for(S)["game"]["takeover_at"] == int((clock.t + PAUSE_TAKEOVER) * 1000)
+    clock.adv(PAUSE_TAKEOVER)
+    s.game_action(S, {"t": "end_game"})
+    assert s.phase == "lobby" and S in s.players                    # newcomer stays, can play
+
+
+def test_newcomer_cannot_end_a_live_table(clock):
+    s = game(n=2)
+    s.join(S, "Stranger")
+    clock.adv(PAUSE_TAKEOVER * 10)
+    assert s.game_action(S, {"t": "end_game"})[0]["kind"] == "invalid" and s.phase == "playing"

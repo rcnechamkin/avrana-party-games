@@ -20,7 +20,7 @@ import websockets
 
 URL = (sys.argv[1] if len(sys.argv) > 1 else "ws://127.0.0.1:8196") + "/games/bluff/ws"
 SEAT_KEYS = {"pid", "name", "bot", "coins", "influence", "revealed", "alive", "turn", "presence"}
-GAME_KEYS = {"kind", "roles", "seats", "deck_count", "pending", "paused", "log", "winner", "me"}
+GAME_KEYS = {"kind", "roles", "seats", "deck_count", "pending", "paused", "takeover_at", "log", "winner", "me"}
 PENDING_KEYS = {"stage", "step", "actor", "action", "label", "target", "claim_role", "blocker",
                 "block_role", "loser", "waiting"}
 ME_KEYS = {"pid", "cards", "actions", "prompt", "left"}

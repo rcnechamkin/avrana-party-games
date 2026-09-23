@@ -22,7 +22,8 @@ Every prompt has a `step` number; clients echo it so a late answer meant for an
 earlier prompt is rejected instead of landing in a new one.
 
 Lifecycle (phones sleep, so sockets come and go):
-    here ──last socket closes──▶ reconnecting ──AWAY_GRACE──▶ away (autopilot)
+    here ──last socket closes──▶ reconnecting ──grace──▶ away (autopilot)
+      (grace: AWAY_GRACE for prompts, AWAY_TURN_GRACE for the player's own turn)
       ▲──────────────── same token says hello again ───────────────┘
     * autopilot plays passively for away seats and `left` seats: Income (Coup only
       when forced), pass, allow, first card, keep hand. It never claims or bluffs.
@@ -73,9 +74,11 @@ RESPONSE_SECONDS = 20
 LOSE_SECONDS = 30
 EXCHANGE_SECONDS = 45
 BOT_DELAY = 0.8
-AWAY_GRACE = 30               # seconds without a socket before autopilot takes the seat
+AWAY_GRACE = 30               # seconds without a socket before autopilot answers prompts
+AWAY_TURN_GRACE = 60          # ...and before it plays the away player's own turn (app switch)
 AUTOPILOT_DELAY = 2.0         # autopilot answers this fast once it is in charge
 EMPTY_TABLE_ABANDON = 300     # all seated humans gone this long -> abandon the game
+PAUSE_TAKEOVER = 60           # ...but after this long anyone connected may end it
 RESUME_MIN = 10               # a resumed stage gets at least this many seconds
 LOG_KEEP = 40
 RESERVED_NAMES = {"you", "bot", "test bot"}
@@ -375,6 +378,8 @@ class BluffSession(GameSession):
     def game_action(self, token, msg):
         if self.phase != "playing" or self.g is None:
             return [self.fx("invalid", to=token, msg="No game in progress")]
+        if msg.get("t") == "end_game" and self.g["paused"] and token not in self.g["seats"]:
+            return self._takeover(token)
         if token not in self.g["seats"]:
             return [self.fx("invalid", to=token, msg="You are watching this game")]
         t = msg.get("t")
@@ -498,6 +503,16 @@ class BluffSession(GameSession):
         fx = [self.fx("toast", msg="Game ended by %s" % self._name(tok))]
         return fx + self._abandon()
 
+    def _takeover(self, tok):
+        """A newcomer may end a table that has been EMPTY for PAUSE_TAKEOVER seconds
+        (short phone sleeps stay protected; a really abandoned room frees up fast)."""
+        wait = self.g["paused"]["since"] + PAUSE_TAKEOVER - time.time()
+        if wait > 0:
+            return [self.fx("invalid", to=tok,
+                            msg="The players just stepped away. Try again in %d s" % (int(wait) + 1))]
+        self._log("Game ended by %s: the table was empty." % self._name(tok))
+        return [self.fx("toast", msg="Game ended: the table was empty")] + self._abandon()
+
     def _abandon(self):
         self.g["paused"] = None
         return self.to_lobby()
@@ -547,7 +562,8 @@ class BluffSession(GameSession):
         since = self.g["away_since"].get(tok)
         if since is None:
             return None
-        return max(AUTOPILOT_DELAY, since + AWAY_GRACE - now)
+        grace = AWAY_TURN_GRACE if (self.g["pending"] or {}).get("stage") == "turn" else AWAY_GRACE
+        return max(AUTOPILOT_DELAY, since + grace - now)
 
     def _bot_due(self, now=None):
         """(token, due_at) for the seat autopilot/bots must act for next, or None."""
@@ -660,7 +676,7 @@ class BluffSession(GameSession):
         if not self.g["paused"] and not any(
                 self.players[t].connected for t in self._seated_humans() if t in self.players):
             remaining = max(0.0, (self.deadline or time.time()) - time.time())
-            self.g["paused"] = {"remaining": remaining}
+            self.g["paused"] = {"remaining": remaining, "since": time.time()}
             self._bump(time.time() + EMPTY_TABLE_ABANDON)      # a real deadline, never None
             self._log("Everyone stepped away: game paused.")
         return []
@@ -754,6 +770,7 @@ class BluffSession(GameSession):
             "deck_count": len(g["deck"]),
             "pending": pend,
             "paused": bool(g["paused"]),
+            "takeover_at": int((g["paused"]["since"] + PAUSE_TAKEOVER) * 1000) if g["paused"] else None,
             "log": list(g["log"][-15:]),
             "winner": self._pid(g["winner"]),
             "me": None,

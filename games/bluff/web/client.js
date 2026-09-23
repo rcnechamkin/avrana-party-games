@@ -154,7 +154,7 @@ function renderOpponents() {
     if (g().winner === s.pid) av.appendChild(el("div", "crown", "👑"));
     seat.appendChild(av);
     seat.appendChild(el("div", "nm", s.name + (s.bot ? " 🤖" : "")));
-    const pres = { reconnecting: "reconnecting…", away: "away · autopilot", left: "left" }[s.presence];
+    const pres = { reconnecting: "reconnecting…", away: "away", left: "left" }[s.presence];
     if (pres && s.alive) seat.appendChild(el("div", "presence " + s.presence, pres));
     const info = el("div", "info"), cards = el("div", "cards");
     for (let k = 0; k < s.influence; k++) cards.appendChild(el("div", "back mini"));
@@ -262,7 +262,16 @@ function renderBar() {
   $("sheet").hidden = true;
   const msg = (t) => bar.appendChild(el("div", "bar-msg", t));
   if (p.stage === "over") { msg("Back to the lobby in a moment…"); return; }
-  if (!me) { msg("Watching"); return; }
+  if (!me) {
+    if (g().paused) {                      // an empty table: a newcomer may start fresh
+      const wait = Math.ceil(((g().takeover_at || 0) - conn.now()) / 1000);
+      if (wait > 0) { msg(`Table empty: you can start a new game in ${wait} s`); setTimeout(render, 1000); }
+      else bar.appendChild(actBtn("▶", "Start a new game", () => send({ t: "end_game" }), "primary"));
+      return;
+    }
+    msg("Watching");
+    return;
+  }
   if (me.left) { msg("You left this game: watching"); return; }
 
   const acts = me.actions || [];

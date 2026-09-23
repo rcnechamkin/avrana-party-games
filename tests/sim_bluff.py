@@ -47,11 +47,11 @@ COST = {"coup": 7, "strike": 3}
 TARGETED = {"coup", "strike", "steal"}
 STAGE_SECS = {"turn": 90, "challenge": 20, "block": 20, "block_challenge": 20,
               "lose": 30, "exchange": 45}
-SEAT_KEYS = {"pid", "name", "bot", "coins", "influence", "revealed", "alive", "turn"}
-GAME_KEYS = {"kind", "roles", "seats", "deck_count", "pending", "log", "winner", "me"}
-PENDING_KEYS = {"stage", "actor", "action", "label", "target", "claim_role", "blocker",
+SEAT_KEYS = {"pid", "name", "bot", "coins", "influence", "revealed", "alive", "turn", "presence"}
+GAME_KEYS = {"kind", "roles", "seats", "deck_count", "pending", "paused", "takeover_at", "log", "winner", "me"}
+PENDING_KEYS = {"stage", "step", "actor", "action", "label", "target", "claim_role", "blocker",
                 "block_role", "loser", "waiting"}
-ME_KEYS = {"pid", "cards", "actions", "prompt"}
+ME_KEYS = {"pid", "cards", "actions", "prompt", "left"}
 
 
 # =============================================================== rules oracle
@@ -68,7 +68,7 @@ class Model:
                      for s in g["seats"]}
         self.deck = g["deck_count"]
         p = g["pending"]
-        self.p = {k: p.get(k) for k in PENDING_KEYS if k != "label"}
+        self.p = {k: p.get(k) for k in PENDING_KEYS if k not in ("label", "step")}
         self.p["waiting"] = list(p.get("waiting") or [])
         self.turner = p.get("actor")
         self.then = then
@@ -246,7 +246,7 @@ class Model:
         self.ev.append("timeout:" + st)
         if st == "turn":
             x = self.turner
-            if self.coins[x] >= 7:
+            if self.coins[x] >= 10:
                 self.ev.append("timeout_turn_coup_at_%d" % self.coins[x])
                 return self.act(x, "coup", coup_target)
             return self.act(x, "income", None)
@@ -834,7 +834,7 @@ class Sim:
                 wait_s = 6
             else:
                 self.recent.append("g%d k%d (awaiting %s deadline)" % (self.game_no, k, st))
-                if st == "turn" and seats[p["actor"]]["coins"] >= 7:
+                if st == "turn" and seats[p["actor"]]["coins"] >= 10:
                     for tg in [x for x in seats if x != p["actor"] and seats[x]["alive"]]:
                         cands.append(("timeout coup " + tg, lambda m, tg=tg: m.timeout(pool, tg)))
                 else:

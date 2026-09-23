@@ -219,9 +219,13 @@ async def main_mode():
     t0 = time.time()
     await asyncio.sleep(45)
     await B.open()
-    check("S8 45 s background on own turn: seat, turn, deadline intact",
-          B.pend().get("actor") == B.pid and B.pend().get("stage") == "turn"
-          and len(B.me().get("cards", [])) == b_inf2, "left=%.1fs" % B.left())
+    # Bob has been away since S6b (~77 s in total by now), longer than the own-turn
+    # grace, so a passive autopilot may have played his turn (Income). What must hold:
+    # same seat, same private cards, and the game did not stall waiting for him.
+    check("S8 long absence (~77 s): seat + private cards intact, game kept moving",
+          B.me() is not None and len(B.me().get("cards", [])) == b_inf2
+          and A.pend().get("stage") is not None, "left=%.1fs actor=%s" % (
+              B.left(), A.pend().get("actor")))
 
     # S3: duplicate tabs (same token, two sockets)
     B2 = Client("Bob", token=B.token)
@@ -279,7 +283,10 @@ async def main_mode():
     for c in (A, B, C):
         await c.open()
     check("S10 all humans gone 8 s: game NOT abandoned, resumes identically",
-          ph == "playing" and (A.pend().get("actor"), A.state["deadline"]) == snap,
+          # the table clock stops while everyone is away: same actor, and the
+          # deadline moves later by the pause (never earlier)
+          ph == "playing" and A.pend().get("actor") == snap[0]
+          and (A.state["deadline"] or 0) >= (snap[1] or 0),
           "phase while empty=%s connected flags=%s" % (ph, offline))
 
     # S11: frozen socket (suspended phone): how long until the server notices?
@@ -315,9 +322,17 @@ async def countdown_abandon_mode():
         await c.close()
     t0 = time.time()
     E = await Client("Eve").open()
+    # the table is paused (phones may just be asleep); a newcomer may end it only
+    # once it has been empty for PAUSE_TAKEOVER (60 s)
+    await E.send(t="end_game")
+    early = E.state["phase"]
+    await asyncio.sleep(61)
+    await E.send(t="end_game")
+    await E.until(lambda: E.state["phase"] == "lobby", 5)
     await E.send(t="ready", ready=True)
     await E.send(t="start")
-    check("C2 newcomer after abandonment can start a game", E.state["phase"] in ("lobby", "countdown"),
+    check("C2 newcomer can end an EMPTY table after 60 s and start a game",
+          early == "playing" and E.state["phase"] in ("lobby", "countdown", "playing"),
           "phase=%s you.ready=%s" % (E.state["phase"], E.state["you"]["ready"]))
     await E.close()
     last = None
