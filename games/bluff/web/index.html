@@ -3,81 +3,43 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>BLUFF (prototype)</title>
-<link rel="stylesheet" href="/shared/shared.css">
-<style>
-  .scr { position: relative; z-index: 1; max-width: 560px; margin: 0 auto; padding: 10px 12px 48px; }
-  h2 { font-size: 13px; letter-spacing: .08em; margin: 16px 0 6px; opacity: .7; }
-  #banner { margin: 8px 0; padding: 12px 14px; border-radius: 12px; background: var(--surface);
-            border: 1px solid var(--line); font-size: 16px; font-weight: 600; }
-  #banner.you { border-color: #e879f9; box-shadow: 0 0 0 2px #e879f955; }
-  #timer { float: right; font-family: var(--mono); opacity: .7; }
-  .seat { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px;
-          background: var(--surface); border: 1px solid var(--line); margin: 5px 0; }
-  .seat.turn { border-color: #e879f9; }
-  .seat.out { opacity: .45; }
-  .seat .nm { flex: 1; font-weight: 700; }
-  .seat .coins { font-family: var(--mono); }
-  .dots { letter-spacing: 2px; }
-  .rev { font-size: 12px; text-decoration: line-through; opacity: .8; margin-left: 4px; }
-  .badge { font-size: 11px; padding: 2px 6px; border-radius: 6px; background: #e879f933; }
-  .cards { display: flex; gap: 10px; }
-  .card { flex: 1; min-height: 96px; border-radius: 14px; padding: 12px; background: #1f1636;
-          border: 2px solid #e879f9aa; }
-  .card .ic { font-size: 28px; } .card .rn { font-weight: 800; font-size: 18px; }
-  .card .tx { font-size: 12px; opacity: .8; margin-top: 4px; }
-  .card.sel { outline: 3px solid #fbbf24; }
-  .card.dead { opacity: .35; border-style: dashed; }
-  #prompt { margin-top: 10px; }
-  .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
-  .btns button { min-height: 52px; font-size: 16px; white-space: pre-line; }
-  .btn-wide { grid-column: 1 / -1; }
-  .ptext { font-size: 15px; margin: 4px 0; }
-  #log { font-size: 13px; padding-left: 16px; margin: 0; }
-  #log li { margin: 3px 0; }
-  details { font-size: 13px; opacity: .85; }
-  .muted { opacity: .65; font-size: 13px; }
-</style>
+<meta name="theme-color" content="#5a3417">
+<title>BLUFF</title>
+<link rel="stylesheet" href="table.css">
 </head>
 <body>
-<div class="bg-fx"></div>
-<section class="scr">
-  <header class="topbar">
-    <a href="/" class="icon-btn" style="display:grid;place-items:center">🕹</a>
-    <span class="wordmark-sm"><span class="wm-a">BLUFF</span><span class="wm-b"> proto</span></span>
-    <span></span>
-  </header>
+<div id="app">
+  <div id="felt"><div id="felt-mark">🎭</div></div>
 
-  <div id="lobby">
-    <div id="lobby-status" class="field-label">connecting…</div>
-    <div class="row" style="display:flex;gap:8px;align-items:center;margin:10px 0">
-      <span>Test bots:</span>
-      <button id="bots-minus" class="btn">−</button><b id="bots-n">0</b><button id="bots-plus" class="btn">+</button>
-    </div>
-    <button id="lobby-btn" class="btn btn-primary btn-big" style="max-width:280px">READY UP</button>
-    <p class="muted">Working-title prototype with placeholder roles. 2–6 seats; bots only take Income and never bluff.</p>
+  <button id="home" class="round-btn" aria-label="Back to games">⌂</button>
+  <button id="history" class="round-btn" aria-label="What happened">☰</button>
+  <div id="timer" class="corner-box red" hidden></div>
+
+  <div id="opponents"></div>
+
+  <div id="piles">
+    <div class="pile"><div class="back mini"></div><div class="back mini"></div><div class="back mini"></div><span id="deck-n"></span></div>
   </div>
 
-  <div id="play" hidden>
-    <div id="banner"><span id="timer"></span><span id="banner-text"></span></div>
-
-    <div id="mine">
-      <h2>YOUR CARDS <span id="mycoins" class="coins"></span></h2>
-      <div class="cards" id="mycards"></div>
-    </div>
-
-    <div id="prompt"></div>
-
-    <h2>TABLE</h2>
-    <div id="seats"></div>
-
-    <h2>WHAT HAPPENED</h2>
-    <ol id="log" reversed></ol>
-
-    <details><summary>Roles (placeholder)</summary><div id="roles"></div></details>
+  <div id="center">
+    <div id="play"></div>
+    <div id="caption"></div>
   </div>
-</section>
-<div id="countdown-overlay" class="countdown-overlay" hidden><span id="cd">3</span></div>
+
+  <div id="me-seat"></div>
+  <div id="coins" class="corner-box blue" hidden></div>
+  <div id="hand"></div>
+  <div id="lost"></div>
+
+  <div id="sheet" hidden></div>
+  <div id="bar"></div>
+
+  <aside id="drawer" hidden>
+    <div class="drawer-head"><b>What happened</b><button id="drawer-close" class="round-btn small">✕</button></div>
+    <ol id="log"></ol>
+    <div id="rolehelp"></div>
+  </aside>
+</div>
 <canvas id="confetti"></canvas>
 <script src="/shared/hubnet.js"></script>
 <script src="client.js"></script>

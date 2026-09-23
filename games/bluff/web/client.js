@@ -1,16 +1,21 @@
-/* BLUFF prototype client. The phone is the whole game: the shared table for
-   everyone, your own cards for you only (the server never sends anyone else's),
-   and big contextual buttons for whatever the server is waiting on you for. */
+/* BLUFF table client. The phone is the whole game: you see the table, the other
+   players' card BACKS (the server never sends their faces), your own cards as a
+   real hand, and big contextual controls in the bar at the bottom. */
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const el = (tag, text, cls) => {
+const el = (tag, cls, text) => {
   const e = document.createElement(tag);
-  if (text != null) e.textContent = text;
   if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
   return e;
 };
-let ST = null, clockOffset = 0, picking = null, keepSel = [], keepKey = "";
+
+let ST = null, clockOffset = 0;
+let picking = null;          // action awaiting a target tap
+let sheet = null;            // "claim" when the claim menu is open
+let keepSel = [], keepKey = "";
+let drawerOpen = false, celebrated = false;
 
 if (!Hub.identity.name) Hub.identity.name = "PLAYER";
 
@@ -21,204 +26,326 @@ const conn = Hub.connect("/games/bluff/ws", {
   },
   onState: (st) => { clockOffset = Date.now() - st.now; ST = st; render(); },
 });
+const send = (m) => conn.send(m);
 
-setInterval(tickTimer, 250);
-function tickTimer() {
-  if (!ST || !ST.deadline || !ST.game) { $("timer").textContent = ""; return; }
-  const left = Math.max(0, Math.ceil((ST.deadline - (Date.now() - clockOffset)) / 1000));
-  $("timer").textContent = left + "s";
+$("home").onclick = () => { location.href = "/"; };
+$("history").onclick = () => { drawerOpen = true; render(); };
+$("drawer-close").onclick = () => { drawerOpen = false; render(); };
+
+// Opponent positions (% of the screen), listed clockwise from your left.
+const LAYOUT = {
+  1: [[50, 15]],
+  2: [[24, 17], [76, 17]],
+  3: [[12, 42], [50, 15], [88, 42]],
+  4: [[12, 46], [30, 16], [70, 16], [88, 46]],
+  5: [[12, 55], [12, 30], [50, 15], [88, 30], [88, 55]],
+  6: [[12, 58], [12, 34], [34, 15], [66, 15], [88, 34], [88, 58]],
+};
+
+// ---------------------------------------------------------------- helpers
+
+const playerOf = (pid) => (ST.players || []).find((p) => p.pid === pid) || {};
+const g = () => ST.game;
+const seatOf = (pid) => g() && g().seats.find((s) => s.pid === pid);
+const nameOf = (pid) => (pid === (g() && g().me && g().me.pid) ? "You" : (seatOf(pid) || playerOf(pid)).name || "?");
+const role = (r) => (g() ? g().roles[r] : null) || { icon: "❔", text: "" };
+
+function avatarEl(pid, size) {
+  const p = playerOf(pid), a = el("div", "avatar");
+  a.style.setProperty("--col", p.color || "#2d3a8c");
+  if (size) { a.style.width = a.style.height = size + "px"; a.style.fontSize = size * 0.58 + "px"; }
+  if (p.pfp) { const img = el("img"); img.src = p.pfp; img.alt = ""; a.appendChild(img); }
+  else a.textContent = p.bot ? "🤖" : (p.avatar || "🙂");
+  return a;
 }
 
-const send = (m) => conn.send(m);
-const nameOf = (pid) => {
-  const s = ST && ST.game && ST.game.seats.find((x) => x.pid === pid);
-  return s ? s.name : "?";
-};
-const roleTag = (g, r) => (g.roles[r] ? g.roles[r].icon + " " + r : r);
+function cardFace(r, extra) {
+  const c = el("div", "card" + (extra ? " " + extra : ""));
+  const R = role(r);
+  const idx = el("div", "idx"); idx.textContent = R.icon; c.appendChild(idx);
+  c.appendChild(el("div", "big", R.icon));
+  c.appendChild(el("div", "nm", r));
+  return c;
+}
+
+function actBtn(icon, label, onclick, cls, disabled) {
+  const b = el("button", "act " + (cls || ""));
+  b.appendChild(el("span", "ic", icon));
+  b.appendChild(el("span", null, label));
+  b.onclick = onclick;
+  if (disabled) b.disabled = true;
+  return b;
+}
+
+// ---------------------------------------------------------------- timer
+
+setInterval(() => {
+  const t = $("timer");
+  if (!ST || !ST.deadline || !g() || ST.phase !== "playing") { t.hidden = true; return; }
+  const left = Math.max(0, Math.ceil((ST.deadline - (Date.now() - clockOffset)) / 1000));
+  t.hidden = false;
+  t.textContent = "⏱ " + left;
+  t.classList.toggle("urgent", left <= 5);
+}, 250);
+
+// ---------------------------------------------------------------- render
+
+function render() {
+  const st = ST;
+  const inLobby = st.phase === "lobby" || st.phase === "countdown";
+  $("drawer").hidden = !drawerOpen;
+  $("piles").classList.toggle("hide", inLobby);
+  if (inLobby) { picking = null; sheet = null; celebrated = false; return renderLobby(st); }
+  if (!g()) return;
+  renderOpponents();
+  renderCenter();
+  renderMe();
+  renderBar();
+  renderDrawer();
+  if (g().winner && !celebrated) { celebrated = true; if (g().me && g().winner === g().me.pid) Hub.confettiBurst(140); }
+}
+
+function orderedOpponents() {
+  const seats = g().seats, me = g().me;
+  if (!me) return seats;
+  const i = seats.findIndex((s) => s.pid === me.pid);
+  return seats.slice(i + 1).concat(seats.slice(0, i));
+}
+
+function renderOpponents() {
+  const box = $("opponents");
+  box.textContent = "";
+  const opp = orderedOpponents(), pos = LAYOUT[Math.min(opp.length, 6)] || [];
+  const waiting = new Set(g().pending.waiting || []);
+  const targets = targetsFor(picking);
+  opp.forEach((s, i) => {
+    const [x, y] = pos[i] || [50, 50];
+    const seat = el("div", "seat" + (s.turn ? " turn" : "") + (s.alive ? "" : " out")
+      + (targets.has(s.pid) ? " targetable" : ""));
+    seat.style.left = x + "%"; seat.style.top = y + "%";
+    const av = avatarEl(s.pid);
+    if (waiting.has(s.pid)) av.appendChild(el("div", "bubble", "…"));
+    if (g().winner === s.pid) av.appendChild(el("div", "crown", "👑"));
+    seat.appendChild(av);
+    seat.appendChild(el("div", "nm", s.name + (s.bot ? " 🤖" : "")));
+    const cards = el("div", "cards");
+    for (let k = 0; k < s.influence; k++) cards.appendChild(el("div", "back mini"));
+    for (const r of s.revealed) cards.appendChild(cardFace(r, "mini dead"));
+    seat.appendChild(cards);
+    seat.appendChild(el("div", "chip", "🪙 " + s.coins));
+    if (targets.has(s.pid)) seat.onclick = () => {
+      const a = picking; picking = null;
+      send({ t: "act", action: a, target: s.pid });
+    };
+    box.appendChild(seat);
+  });
+}
+
+function targetsFor(action) {
+  if (!action || !g().me) return new Set();
+  const a = (g().me.actions || []).find((x) => x.action === action);
+  return new Set(a && a.targets ? a.targets : []);
+}
+
+function renderCenter() {
+  const p = g().pending, play = $("play"), cap = $("caption");
+  play.textContent = "";
+  $("deck-n").textContent = g().deck_count;
+  let text = "";
+  const actor = nameOf(p.actor), tgt = p.target ? " → " + nameOf(p.target) : "";
+  if (p.stage === "over") {
+    play.appendChild(el("div", "winner", g().winner ? `👑 ${nameOf(g().winner)} ${nameOf(g().winner) === "You" ? "win" : "wins"}!` : "Game over"));
+  } else if (picking) {
+    text = "Tap a player to target";
+  } else if (p.stage === "turn") {
+    text = p.actor === (g().me && g().me.pid) ? "Your turn" : `${actor}'s turn`;
+  } else if (p.stage === "challenge") {
+    play.appendChild(cardFace(p.claim_role, "claimed"));
+    text = `${actor} claim${actor === "You" ? "" : "s"} ${p.claim_role}: ${p.label}${tgt}`;
+  } else if (p.stage === "block") {
+    if (p.claim_role) play.appendChild(cardFace(p.claim_role, "claimed"));
+    text = p.action === "aid" ? `${actor} wants Foreign Aid (+2)` : `${actor}: ${p.label}${tgt}`;
+  } else if (p.stage === "block_challenge") {
+    play.appendChild(cardFace(p.block_role, "claimed block"));
+    text = `${nameOf(p.blocker)} block${nameOf(p.blocker) === "You" ? "" : "s"} with ${p.block_role}`;
+  } else if (p.stage === "lose") {
+    text = `${nameOf(p.loser)} must give up a card`;
+  } else if (p.stage === "exchange") {
+    text = `${actor} ${actor === "You" ? "are" : "is"} exchanging cards`;
+  }
+  cap.textContent = text;
+  // what just happened: only while nothing else is on the table (avoids repeating the caption)
+  const last = g().log[g().log.length - 1];
+  if (last && p.stage === "turn" && !picking) play.appendChild(el("div", "chip last", last));
+}
+
+function renderMe() {
+  const me = g().me, seatBox = $("me-seat"), hand = $("hand"), lost = $("lost"), coins = $("coins");
+  seatBox.textContent = ""; hand.textContent = ""; lost.textContent = "";
+  if (!me) { coins.hidden = true; return; }
+  const s = seatOf(me.pid);
+  seatBox.className = s && s.turn ? "turn" : "";
+  const av = avatarEl(me.pid, 50);
+  if ((g().pending.waiting || []).includes(me.pid)) av.appendChild(el("div", "bubble", "!"));
+  if (g().winner === me.pid) av.appendChild(el("div", "crown", "👑"));
+  seatBox.appendChild(av);
+  coins.hidden = false;
+  coins.textContent = "🪙 " + (s ? s.coins : 0);
+  const choosing = me.prompt && me.prompt.kind === "lose";
+  hand.className = choosing ? "choosing" : "";
+  me.cards.forEach((r, i) => {
+    const c = cardFace(r);
+    if (choosing) c.onclick = () => send({ t: "lose", card: i });
+    hand.appendChild(c);
+  });
+  if (!me.cards.length) hand.appendChild(el("div", "chip", "You're out: watching the rest"));
+  for (const r of s ? s.revealed : []) lost.appendChild(cardFace(r, "mini dead"));
+}
+
+// ---------------------------------------------------------------- the bar
+
+function renderBar() {
+  const bar = $("bar"), me = g().me, p = g().pending;
+  bar.textContent = "";
+  $("sheet").hidden = true;
+  const msg = (t) => bar.appendChild(el("div", "bar-msg", t));
+  if (p.stage === "over") { msg("Back to the lobby in a moment…"); return; }
+  if (!me) { msg("Watching"); return; }
+
+  const acts = me.actions || [];
+  if (acts.length) {
+    if (picking) {
+      msg("Tap a glowing player");
+      bar.appendChild(actBtn("✕", "Cancel", () => { picking = null; render(); }));
+      return;
+    }
+    const by = Object.fromEntries(acts.map((a) => [a.action, a]));
+    const choose = (a) => () => {
+      sheet = null;
+      if (a.targets) { picking = a.action; render(); }
+      else send({ t: "act", action: a.action });
+    };
+    if (acts.length === 1 && by.coup) {
+      msg("10+ coins: you must Coup");
+      bar.appendChild(actBtn("💥", "Coup", choose(by.coup), "danger"));
+      return;
+    }
+    bar.appendChild(actBtn("🪙", "Income +1", choose(by.income), "primary", !by.income));
+    bar.appendChild(actBtn("🤲", "Foreign Aid +2", choose(by.aid), "", !by.aid));
+    bar.appendChild(actBtn("💥", "Coup (7)", by.coup ? choose(by.coup) : null, "danger", !by.coup));
+    bar.appendChild(actBtn("🎭", "Claim ▸", () => { sheet = sheet ? null : "claim"; render(); }, "blue"));
+    if (sheet === "claim") renderClaimSheet(acts, choose);
+    return;
+  }
+  sheet = null;
+  const pr = me.prompt;
+  if (pr && pr.kind === "challenge") {
+    bar.appendChild(actBtn("⚔️", "CHALLENGE", () => send({ t: "respond", choice: "challenge" }), "danger"));
+    bar.appendChild(actBtn("👍", "Pass", () => send({ t: "respond", choice: "pass" })));
+  } else if (pr && pr.kind === "block") {
+    for (const r of pr.roles)
+      bar.appendChild(actBtn(role(r).icon, "Block as " + r, () => send({ t: "respond", choice: "block", role: r }), "blue"));
+    bar.appendChild(actBtn("👍", "Allow", () => send({ t: "respond", choice: "allow" })));
+  } else if (pr && pr.kind === "lose") {
+    msg("Tap one of your cards to give it up");
+  } else if (pr && pr.kind === "exchange") {
+    renderExchangeSheet(pr);
+    const ok = actBtn("✔", `Keep ${keepSel.length}/${pr.keep}`, () => send({ t: "keep", cards: keepSel }), "primary", keepSel.length !== pr.keep);
+    bar.appendChild(ok);
+  } else {
+    const w = (p.waiting || []).map(nameOf);
+    msg(p.stage === "turn" ? `Waiting for ${nameOf(p.actor)}…` : w.length ? `Waiting for ${w.join(", ")}…` : "…");
+  }
+}
+
+function renderClaimSheet(acts, choose) {
+  const sh = $("sheet");
+  sh.hidden = false; sh.textContent = "";
+  sh.appendChild(el("h3", null, "CLAIM A ROLE (you don't need to hold it)"));
+  const grid = el("div", "sheet-grid");
+  for (const a of acts.filter((x) => x.claims)) {
+    grid.appendChild(actBtn(role(a.claims).icon, `${a.claims}\n${a.label}`, choose(a), "blue"));
+  }
+  if (!grid.childElementCount) grid.appendChild(el("div", "bar-msg", "No role actions available"));
+  sh.appendChild(grid);
+}
+
+function renderExchangeSheet(pr) {
+  const key = pr.pool.join(",");
+  if (key !== keepKey) { keepKey = key; keepSel = []; }
+  const sh = $("sheet");
+  sh.hidden = false; sh.textContent = "";
+  sh.appendChild(el("h3", null, `EXCHANGE: KEEP ${pr.keep}`));
+  const row = el("div", "sheet-cards");
+  pr.pool.forEach((r, i) => {
+    const c = cardFace(r, keepSel.includes(i) ? "sel" : "");
+    c.onclick = () => {
+      keepSel = keepSel.includes(i) ? keepSel.filter((x) => x !== i)
+        : keepSel.length < pr.keep ? keepSel.concat(i) : keepSel;
+      render();
+    };
+    row.appendChild(c);
+  });
+  sh.appendChild(row);
+}
+
+// ---------------------------------------------------------------- drawer
+
+function renderDrawer() {
+  if (!drawerOpen) return;
+  const ol = $("log");
+  ol.textContent = "";
+  for (const line of g().log.slice().reverse()) ol.appendChild(el("li", null, line));
+  const help = $("rolehelp");
+  help.textContent = "";
+  for (const [r, v] of Object.entries(g().roles)) help.appendChild(el("div", null, `${v.icon} ${r}: ${v.text}`));
+  help.appendChild(el("div", null, "Anyone: Income +1 · Foreign Aid +2 (blockable) · Coup: pay 7 (must at 10+)."));
+}
 
 // ---------------------------------------------------------------- lobby
 
 function renderLobby(st) {
-  const n = st.players.filter((p) => p.ready && p.connected).length;
-  $("lobby-status").textContent = `LOBBY — ${n} ready of ${st.players.length}`;
+  $("hand").textContent = ""; $("lost").textContent = ""; $("sheet").hidden = true;
+  $("coins").hidden = true; $("me-seat").textContent = "";
+  const opp = st.players.filter((p) => !st.you || p.pid !== st.you.pid);
+  const pos = LAYOUT[Math.min(Math.max(opp.length, 1), 6)] || [];
+  const box = $("opponents");
+  box.textContent = "";
+  opp.forEach((p, i) => {
+    const [x, y] = pos[i] || [50, 50];
+    const seat = el("div", "seat");
+    seat.style.left = x + "%"; seat.style.top = y + "%";
+    const av = avatarEl(p.pid);
+    if (p.ready) av.appendChild(el("div", "ready-tick", "✅"));
+    seat.appendChild(av);
+    seat.appendChild(el("div", "nm", p.name));
+    box.appendChild(seat);
+  });
+  if (st.you) {
+    const av = avatarEl(st.you.pid, 50);
+    if (st.you.ready) av.appendChild(el("div", "ready-tick", "✅"));
+    $("me-seat").appendChild(av);
+  }
+  const play = $("play");
+  play.textContent = "";
+  play.appendChild(el("div", "lobby-title", "BLUFF"));
   const bots = (st.settings && st.settings.bots) || 0;
-  $("bots-n").textContent = bots;
-  $("bots-minus").onclick = () => send({ t: "settings", patch: { bots: Math.max(0, bots - 1) } });
-  $("bots-plus").onclick = () => send({ t: "settings", patch: { bots: Math.min(5, bots + 1) } });
-  const me = st.you, btn = $("lobby-btn");
+  const step = el("div", "stepper");
+  const minus = el("button", null, "−"), plus = el("button", null, "+");
+  minus.onclick = () => send({ t: "settings", patch: { bots: Math.max(0, bots - 1) } });
+  plus.onclick = () => send({ t: "settings", patch: { bots: Math.min(5, bots + 1) } });
+  step.append("Test bots", minus, el("b", null, String(bots)), plus);
+  play.appendChild(step);
+  const n = st.players.filter((p) => p.ready && p.connected).length;
+  $("caption").textContent = st.phase === "countdown" ? "Starting…" : `${n} of ${st.players.length} ready`;
+  $("deck-n").textContent = "";
+  const bar = $("bar");
+  bar.textContent = "";
+  const me = st.you;
   if (me && me.ready && n >= st.min_players) {
-    btn.textContent = "START GAME";
-    btn.onclick = () => send({ t: "start" });
+    bar.appendChild(actBtn("▶", "START GAME", () => send({ t: "start" }), "primary"));
+    bar.appendChild(actBtn("✕", "Not ready", () => send({ t: "ready", ready: false })));
   } else {
-    btn.textContent = me && me.ready ? "READY ✓" : "READY UP";
-    btn.onclick = () => send({ t: "ready", ready: !(me && me.ready) });
+    bar.appendChild(actBtn("✋", me && me.ready ? "Ready ✓" : "I'M READY", () => send({ t: "ready", ready: !(me && me.ready) }), "primary"));
   }
-}
-
-// ---------------------------------------------------------------- game
-
-function render() {
-  const st = ST;
-  $("countdown-overlay").hidden = st.phase !== "countdown";
-  const inLobby = st.phase === "lobby" || st.phase === "countdown";
-  $("lobby").hidden = !inLobby;
-  $("play").hidden = inLobby || !st.game;
-  if (inLobby) { picking = null; return renderLobby(st); }
-  const g = st.game;
-  if (!g) return;
-  renderBanner(g);
-  renderMine(g);
-  renderPrompt(g);
-  renderSeats(g);
-  renderLog(g);
-  renderRoles(g);
-}
-
-function describePending(g) {
-  const p = g.pending, a = nameOf(p.actor);
-  const tgt = p.target ? " → " + nameOf(p.target) : "";
-  switch (p.stage) {
-    case "turn": return `${a}'s turn`;
-    case "challenge": return `${a} claims ${roleTag(g, p.claim_role)} (${p.label}${tgt}). Anyone may challenge.`;
-    case "block": return p.action === "aid"
-      ? `${a} wants Foreign Aid. Anyone may block with ${roleTag(g, "Banker")}.`
-      : `${a}: ${p.label}${tgt}. ${nameOf(p.target)} may block.`;
-    case "block_challenge": return `${nameOf(p.blocker)} blocks, claiming ${roleTag(g, p.block_role)}. Challenge it?`;
-    case "lose": return `${nameOf(p.loser)} must give up a card.`;
-    case "exchange": return `${a} is exchanging cards.`;
-    case "over": return g.winner ? `🏆 ${nameOf(g.winner)} wins!` : "Game over";
-    default: return "";
-  }
-}
-
-function renderBanner(g) {
-  const me = g.me, p = g.pending;
-  const mine = me && ((p.stage === "turn" && p.actor === me.pid) || (me.prompt));
-  $("banner").className = mine ? "you" : "";
-  let t = describePending(g);
-  if (me && p.stage === "turn" && p.actor === me.pid) t = "YOUR TURN — choose an action";
-  $("banner-text").textContent = t;
-}
-
-function renderMine(g) {
-  const me = g.me;
-  $("mine").hidden = !me;
-  if (!me) return;
-  const seat = g.seats.find((s) => s.pid === me.pid);
-  $("mycoins").textContent = seat ? `· 🪙 ${seat.coins}` : "";
-  const box = $("mycards");
-  box.textContent = "";
-  for (const r of me.cards) box.appendChild(cardEl(g, r));
-  for (const r of seat ? seat.revealed : []) box.appendChild(cardEl(g, r, "dead"));
-  if (!me.cards.length) box.appendChild(el("p", "You're out — watch the rest.", "muted"));
-}
-
-function cardEl(g, r, extra) {
-  const c = el("div", null, "card" + (extra ? " " + extra : ""));
-  c.appendChild(el("div", g.roles[r].icon, "ic"));
-  c.appendChild(el("div", r, "rn"));
-  c.appendChild(el("div", g.roles[r].text, "tx"));
-  return c;
-}
-
-function button(label, onclick, cls) {
-  const b = el("button", label, "btn " + (cls || ""));
-  b.onclick = onclick;
-  return b;
-}
-
-function renderPrompt(g) {
-  const box = $("prompt"), me = g.me, p = g.pending;
-  box.textContent = "";
-  if (!me) return;
-  const grid = el("div", null, "btns");
-
-  if (me.actions && me.actions.length) {
-    if (picking) {
-      const a = me.actions.find((x) => x.action === picking);
-      if (!a) { picking = null; return renderPrompt(g); }
-      box.appendChild(el("div", `${a.label}: choose a target`, "ptext"));
-      for (const pid of a.targets) {
-        grid.appendChild(button(nameOf(pid), () => { picking = null; send({ t: "act", action: a.action, target: pid }); }, "btn-primary"));
-      }
-      grid.appendChild(button("Cancel", () => { picking = null; renderPrompt(g); }, "btn-wide"));
-    } else {
-      if (me.actions.length === 1 && me.actions[0].action === "coup")
-        box.appendChild(el("div", "You have 10+ coins: you must Coup.", "ptext"));
-      for (const a of me.actions) {
-        const label = a.claims ? `${a.label}\n(claim ${g.roles[a.claims].icon} ${a.claims})` : a.label;
-        grid.appendChild(button(label, () => {
-          if (a.targets) { picking = a.action; renderPrompt(g); }
-          else send({ t: "act", action: a.action });
-        }, a.claims ? "" : "btn-primary"));
-      }
-    }
-    box.appendChild(grid);
-    return;
-  }
-  picking = null;
-  const pr = me.prompt;
-  if (!pr) return;
-
-  if (pr.kind === "challenge") {
-    box.appendChild(el("div", "Do you believe them?", "ptext"));
-    grid.appendChild(button("CHALLENGE", () => send({ t: "respond", choice: "challenge" }), "btn-primary"));
-    grid.appendChild(button("Pass", () => send({ t: "respond", choice: "pass" })));
-  } else if (pr.kind === "block") {
-    box.appendChild(el("div", "Block it by claiming a role, or allow it.", "ptext"));
-    for (const r of pr.roles)
-      grid.appendChild(button(`BLOCK as ${roleTag(g, r)}`, () => send({ t: "respond", choice: "block", role: r }), "btn-primary"));
-    grid.appendChild(button("Allow", () => send({ t: "respond", choice: "allow" }), "btn-wide"));
-  } else if (pr.kind === "lose") {
-    box.appendChild(el("div", "Choose a card to give up (it is revealed to everyone):", "ptext"));
-    me.cards.forEach((r, i) => grid.appendChild(button(`Lose ${roleTag(g, r)}`, () => send({ t: "lose", card: i }), "btn-primary")));
-  } else if (pr.kind === "exchange") {
-    const key = pr.pool.join(",");
-    if (key !== keepKey) { keepKey = key; keepSel = []; }
-    box.appendChild(el("div", `Keep ${pr.keep} card(s). Tap to select:`, "ptext"));
-    const row = el("div", null, "cards");
-    pr.pool.forEach((r, i) => {
-      const c = cardEl(g, r, keepSel.includes(i) ? "sel" : "");
-      c.onclick = () => {
-        keepSel = keepSel.includes(i) ? keepSel.filter((x) => x !== i)
-          : keepSel.length < pr.keep ? keepSel.concat(i) : keepSel;
-        renderPrompt(g);
-      };
-      row.appendChild(c);
-    });
-    box.appendChild(row);
-    const ok = button(`KEEP ${keepSel.length}/${pr.keep}`, () => send({ t: "keep", cards: keepSel }), "btn-primary btn-wide");
-    ok.disabled = keepSel.length !== pr.keep;
-    grid.appendChild(ok);
-  }
-  box.appendChild(grid);
-}
-
-function renderSeats(g) {
-  const box = $("seats"), waiting = new Set(g.pending.waiting || []);
-  box.textContent = "";
-  for (const s of g.seats) {
-    const row = el("div", null, "seat" + (s.turn ? " turn" : "") + (s.alive ? "" : " out"));
-    row.appendChild(el("span", s.name + (g.me && g.me.pid === s.pid ? " (you)" : "") + (s.bot ? " 🤖" : ""), "nm"));
-    if (s.turn) row.appendChild(el("span", "TURN", "badge"));
-    if (waiting.has(s.pid)) row.appendChild(el("span", "deciding…", "badge"));
-    row.appendChild(el("span", "🪙" + s.coins, "coins"));
-    row.appendChild(el("span", "▮".repeat(s.influence) || "OUT", "dots"));
-    for (const r of s.revealed) row.appendChild(el("span", r, "rev"));
-    box.appendChild(row);
-  }
-  $("seats").appendChild(el("div", `Deck: ${g.deck_count} cards`, "muted"));
-}
-
-function renderLog(g) {
-  const ol = $("log");
-  ol.textContent = "";
-  for (const line of g.log.slice().reverse()) ol.appendChild(el("li", line));
-}
-
-function renderRoles(g) {
-  const box = $("roles");
-  if (box.childElementCount) return;
-  for (const [r, v] of Object.entries(g.roles)) box.appendChild(el("div", `${v.icon} ${r}: ${v.text}`));
-  box.appendChild(el("div", "Anyone: Income +1 · Foreign Aid +2 (blockable) · Coup: pay 7, target loses a card (must Coup at 10+)."));
 }
