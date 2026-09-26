@@ -35,7 +35,7 @@ const send = (m) => conn.send(m);
 // game answers carry the prompt step, so a late tap can never land in a newer prompt
 const gsend = (m) => send(Object.assign({ step: g() && g().pending.step }, m));
 
-$("home").onclick = () => { location.href = "/"; };
+$("home").onclick = () => { location.href = window.AvranaIntegration?.home || "/"; };
 $("history").onclick = () => { drawerOpen = true; render(); };
 $("drawer-close").onclick = () => { drawerOpen = false; render(); };
 

@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+<script src="/shared/avrana-integration.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>FORT FLING — LAN GAMES</title>
@@ -11,32 +12,32 @@
 <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="%23070b14"/><text x="32" y="46" font-size="36" text-anchor="middle">🏰</text></svg>'>
 <link rel="stylesheet" href="/shared/shared.css">
 <link rel="stylesheet" href="fortfling.css">
-  <script src="/shared/brand.js" defer></script>
+  <script src="/shared/brand.js?v=avrana1" defer></script>
 </head>
 <body>
 <div class="bg-fx" aria-hidden="true"></div>
 
-<section id="scr-join" class="scr" hidden>
+<section data-avrana-screen id="scr-join" class="scr" hidden>
   <div class="join-wrap">
     <h1 class="wordmark"><span class="wm-a">FORT</span> <span class="wm-b">FLING</span></h1>
     <p class="tagline">PULL BACK. PICK A WEAPON. WRECK THEIR FORT.</p>
     <div class="join-card">
       <label class="field-label" for="name-input">CALL SIGN</label>
-      <input id="name-input" maxlength="14" autocomplete="off" spellcheck="false" placeholder="your name">
+      <input data-avrana-profile-name id="name-input" maxlength="14" autocomplete="off" spellcheck="false" placeholder="your name">
       <label class="field-label">AVATAR</label>
-      <div id="avatar-grid" class="avatar-grid"></div>
-      <button id="pfp-btn" class="pfp-btn" type="button">📷 OR USE A PHOTO</button>
+      <div data-avrana-global id="avatar-grid" class="avatar-grid"></div>
+      <button data-avrana-global id="pfp-btn" class="pfp-btn" type="button">📷 OR USE A PHOTO</button>
       <button id="join-btn" class="btn btn-primary btn-big">ENTER THE FORT</button>
     </div>
   </div>
 </section>
 
-<section id="scr-lobby" class="scr" hidden>
+<section data-avrana-screen id="scr-lobby" class="scr" hidden>
   <header class="topbar">
-    <a href="/" class="icon-btn home-btn">🕹</a>
+    <a data-avrana-return href="/" class="icon-btn home-btn">🕹</a>
     <span class="wordmark-sm"><span class="wm-a">FORT</span> <span class="wm-b">FLING</span></span>
     <span class="top-actions">
-      <button id="pfp-btn2" class="icon-btn" title="your photo">📷</button>
+      <button data-avrana-global id="pfp-btn2" class="icon-btn" title="your photo">📷</button>
       <button id="mute-btn" class="icon-btn" title="sound">🔊</button>
     </span>
   </header>
@@ -66,9 +67,9 @@
   </footer>
 </section>
 
-<section id="scr-game" class="scr game-scr" hidden>
+<section data-avrana-screen id="scr-game" class="scr game-scr" hidden>
   <header class="battle-head">
-    <a href="/" class="head-link">🕹</a>
+    <a data-avrana-return href="/" class="head-link">🕹</a>
     <div class="turn-chip"><span id="turn-av">🏰</span><span id="turn-name">YOUR FLING</span></div>
     <span id="wind-chip" class="wind-chip">WIND ·0</span>
     <span id="turn-clock" class="turn-clock">40</span>
@@ -114,7 +115,7 @@
 <div id="countdown-overlay" class="countdown-overlay" hidden><span id="countdown-num">3</span></div>
 <canvas id="confetti"></canvas>
 
-<script src="/shared/hubnet.js"></script>
+<script src="/shared/hubnet.js?v=avrana1"></script>
 <script src="/shared/brag.js"></script>
 <script src="fortfling.js"></script>
 </body>

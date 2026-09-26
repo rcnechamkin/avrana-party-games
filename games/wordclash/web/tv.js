@@ -107,7 +107,7 @@ function render() {
 function renderLobby(st) {
   if (!qrDone) {
     qrDone = true;
-    const url = `http://${location.host}/games/wordclash/`;
+    const url = `${location.origin}/games/wordclash/${window.AvranaIntegration?.integrated ? "?avrana=1" : ""}`;
     $("tv-url").textContent = `${location.host}/games/wordclash`;
     try { renderQR($("tv-qr-host"), url); } catch (e) {}
   }

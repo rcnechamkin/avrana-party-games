@@ -1174,7 +1174,7 @@ async function holdWakeLock() {
   try { S.wake = await navigator.wakeLock?.request("screen"); } catch (error) { /* optional */ }
 }
 
-const joinUrl = new URL(".", location.href).href;
+const joinUrl = new URL("." + (window.AvranaIntegration?.integrated ? "?avrana=1" : ""), location.href).href;
 $("tv-url").textContent = joinUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
 try {
   renderQR($("tv-qr"), joinUrl);

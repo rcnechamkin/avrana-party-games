@@ -57,10 +57,16 @@
     }
   }
 
+  // Standalone compatibility only: canonical Avrana IDs share these lists.
+  const legacyLibraryKey = (key) => key === 'avrana:bluff' ? 'bluff'
+    : key.startsWith('avrana:lan-') ? key.slice(11)
+    : key.startsWith('lan-') ? key.slice(4) : key;
+  const canonicalLibraryKey = (key) => games.some((g) => g.slug === key)
+    ? 'avrana:' + (key === 'bluff' ? 'bluff' : 'lan-' + key) : key;
   const readList = (key) => {
     try {
       const parsed = JSON.parse(localStorage.getItem(key) || "[]");
-      return Array.isArray(parsed) ? parsed.filter((x) => typeof x === "string") : [];
+      return Array.isArray(parsed) ? [...new Set(parsed.filter((x) => typeof x === "string").map(legacyLibraryKey))] : [];
     } catch (error) { return []; }
   };
   let favorites = new Set(readList("lg-favorites"));
@@ -231,11 +237,11 @@
   }
 
   function saveFavorites() {
-    localStorage.setItem("lg-favorites", JSON.stringify([...favorites]));
+    localStorage.setItem("lg-favorites", JSON.stringify([...favorites].map(canonicalLibraryKey)));
   }
   function rememberGame(g) {
     recent = [g.slug, ...recent.filter((slug) => slug !== g.slug)].slice(0, 8);
-    localStorage.setItem("lg-recent", JSON.stringify(recent));
+    localStorage.setItem("lg-recent", JSON.stringify(recent.map(canonicalLibraryKey)));
     playTotal += 1;
     localStorage.setItem("lg-play-total", String(playTotal));
   }

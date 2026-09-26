@@ -77,6 +77,7 @@ for old_slug, current_slug in venue.route_aliases(
 @app.get("/api/games")
 async def api_games():
     return JSONResponse({
+        "avranaIntegration": "avrana.lan-launch/v1",
         "games": [{
             "slug": e["slug"],
             # venue.json may rename a game for this house (see core/venue.py);

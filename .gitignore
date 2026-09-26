@@ -25,3 +25,10 @@ Thumbs.db
 
 # local dev instance (avrana)
 dev.pid
+
+.env*
+*.pem
+*.key
+*.tmp
+/test-results/
+/playwright-report/

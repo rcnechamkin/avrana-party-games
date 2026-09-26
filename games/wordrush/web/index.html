@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+<script src="/shared/avrana-integration.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>WORD RUSH · LAN GAMES</title>
@@ -10,39 +11,39 @@
 <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="%23070b14"/><text x="32" y="46" font-size="30" text-anchor="middle">🔤</text></svg>'>
 <link rel="stylesheet" href="/shared/shared.css">
 <link rel="stylesheet" href="wordrush.css">
-  <script src="/shared/brand.js" defer></script>
+  <script src="/shared/brand.js?v=avrana1" defer></script>
 </head>
 <body>
 <div class="bg-fx" aria-hidden="true"></div>
 
 <!-- ============ JOIN ============ -->
-<section id="scr-join" class="scr" hidden>
+<section data-avrana-screen id="scr-join" class="scr" hidden>
   <div class="join-wrap">
     <h1 class="wordmark"><span class="wm-a">WORD</span> <span class="wm-b">RUSH</span></h1>
     <p class="tagline">SAME LETTERS · RACE TO FIND THE MOST WORDS</p>
     <div class="join-card">
       <label class="field-label" for="name-input">YOUR NAME</label>
-      <input id="name-input" maxlength="14" autocomplete="off" spellcheck="false" placeholder="your name">
+      <input data-avrana-profile-name id="name-input" maxlength="14" autocomplete="off" spellcheck="false" placeholder="your name">
       <label class="field-label">AVATAR</label>
-      <div id="avatar-grid" class="avatar-grid"></div>
-      <button id="pfp-btn" class="pfp-btn" type="button">📷 OR USE A PHOTO</button>
+      <div data-avrana-global id="avatar-grid" class="avatar-grid"></div>
+      <button data-avrana-global id="pfp-btn" class="pfp-btn" type="button">📷 OR USE A PHOTO</button>
       <button id="join-btn" class="btn btn-primary btn-big">JOIN THE RUSH</button>
     </div>
   </div>
 </section>
 
 <!-- ============ LOBBY ============ -->
-<section id="scr-lobby" class="scr" hidden>
+<section data-avrana-screen id="scr-lobby" class="scr" hidden>
   <header class="topbar">
-    <a href="/" class="icon-btn" style="display:grid;place-items:center" aria-label="Back to LAN Games">🕹</a>
+    <a data-avrana-return href="/" class="icon-btn" style="display:grid;place-items:center" aria-label="Back to LAN Games">🕹</a>
     <span class="wordmark-sm"><span class="wm-a">WORD</span> <span class="wm-b">RUSH</span></span>
     <div class="topbar-right">
       <button id="mute-btn" class="icon-btn sound-toggle" type="button" aria-label="Mute sound" aria-pressed="false">🔊</button>
-      <button id="pfp-btn2" class="icon-btn" type="button" title="your photo" aria-label="Change your photo">📷</button>
+      <button data-avrana-global id="pfp-btn2" class="icon-btn" type="button" title="your photo" aria-label="Change your photo">📷</button>
     </div>
   </header>
   <div class="lobby-body">
-    <a id="tv-open" class="tv-cta" href="tv.html" target="_blank" rel="noopener">
+    <a id="tv-open" class="tv-cta" data-avrana-game-link href="tv.html" target="_blank" rel="noopener">
       <span class="tv-cta-ic">📺</span>
       <span class="tv-cta-tx"><b>OPEN ON THE BIG SCREEN</b><small>shared rack + live leaderboard on a TV</small></span>
       <span class="tv-cta-go">↗</span>
@@ -69,9 +70,9 @@
 </section>
 
 <!-- ============ GAME ============ -->
-<section id="scr-game" class="scr" hidden>
+<section data-avrana-screen id="scr-game" class="scr" hidden>
   <header class="wr-head">
-    <a href="/" class="head-link" aria-label="Back to LAN Games">🕹</a>
+    <a data-avrana-return href="/" class="head-link" aria-label="Back to LAN Games">🕹</a>
     <span id="wr-round" class="wr-round">R1</span>
     <span id="wr-timer" class="wr-timer">1:30</span>
     <button id="mute-btn2" class="icon-btn sound-toggle game-mute" type="button" aria-label="Mute sound" aria-pressed="false">🔊</button>
@@ -122,7 +123,7 @@
 <canvas id="confetti"></canvas>
 <p id="game-status" class="a11y-live" role="status" aria-live="polite" aria-atomic="true"></p>
 
-<script src="/shared/hubnet.js"></script>
+<script src="/shared/hubnet.js?v=avrana1"></script>
 <script src="/shared/brag.js"></script>
 <script src="wordrush.js"></script>
 </body>

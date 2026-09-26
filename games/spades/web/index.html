@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+<script src="/shared/avrana-integration.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>SPADES — GAMEHUB</title>
@@ -16,28 +17,28 @@
 <div class="bg-fx" aria-hidden="true"></div>
 
 <!-- ============ JOIN (identity gate) ============ -->
-<section id="scr-join" class="scr" hidden>
+<section data-avrana-screen id="scr-join" class="scr" hidden>
   <div class="join-wrap">
     <h1 class="wordmark"><span class="wm-a">SPA</span><span class="wm-b">DES</span></h1>
     <p class="tagline">TWO HUMANS MINIMUM. BOTS DON'T BLUFF. MUCH.</p>
     <div class="join-card">
       <label class="field-label" for="name-input">CALL SIGN</label>
-      <input id="name-input" maxlength="14" autocomplete="off" spellcheck="false" placeholder="your name">
+      <input data-avrana-profile-name id="name-input" maxlength="14" autocomplete="off" spellcheck="false" placeholder="your name">
       <label class="field-label">AVATAR</label>
-      <div id="avatar-grid" class="avatar-grid"></div>
-      <button id="pfp-btn" class="pfp-btn" type="button">📷 OR USE A PHOTO</button>
+      <div data-avrana-global id="avatar-grid" class="avatar-grid"></div>
+      <button data-avrana-global id="pfp-btn" class="pfp-btn" type="button">📷 OR USE A PHOTO</button>
       <button id="join-btn" class="btn btn-primary btn-big">TAKE A SEAT</button>
     </div>
   </div>
 </section>
 
 <!-- ============ LOBBY ============ -->
-<section id="scr-lobby" class="scr" hidden>
+<section data-avrana-screen id="scr-lobby" class="scr" hidden>
   <header class="topbar">
-    <a href="/" class="icon-btn" title="hub" style="display:grid;place-items:center">🕹</a>
+    <a data-avrana-return href="/" class="icon-btn" title="hub" style="display:grid;place-items:center">🕹</a>
     <span class="wordmark-sm"><span class="wm-a">SPA</span><span class="wm-b">DES</span></span>
     <span style="display:flex;gap:8px">
-      <button id="pfp-btn2" class="icon-btn" title="your photo">📷</button>
+      <button data-avrana-global id="pfp-btn2" class="icon-btn" title="your photo">📷</button>
       <button id="mute-btn" class="icon-btn">🔊</button>
     </span>
   </header>
@@ -71,9 +72,9 @@
 </section>
 
 <!-- ============ TABLE ============ -->
-<section id="scr-table" class="scr" hidden>
+<section data-avrana-screen id="scr-table" class="scr" hidden>
   <header class="table-head">
-    <a href="/" class="head-link">🕹</a>
+    <a data-avrana-return href="/" class="head-link">🕹</a>
     <div id="score-us" class="team-chip us"><b>US</b><span>0</span><small>0 bags</small></div>
     <div id="score-target" class="target-chip">→ 500</div>
     <div id="score-them" class="team-chip them"><b>THEM</b><span>0</span><small>0 bags</small></div>
@@ -132,7 +133,7 @@
 <div id="countdown-overlay" class="countdown-overlay" hidden><span id="countdown-num">3</span></div>
 <canvas id="confetti"></canvas>
 
-<script src="/shared/hubnet.js"></script>
+<script src="/shared/hubnet.js?v=avrana1"></script>
 <script src="/shared/brag.js"></script>
 <script src="spades.js"></script>
 </body>

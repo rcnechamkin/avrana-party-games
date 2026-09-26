@@ -6,11 +6,12 @@
 const Hub = (() => {
   const AVATARS = ["🦊", "🐸", "🦖", "🐙", "🦉", "🐯", "🐼", "🦄",
                    "👾", "🤖", "🐲", "😈", "🦈", "🐝", "🦩", "🐢"];
+  const integrated = window.AvranaIntegration?.integrated === true;
   const gameSlug = (location.pathname.match(/^\/games\/([^/]+)/) || [])[1] || "";
 
   // Every game loads this file, so nested game pages get the same home-screen
   // identity without copying manifest markup into every client.
-  if (!document.querySelector('link[rel="manifest"]')) {
+  if (!integrated && !document.querySelector('link[rel="manifest"]')) {
     const manifest = document.createElement("link");
     manifest.rel = "manifest";
     manifest.href = "/app.webmanifest";
@@ -30,7 +31,7 @@ const Hub = (() => {
     favicon.href = "/shared/app-icon.svg";
     document.head.appendChild(favicon);
   }
-  if ("serviceWorker" in navigator && window.isSecureContext) {
+  if (!integrated && "serviceWorker" in navigator && window.isSecureContext) {
     addEventListener("load", () => {
       navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
     }, { once: true });
@@ -44,9 +45,9 @@ const Hub = (() => {
     artCss.href = "/shared/gameart.css";
     document.head.appendChild(artCss);
   }
-  if (!document.querySelector('script[src="/shared/brand.js"]')) {
+  if (!document.querySelector('script[src^="/shared/brand.js"]')) {
     const brandScript = document.createElement("script");
-    brandScript.src = "/shared/brand.js";
+    brandScript.src = "/shared/brand.js?v=avrana1";
     document.head.appendChild(brandScript);
   }
 
@@ -471,7 +472,7 @@ const Hub = (() => {
     // A consistent escape hatch matters once the suite runs standalone from a
     // home-screen icon: browser chrome is no longer there to rescue the user.
     const join = document.getElementById("scr-join");
-    if (join && !join.querySelector(".suite-home")) {
+    if (!integrated && join && !join.querySelector(".suite-home")) {
       const home = document.createElement("a");
       home.className = "suite-home";
       home.href = "/";

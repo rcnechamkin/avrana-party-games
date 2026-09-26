@@ -85,6 +85,10 @@
   window.brandPresents = () =>
     (window.BRAND && window.BRAND.presents) || DEFAULT_PRESENTS;
 
+  if (window.AvranaIntegration?.integrated) {
+    apply({ name: 'AVRANA PARTY', presents: 'AVRANA PARTY' });
+    return;
+  }
   fetch("/api/venue")
     .then((r) => r.json())
     .then((v) => {
