@@ -15,3 +15,21 @@ Canonical remote established privately: https://github.com/rcnechamkin/avrana-pa
 Next: push reviewed feature branch, open donor PR and verify Linux CI including rsync release-safety. Platform depends on advertised version. No merge/deploy. Preserve no merge/deploy.
 Dependency: donor first, standalone backward compatible; platform activation
 requires version advertisement. Party Home and abandoned Diplomacy untouched.
+
+## Closing checkpoint
+
+Implementation complete, review only. Donor PR:
+https://github.com/rcnechamkin/avrana-party-games/pull/1
+Platform PR (second): https://github.com/rcnechamkin/avrana-party/pull/7
+Linux CI run 36261284527 SUCCESS: 1200 Python, privacy, metadata drift, syntax,
+worker3 and release-safety. Platform run 36261333271 SUCCESS including real nginx.
+Final combined browser suite12 passed. Final standalone unknown/future ID
+preservation test2 passed: normalize only known registry titles, never rewrite an
+unknown canonical ID when editing other favorites. Final checkpoint reruns CI;
+current PR head checks are authoritative before review/merge.
+Current uncommitted state: this closing checkpoint; after commit/push tree clean.
+Unresolved code failures: none. Real phone/Pi/game-control/TV acceptance pending
+owner release; historical origin separation, token auth and session roster remain
+known architectural debt. No Party Home, experiment, networking or production edits.
+Exact next action: owner review donor first, platform second, check CI, then plan
+separate approved deployment/hardware checks. Do not merge/deploy autonomously.

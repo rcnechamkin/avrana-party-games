@@ -58,9 +58,12 @@
   }
 
   // Standalone compatibility only: canonical Avrana IDs share these lists.
-  const legacyLibraryKey = (key) => key === 'avrana:bluff' ? 'bluff'
-    : key.startsWith('avrana:lan-') ? key.slice(11)
-    : key.startsWith('lan-') ? key.slice(4) : key;
+  const legacyLibraryKey = (key) => {
+    const slug = key === 'avrana:bluff' ? 'bluff'
+      : key.startsWith('avrana:lan-') ? key.slice(11)
+      : key.startsWith('lan-') ? key.slice(4) : key;
+    return games.some((game) => game.slug === slug) ? slug : key;
+  };
   const canonicalLibraryKey = (key) => games.some((g) => g.slug === key)
     ? 'avrana:' + (key === 'bluff' ? 'bluff' : 'lan-' + key) : key;
   const readList = (key) => {
@@ -442,6 +445,8 @@
     const reg = data.games.filter((g) => !g.hidden || DEV);
     const ext = (data.external || []).map((g) => ({ ...g }));
     games = [...reg, ...ext];
+    favorites = new Set(readList("lg-favorites"));
+    recent = readList("lg-recent");
     soon = data.coming_soon || [];
   }
 
