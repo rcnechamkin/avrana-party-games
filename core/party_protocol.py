@@ -28,6 +28,7 @@ sessions; it cannot touch another game's, whose key it does not hold. Built-in L
 share one process, so their keys are per process in practice (GAME-INTEGRATION.md §3.1).
 """
 import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -83,7 +84,10 @@ def _b64(data):
 def _unb64(text):
     if not re.fullmatch(r'[A-Za-z0-9_-]*', text):
         raise Invalid('encoding')
-    return base64.urlsafe_b64decode(text + '=' * (-len(text) % 4))
+    try:
+        return base64.urlsafe_b64decode(text + '=' * (-len(text) % 4))
+    except (binascii.Error, ValueError):          # e.g. a length of 1 mod 4
+        raise Invalid('encoding')
 
 
 def _mac(key, signed):

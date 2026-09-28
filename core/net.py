@@ -40,17 +40,6 @@ LOBBY_VERBS = ("ready", "start", "settings", "profile", "leave_table")
 LOGGED_VERBS = ("ready", "start", "again", "leave_table", "leave_game", "end_game")
 
 
-def _refusing(fn, *args):
-    """The vendored protocol lets a malformed base64 segment escape as binascii.Error (a
-    ValueError) instead of Invalid; treat every such value as a refusal, never a crash."""
-    try:
-        return fn(*args)
-    except party_protocol.Invalid:
-        raise
-    except ValueError:
-        raise party_protocol.Invalid("malformed")
-
-
 class GameBinding:
     def __init__(self, slug, session, party=None):
         self.slug = slug
@@ -190,7 +179,7 @@ class GameBinding:
         if self.party is None:
             raise party_protocol.Invalid("no party side")
         async with self.lock:
-            roster = _refusing(self.party.on_launch, message)
+            roster = self.party.on_launch(message)
             self.party_roster = {
                 party_protocol.game_token(self.party.key, self.party.sid, r["participant"]): r
                 for r in roster if r["role"] == "player"}
@@ -218,7 +207,7 @@ class GameBinding:
         ticket = hello.get("ticket")
         if ticket is None:
             return None, None                   # a browser-minted token: watch only
-        token, role = _refusing(self.party.admit, ticket)
+        token, role = self.party.admit(ticket)
         entry = self.party_roster.get(token)
         if role != "player" or entry is None:
             return None, None
