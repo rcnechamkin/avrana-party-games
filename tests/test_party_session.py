@@ -34,10 +34,11 @@ CAROL = "participant-" + "c" * 32
 
 
 # ---- the vendored protocol ------------------------------------------------------------------
-# Copied unchanged from rcnechamkin/avrana-party f25d256 (avrana/party/protocol.py and
-# contracts/vectors/party-session.v0.json). Update both hashes only together with a re-vendor.
+# Copied unchanged from rcnechamkin/avrana-party: avrana/party/protocol.py at 12aaf44 (PR #16),
+# contracts/vectors/party-session.v0.json at f25d256. Update both hashes only together with a
+# re-vendor.
 VENDORED = {
-    "core/party_protocol.py": "3b89c89f94bac4b5bb422757a9a298d827d62ee5602ace119c03cce97a699de4",
+    "core/party_protocol.py": "9f5db93044ecda4a9ac5f2b99ca847d1bfe8d13a93405868bd2fcd03768d8ac2",
     "tests/vectors/party-session.v0.json":
         "b6c7f347aa39d8d54c7df2f37a9d5fd62a41f6312dbd1377be4fee208e579245",
 }
@@ -209,7 +210,7 @@ def test_a_refused_launch_changes_nothing(bad):
         before = (b.party.sid, b.session, dict(b.session.players))
         msg = {
             "garbage": "aps0.nope.nope",
-            "bad-base64": "aps0.x.y",      # the vendored decoder raises binascii.Error here
+            "bad-base64": "aps0.x.y",      # a segment of length 1 mod 4: Invalid("encoding")
             "replay": first,
             "other-game": proto.launch_message(KEY, "poker", SID2, []),
             "wrong-key": proto.launch_message(bytes(32), "bluff", SID2, []),
