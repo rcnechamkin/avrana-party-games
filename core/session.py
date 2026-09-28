@@ -78,6 +78,12 @@ class Player:
         """The picture to show: an uploaded photo, else the chosen avatar's, else None."""
         return uploaded or looks.picture(self.look)
 
+    @property
+    def toast_icon(self):
+        """A toast's icon for this player: their emoji, but none for a chosen Avrana avatar
+        (its text fallback would name a different look than the one they chose)."""
+        return None if self.look else self.avatar
+
     def public(self):
         return {"pid": self.pid, "name": self.name, "avatar": self.avatar,
                 "color": self.color, "ready": self.ready,
@@ -216,7 +222,7 @@ class GameSession:
             p.choose(avatar)
             p.ready = False
             self.players[token] = p
-            fx.append(self.fx("toast", msg="%s joined" % p.name, icon=p.avatar))
+            fx.append(self.fx("toast", msg="%s joined" % p.name, icon=p.toast_icon))
         else:
             p.connected = True
             if name is not None:

@@ -55,3 +55,12 @@ def test_chat_carries_a_gaze_avatar_as_its_picture():
     assert out["avatar"] == AVATARS[4]
     legacy = hub._build(tok, _uid(tok), {"name": "Ava", "avatar": "🦊"}, {"text": "hi"})
     assert legacy["avatar"] == "🦊" and legacy["pfp"] is None
+
+
+def test_join_toast_never_names_a_different_look():
+    s = GameSession()
+    _, fx = s.join("tok-d-000000000001", "Robin", "gaze-02")
+    toast = next(f for f in fx if f.get("kind") == "toast")
+    assert toast.get("icon") is None and toast["msg"] == "Robin joined"
+    _, fx = s.join("tok-e-000000000001", "Casey", "🐼")
+    assert next(f for f in fx if f.get("kind") == "toast")["icon"] == "🐼"

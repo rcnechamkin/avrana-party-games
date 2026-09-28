@@ -232,7 +232,7 @@ class DuelSession(GameSession):
     def game_player_back(self, token):
         if self.g and self.color_of(token):
             p = self.players[token]
-            return [self.fx("toast", icon=p.avatar, msg="%s is back" % p.name)]
+            return [self.fx("toast", icon=p.toast_icon, msg="%s is back" % p.name)]
         return []
 
     # ---------------- serialization ----------------
