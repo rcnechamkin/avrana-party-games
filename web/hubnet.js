@@ -323,19 +323,35 @@ const Hub = (() => {
     });
   }
 
+  /* The standalone join screens' picker offers the same 32 Avrana avatars as the Party
+     profile (web/avatars/, core/looks.py). A stored legacy emoji preselects the avatar at
+     its position, exactly like the Party profile's migration. */
+  const LOOKS = Array.from({ length: 32 }, (_, i) => "gaze-" + String(i + 1).padStart(2, "0"));
   function buildAvatarGrid(host, current, onPick) {
     host.textContent = "";
-    for (const a of AVATARS) {
+    const legacy = AVATARS.indexOf(current);
+    const chosen = LOOKS.includes(current) ? current : legacy >= 0 ? LOOKS[legacy] : null;
+    LOOKS.forEach((a, i) => {
       const c = document.createElement("button");
-      c.className = "avatar-cell" + (a === current ? " sel" : "");
-      c.textContent = a;
+      c.type = "button";
+      c.className = "avatar-cell" + (a === chosen ? " sel" : "");
+      c.setAttribute("aria-label", "Avatar " + (i + 1));
+      c.setAttribute("aria-pressed", String(a === chosen));
+      const img = document.createElement("img");
+      img.src = "/shared/avatars/" + a + ".svg";
+      img.alt = "";
+      img.draggable = false;
+      c.appendChild(img);
       c.onclick = () => {
-        host.querySelectorAll(".avatar-cell").forEach((x) => x.classList.remove("sel"));
+        host.querySelectorAll(".avatar-cell").forEach((x) => {
+          x.classList.remove("sel"); x.setAttribute("aria-pressed", "false");
+        });
         c.classList.add("sel");
+        c.setAttribute("aria-pressed", "true");
         onPick(a);
       };
       host.appendChild(c);
-    }
+    });
   }
 
   /* System icons for the shared game shell (Avrana system language): Lucide line icons,

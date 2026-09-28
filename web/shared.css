@@ -129,6 +129,7 @@ input::placeholder { color: var(--faint); font-weight: 400; }
   filter: drop-shadow(0 1px 1px rgba(255,255,255,.24));
 }
 .avatar-cell:active { transform: scale(0.92); }
+.avatar-cell img { width: 86%; height: 86%; border-radius: 50%; pointer-events: none; }
 .avatar-cell.sel {
   border-color: var(--cyan);
   box-shadow: 0 0 0 1px var(--cyan), 0 0 16px rgba(34, 211, 238, 0.35);
