@@ -8,8 +8,12 @@ One GameBinding per registered game. It owns:
   * bot scheduling: after every push, if session.next_bot_action() says a bot
     is due, a task runs it after the given delay (dropped if session.seq moved)
 
-Party sessions (core/party_session.py, AVR-22): a binding given a GameSide admits players by
-Party ticket at the hello. While a party session runs, a browser-minted token only watches.
+Party sessions (core/party_session.py, AVR-22/AVR-24): a binding given a GameSide admits players
+by Party ticket at the hello. While the room belongs to a party session, a browser-minted token
+only watches. When the game's rules finish or abandon that game (session.take_outcome()), the
+binding reports `ended` once, off the lock; the party's /end resets the room at once. Either way
+the room then goes back to its pre-launch state (fresh, empty, no party session) and the
+session's phones get a `party_ended` fx, after any results screen.
 
 Games never touch sockets; this file never touches game rules.
 """
@@ -25,7 +29,7 @@ from collections import deque
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from core import avatars, party_protocol
+from core import avatars, party_protocol, party_session
 from core.events import event
 
 log = logging.getLogger("gamehub.net")
@@ -41,11 +45,18 @@ LOGGED_VERBS = ("ready", "start", "again", "leave_table", "leave_game", "end_gam
 
 
 class GameBinding:
-    def __init__(self, slug, session, party=None):
+    def __init__(self, slug, session, party=None, party_url=None):
         self.slug = slug
         self.session = session
         self.party = party            # party_protocol.GameSide, or None: standalone only
+        self.party_url = party_url    # where `ended` goes (party_session.party_url), or None
         self.party_roster: dict[str, dict] = {}   # game token -> roster entry (players only)
+        # the party session this room belongs to, from launch until it is released. It outlives
+        # self.party.sid (admission) through the results screen of a completed game.
+        self.party_room_sid: str | None = None
+        self._party_outcome: str | None = None    # reported, waiting for the room to go idle
+        self._party_last_sid: str | None = None   # the latest launch, for a late or racing /end
+        self._party_reports: set[asyncio.Task] = set()
         self.lock = asyncio.Lock()
         self.player_sockets: dict[str, set[WebSocket]] = {}
         self.watch_sockets: set[WebSocket] = set()
@@ -93,6 +104,7 @@ class GameBinding:
             self._phase = self.session.phase
         self._sync_timer()
         self._sync_bot()
+        await self._party_after_push()
 
     # ---- deadline timer ----
 
@@ -183,23 +195,101 @@ class GameBinding:
             self.party_roster = {
                 party_protocol.game_token(self.party.key, self.party.sid, r["participant"]): r
                 for r in roster if r["role"] == "player"}
-            for task in (self._timer_task, self._bot_task):
-                if task is not None and not task.done():
-                    task.cancel()
-            self._timer_task = self._bot_task = None
-            old = [ws for socks in self.player_sockets.values() for ws in socks]
-            self.player_sockets = {}
-            self.session = type(self.session)()
-            self._phase = self.session.phase
+            self.party_room_sid = self._party_last_sid = self.party.sid
+            self._party_outcome = None
+            # every phone comes back with a fresh ticket and the new roster decides its role:
+            # a watcher of the last session may be a player now (no reload needed); TV pages
+            # simply reconnect as watchers
+            old = self._fresh_room() + list(self.watch_sockets)
+            self.watch_sockets = set()
             event(self.slug, "party_launch", players=len(self.party_roster),
                   spectators=len(roster) - len(self.party_roster), dropped=len(old))
-            for ws in old:
-                try:
-                    await ws.close()
-                except Exception:
-                    pass
+            await self._close_all(old)
             await self.push_all([])
         return roster
+
+    async def party_end(self, message):
+        """A signed end from the party (the host ended it for everyone): the room goes back to
+        a non-running state at once and that session's tickets die. No `ended` is reported: the
+        party asked. An end for the latest session that already finished here (reported, or on
+        its results screen) is acknowledged too, so the host's End always confirms; it releases
+        the room only if the room still belongs to that session. Returns the session id.
+        Raises party_protocol.Invalid, changing nothing, if the message is refused."""
+        if self.party is None:
+            raise party_protocol.Invalid("no party side")
+        async with self.lock:
+            # peek at the session first (signature, type, audience, time); then the full check,
+            # replay guard included, exactly once
+            sid = party_protocol.unseal(self.party.key, message, "end", self.party.game)["sid"]
+            if sid == self.party.sid:
+                self.party.on_end(message)
+            elif sid == self._party_last_sid:
+                party_protocol.open_message(self.party.key, message, "end", self.party.game,
+                                            self.party.guard)
+            else:
+                raise party_protocol.Invalid("session")
+            running = self.party_room_sid == sid
+            event(self.slug, "party_end", running=running)
+            if running:
+                await self._party_release("ended")
+        return sid
+
+    def _fresh_room(self):
+        """Replace the room with a fresh session object (no hands, seats, timers or players)
+        and forget its player sockets. Returns those sockets for the caller to close."""
+        cur = asyncio.current_task()
+        for task in (self._timer_task, self._bot_task):
+            if task is not None and task is not cur and not task.done():
+                task.cancel()
+        self._timer_task = self._bot_task = None
+        old = [ws for socks in self.player_sockets.values() for ws in socks]
+        self.player_sockets = {}
+        self.session = type(self.session)()
+        self._phase = self.session.phase
+        return old
+
+    async def _close_all(self, sockets):
+        for ws in sockets:
+            try:
+                await ws.close()
+            except Exception:
+                pass
+
+    async def _party_after_push(self):
+        """Under the lock, after every mutation: did the game's own rules just finish or abandon
+        the party session's game? Then report it once and, once the room is idle (after any
+        results screen), release it."""
+        outcome = self.session.take_outcome()        # always taken, so none is ever stale
+        if self.party_room_sid is None:
+            return                                   # standalone: nothing to report
+        if outcome is not None and self.party.sid == self.party_room_sid:
+            report = self.party.ended(outcome)       # admission for the session stops here
+            self._party_outcome = outcome
+            event(self.slug, "party_ended", outcome=outcome)
+            task = asyncio.create_task(party_session.deliver_ended(
+                self.party_url, report, self.slug, outcome))
+            self._party_reports.add(task)
+            task.add_done_callback(self._party_reports.discard)
+        if self._party_outcome is not None and not self.session.in_game():
+            await self._party_release(self._party_outcome)
+
+    async def _party_release(self, outcome):
+        """The party session is over: tell its phones (a `party_ended` fx: the page shows Back
+        to Party; no automatic navigation), close the players' sockets and put back a fresh,
+        empty room with no party session: the same state as before the first launch, so the
+        next launch, or standalone play, starts clean. Watchers stay and see that empty lobby."""
+        msg = {"type": "fx", "kind": "party_ended", "outcome": outcome,
+               "msg": "This game is over. Go Back to Party."}
+        players = [ws for socks in self.player_sockets.values() for ws in socks]
+        for ws in players + list(self.watch_sockets):
+            await self._send(ws, msg)
+        self.party_room_sid = None
+        self._party_outcome = None
+        self.party_roster = {}
+        old = self._fresh_room()
+        event(self.slug, "party_release", outcome=outcome, dropped=len(old))
+        await self._close_all(old)
+        await self.push_all([])
 
     def _party_hello(self, hello):
         """(token, name) for an admitted player; (None, None) to watch. Raises Invalid for a
@@ -227,9 +317,9 @@ class GameBinding:
             await ws.close()
             return
 
-        # a ticket always takes the party path (refused if this game cannot verify it); while a
-        # party session runs, so does every other hello
-        party = "ticket" in hello or (self.party is not None and self.party.sid is not None)
+        # a ticket always takes the party path (refused if this game cannot verify it); while the
+        # room belongs to a party session, so does every other hello
+        party = "ticket" in hello or self.party_room_sid is not None
         if party:
             try:
                 if self.party is None:
@@ -264,6 +354,9 @@ class GameBinding:
                 if party and token not in self.party_roster:
                     await ws.close()            # a newer launch replaced the roster meanwhile
                     return
+                if not party and self.party_room_sid is not None:
+                    await ws.close()            # a launch started a party session meanwhile:
+                    return                      # the reconnect only watches
                 if len(self.player_sockets.get(token, ())) >= MAX_SOCKETS_PER_TOKEN:
                     await ws.close()
                     return

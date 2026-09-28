@@ -5,6 +5,8 @@ Per game <slug>:
     /games/<slug>/       the game's static client
     /games/<slug>/avrana/session/v0/launch   Avrana party session launch (core/party_session.py;
                          only games with a key in $AVRANA_PARTY_KEYS; loopback, unproxied, signed)
+    /games/<slug>/avrana/session/v0/end      ... and end for everyone (same guards)
+    (the game's `ended` report goes out to $AVRANA_PARTY_URL; this server accepts none)
 Shared:
     /                    hub page (web/hub.html)
     /api/games           registry for the hub cards
@@ -39,11 +41,13 @@ PORT = int(os.environ.get("LANGAMES_PORT", "8096"))   # override to run a second
 
 app = FastAPI(title="GAMEHUB")
 bindings: dict[str, GameBinding] = {}
-party_sides = party_session.load_sides(os.environ.get(party_session.KEYS_ENV))
+# Avrana party sessions: both halves or neither (deploy/avrana-party-session.conf)
+party_sides, party_url = party_session.configure(os.environ)
 
 for entry in REGISTRY:
     slug = entry["slug"]
-    binding = GameBinding(slug, entry["session"](), party=party_sides.get(slug))
+    binding = GameBinding(slug, entry["session"](), party=party_sides.get(slug),
+                          party_url=party_url)
     bindings[slug] = binding
 
     def _make_ws(b: GameBinding):
@@ -112,17 +116,21 @@ def _refuse(status, error):
                         headers={"Cache-Control": "no-store"})
 
 
-@app.post("/games/{slug}/avrana/session/v0/launch")
-async def party_session_launch(slug: str, request: Request):
-    """The party starts a session of this game with a signed roster (core/party_session.py).
-    Reached only from this machine, never through nginx: phones cannot call it."""
+async def _party_message(slug, request, apply):
+    """The shared guards of the party's server-to-server routes: a game with a party side,
+    this machine only and never through nginx (phones cannot call it), 8 KiB, a JSON body
+    {"message": …}; then `apply(binding, message)` verifies the signed message itself."""
     b = bindings.get(slug)
     if b is None or b.party is None:
         return _refuse(404, "no_party_session")
     client = request.client.host if request.client else None
     if not party_session.local_unproxied(client, request.headers):
         return _refuse(403, "not_local")
-    if int(request.headers.get("content-length") or 0) > party_session.MAX_BODY:
+    try:
+        declared = int(request.headers.get("content-length") or 0)
+    except ValueError:
+        return _refuse(400, "bad_request")
+    if declared > party_session.MAX_BODY:
         return _refuse(413, "too_large")
     raw = await request.body()
     if len(raw) > party_session.MAX_BODY:
@@ -133,10 +141,23 @@ async def party_session_launch(slug: str, request: Request):
     except (ValueError, TypeError, KeyError):
         return _refuse(400, "bad_request")
     try:
-        await b.party_launch(message)
+        await apply(b, message)
     except party_protocol.Invalid as e:
         return _refuse(403, "bad_message:%s" % e)
     return JSONResponse({"ok": True}, headers={"Cache-Control": "no-store"})
+
+
+@app.post("/games/{slug}/avrana/session/v0/launch")
+async def party_session_launch(slug: str, request: Request):
+    """The party starts a session of this game with a signed roster (core/party_session.py)."""
+    return await _party_message(slug, request, lambda b, m: b.party_launch(m))
+
+
+@app.post("/games/{slug}/avrana/session/v0/end")
+async def party_session_end(slug: str, request: Request):
+    """The party ends this game's session for everyone: the room goes back to a non-running
+    state and that session's tickets die (core/net.py GameBinding.party_end)."""
+    return await _party_message(slug, request, lambda b, m: b.party_end(m))
 
 
 @app.get("/api/venue")

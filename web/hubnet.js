@@ -396,22 +396,75 @@ const Hub = (() => {
     setTimeout(() => t.remove(), 3200);
   }
 
-  /* Avrana party session v0 (AVR-22): in an integrated page, ask the party for a ticket for this
-     game before every connect. The party cookie (Path=/party/) authenticates the request; the
-     ticket travels only in the WebSocket hello, never in a URL. null = no party session for
-     this page (no party service, not a member, another game): use today's hello, which the game
-     server treats as a watcher while a party session runs. */
+  /* Avrana party session v0 (AVR-22/23/24), for integrated (?avrana=1) player pages. The party
+     is authoritative: a network failure, a reload, sleep or an old browser token never changes a
+     party player's role, seat or identity on its own.
+
+     Before every connect the page asks the party for a ticket for this game
+     (POST /party/api/session/ticket; the party cookie, Path=/party/, authenticates it). The
+     ticket travels only in the WebSocket hello, never in a URL. partyTicket() answers:
+       ticket     a ticket for this game (and its session id): play; the game seats the roster
+       transient  the request reached nothing, timed out (TICKET_WAIT) or the party failed (5xx):
+                  retry with the usual backoff and never send a ticketless hello, or a seated
+                  player would come back as a watcher. Bounded: after MAX_TICKET_TRIES failures in
+                  a row it stops and waits for the network (online / visible) to try again.
+       no         the party answered: not a member, no game on, or another game on
+       absent     no party service answers here (404 and the like)
+     A tab that has held a ticket remembers its party session (sessionStorage; a session id, not a
+     secret). Once that tab gets `no`/`absent`, or the game's `party_ended`, the session is over for
+     this page: it shows the ended state beside Back to Party instead of rejoining the room as a
+     standalone player, and asks the party again every PARTY_POLL ms while visible, so a later
+     launch that includes it (a rematch; a watcher now on the roster) is joined without a reload.
+     A page that never held a ticket keeps today's hello on `no`/`absent`: the game server decides
+     its role (a watcher while the room belongs to a party session). No automatic navigation
+     (ADR 0006). */
+  const TICKET_WAIT = 5000, PARTY_POLL = 5000, MAX_TICKET_TRIES = 20;
+  const partySessionKey = "avrana-party-session:" + gameSlug;
+  let partySessionMemo = "";
+  const partyMemory = {
+    get() {
+      try { return sessionStorage.getItem(partySessionKey) || partySessionMemo; } catch (e) { return partySessionMemo; }
+    },
+    set(sid) {
+      partySessionMemo = sid;
+      try { sessionStorage.setItem(partySessionKey, sid); } catch (e) { /* private mode: memory only */ }
+    },
+  };
   async function partyTicket() {
+    const ctl = typeof AbortController === "function" ? new AbortController() : null;
+    let timer = null;
+    const late = new Promise((resolve) => {
+      timer = setTimeout(() => { if (ctl) ctl.abort(); resolve({ kind: "transient" }); }, TICKET_WAIT);
+    });
+    const ask = (async () => {
+      let res, body = null;
+      try {
+        res = await fetch("/party/api/session/ticket", {
+          method: "POST", credentials: "same-origin", cache: "no-store",
+          headers: { "Content-Type": "application/json" }, body: "{}",
+          signal: ctl ? ctl.signal : undefined,
+        });
+      } catch (error) {
+        return { kind: "transient" };
+      }
+      if (res.status >= 500) return { kind: "transient" };
+      try { body = await res.json(); } catch (error) { body = null; }
+      if (res.ok) {
+        if (body && body.game === gameSlug && typeof body.ticket === "string") {
+          return { kind: "ticket", ticket: body.ticket,
+                   session: typeof body.session === "string" ? body.session : "" };
+        }
+        return { kind: "no" };
+      }
+      if ((res.status === 403 || res.status === 409) && body && typeof body.error === "string") {
+        return { kind: "no" };
+      }
+      return { kind: "absent" };
+    })();
     try {
-      const res = await fetch("/party/api/session/ticket", {
-        method: "POST", credentials: "same-origin", cache: "no-store",
-        headers: { "Content-Type": "application/json" }, body: "{}",
-      });
-      if (!res.ok) return null;
-      const body = await res.json();
-      return body && body.game === gameSlug && typeof body.ticket === "string" ? body.ticket : null;
-    } catch (error) {
-      return null;
+      return await Promise.race([ask, late]);
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -434,18 +487,50 @@ const Hub = (() => {
       document.body.appendChild(banner);
     }
     let rejects = 0, gaveUp = false, timer = null, fetching = false;
+    let ticketTries = 0, waitingForNetwork = false;
+    let endedSession = null, endedNote = null;   // the party session this page saw end
     function schedule(wait) {
       clearTimeout(timer);
       timer = setTimeout(() => { timer = null; open(); }, wait);
+    }
+    function retry() {
+      banner.textContent = "RECONNECTING…";
+      banner.hidden = false;
+      const wait = Math.min(5000, 600 + conn.retry * 800);
+      conn.retry++;
+      schedule(wait);
     }
     function open() {
       if (!integrated || opts.watch) { start(null); return; }
       if (fetching) return;                 // a wake-up while the ticket is on its way
       fetching = true;
-      partyTicket().then((ticket) => {
+      partyTicket().then((r) => {
         fetching = false;
-        if (!conn.closedByUs) start(ticket);
+        if (conn.closedByUs) return;
+        if (r.kind === "transient") { ticketFailed(); return; }
+        ticketTries = 0;
+        const fresh = r.kind === "ticket" && !(endedSession && r.session === endedSession);
+        if (fresh) {
+          if (r.session) partyMemory.set(r.session);
+          endedSession = null;
+          hideEnded();
+          start(r.ticket);
+        } else if (endedSession !== null || partyMemory.get()) {
+          showEnded();                      // this tab's party session is over
+        } else {
+          start(null);                      // never in a party session: today's hello
+        }
       });
+    }
+    function ticketFailed() {
+      ticketTries++;
+      if (ticketTries >= MAX_TICKET_TRIES) {  // bounded: wait for the network to come back
+        waitingForNetwork = true;
+        banner.textContent = "CAN'T REACH THE PARTY — CHECK WI-FI";
+        banner.hidden = false;
+        return;
+      }
+      retry();
     }
     function start(ticket) {
       const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -471,7 +556,10 @@ const Hub = (() => {
       ws.onmessage = (ev) => {
         let msg;
         try { msg = JSON.parse(ev.data); } catch (e) { return; }
-        if (msg.type === "welcome") {
+        if (msg.type === "fx" && msg.kind === "party_ended" && integrated) {
+          partyEnded();
+          handlers.onFx && handlers.onFx(msg);
+        } else if (msg.type === "welcome") {
           welcomed = true;
           rejects = 0;
           if (msg.token) identity.token = msg.token;
@@ -488,35 +576,78 @@ const Hub = (() => {
         }
       };
       ws.onclose = () => {
-        if (conn.closedByUs) return;
+        if (conn.closedByUs || conn.ws !== ws) return;
         if (!welcomed && opened) {
           // the server accepted the socket but refused this join (room full /
-          // socket cap) — do NOT hammer it forever. A socket that never opened
-          // is a network failure (sleep, airplane mode, Wi-Fi rejoining): keep
-          // retrying, or a phone that was offline for ~5 s would never recover.
+          // socket cap / a refused ticket) — do NOT hammer it forever. A socket that
+          // never opened is a network failure (sleep, airplane mode, Wi-Fi rejoining):
+          // keep retrying, or a phone that was offline for ~5 s would never recover.
           rejects++;
           if (rejects >= 3) {
             gaveUp = true;
             banner.hidden = true;
-            toast("can't join right now — the room is full", "err");
+            toast(ticket ? "The game refused your Party ticket. Go Back to Party."
+                         : "can't join right now — the room is full", "err");
             return;
           }
         }
-        banner.hidden = false;
-        const wait = Math.min(5000, 600 + conn.retry * 800);
-        conn.retry++;
-        schedule(wait);
+        retry();
       };
       ws.onerror = () => { try { ws.close(); } catch (e) {} };
     }
+    /* Avrana party session v0 (AVR-24): the party session this page played in is over (the game
+       finished or was abandoned, or the host ended it). Leave the room, show the ended state and
+       keep asking the party (showEnded), never rejoining the room as someone else. */
+    function partyEnded() {
+      endedSession = partyMemory.get() || "ended";
+      const ws = conn.ws;
+      conn.ws = null;
+      if (ws) { try { ws.close(); } catch (e) {} }
+      showEnded();
+    }
+    function showEnded() {
+      if (endedSession === null) endedSession = partyMemory.get() || "ended";
+      banner.hidden = true;
+      // the last table (an old hand, a turn timer) must not stay on screen under the note
+      const room = document.getElementById("avrana-game-room");
+      if (room) room.style.display = "none";
+      if (!endedNote) {
+        const note = document.createElement("span");
+        note.id = "party-ended";
+        note.className = "party-ended";
+        note.setAttribute("role", "status");
+        note.textContent = "This game is over.";
+        // beside the Back to Party link of the in-flow Party bar (avrana-integration.js)
+        const nav = document.getElementById("avrana-navigation");
+        if (nav) {
+          nav.appendChild(note);
+        } else {
+          const back = document.createElement("a");
+          back.href = (window.AvranaIntegration && window.AvranaIntegration.home) || "/party/";
+          back.textContent = "Back to Party";
+          note.appendChild(back);
+          document.body.insertBefore(note, document.body.firstChild);
+        }
+        endedNote = note;
+      }
+      // a later launch that includes this phone is joined without a reload; only while visible
+      if (document.visibilityState !== "hidden") schedule(PARTY_POLL);
+    }
+    function hideEnded() {
+      if (endedNote) { endedNote.remove(); endedNote = null; }
+      const room = document.getElementById("avrana-game-room");
+      if (room) room.style.display = "";
+    }
     open();
     // A phone waking up or getting its network back should not wait out the
-    // backoff: reconnect at once if the socket is neither open nor connecting.
+    // backoff: reconnect (or ask the party again) at once if the socket is
+    // neither open nor connecting.
     const kick = () => {
       if (conn.closedByUs || gaveUp || fetching) return;
       const s = conn.ws && conn.ws.readyState;
       if (s === 0 || s === 1) return;
       conn.retry = 0;
+      if (waitingForNetwork) { waitingForNetwork = false; ticketTries = 0; }
       schedule(0);
     };
     addEventListener("online", kick);

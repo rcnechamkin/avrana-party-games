@@ -44,33 +44,85 @@ bypasses /party/ and integrated clients and only deletes lan-games-shell-* cache
 It does not widen Avrana's /party/ worker scope. Existing pre-upgrade root worker
 registrations may require their normal update/refresh; test that path on devices.
 
-## Party session contract: avrana.party-session/v0 (BLUFF; AVR-22)
+## Party session contract: avrana.party-session/v0 (BLUFF; AVR-22, AVR-23, AVR-24)
 
-Status: TESTED here (unit + fake-socket tests, Windows and CI); not deployed; no real phone yet.
+Status: TESTED here (unit + fake-socket tests, Windows and CI; also against the real
+avrana-party service over loopback HTTP/WebSockets, and in avrana-party's browser E2E
+tests/provider/party-session.spec.ts); not deployed; no real phone yet.
+The party is authoritative throughout: a network failure, reload, sleep/wake or an old
+browser token never changes a party player's role, seat or identity by itself.
 Protocol: core/party_protocol.py, vendored UNCHANGED from avrana-party
 avrana/party/protocol.py (ADR 0006 there), with its vectors in tests/vectors/. A test pins
 both hashes; re-vendor both files together, never edit them here.
 
-- Keys: $AVRANA_PARTY_KEYS names a directory holding <slug>.key (32-byte hex, 0600, the same
-  key the party holds for that game). Only core/party_session.GAMES (BLUFF) look for one. No
-  key means no party side and exactly today's standalone behaviour.
+- Config (deploy/avrana-party-session.conf, a systemd drop-in for the games service):
+  $AVRANA_PARTY_KEYS names a directory holding <slug>.key (32-byte hex, 0600, the same key the
+  party holds for that game; only core/party_session.GAMES = BLUFF look for one) and
+  $AVRANA_PARTY_URL is the Party Core service on loopback (where `ended` goes). Both or
+  neither: with a key but no usable URL, party sessions stay off (logged). Neither: exactly
+  today's standalone behaviour. The drop-in's values (/etc/avrana-party/game-keys,
+  http://127.0.0.1:8191) are PROPOSED until the Party Core deployment (AVR-51) confirms them.
 - Capability: /api/games adds "avranaSession": "avrana.party-session/v0" to a game ONLY when
-  this server loaded that game's key, i.e. when it can really verify tickets.
+  this server loaded that game's key and a party URL, i.e. when it can really verify tickets
+  and report the end.
 - Launch: POST /games/<slug>/avrana/session/v0/launch {"message": <signed launch>}. Loopback
   and unproxied only (nginx's X-Forwarded-For/X-Real-IP/Forwarded are refused), 8 KiB, signed,
-  30 s, nonce-checked. It replaces the room: a fresh session object, old sockets closed.
+  30 s, nonce-checked. It replaces the room: a fresh session object, and every old socket is
+  closed, watchers included, so each phone comes back with a fresh ticket and the new roster
+  decides its role (a watcher of the last session who is a player now plays, no reload).
 - Hello: {"t":"hello","ticket":…} is admitted with GameSide.admit(). The player key is
   game_token(sid, participant): the same participant reconnecting (with a fresh ticket) is
   the same player and seat. The name is the roster's; the game cannot rename a party member.
   The game token is never sent to the browser. Spectator tickets, and player tickets for
   someone not on the roster, watch. A refused ticket gets an `invalid` fx and a close.
 - While a party session runs, a browser-minted wc-token (or any unticketed hello) only watches.
-- hubnet.js, in an integrated (?avrana=1) page: before every connect, POST
-  /party/api/session/ticket (party cookie; the ticket never goes in a URL) and send the ticket
-  in the hello. No ticket (no party service, not a member, another game): today's hello.
-- Not yet (AVR-24): /end, `ended` reports (completed | abandoned) and returning to no session.
-  Until then a party session lasts until the next launch or a server restart. Avatar photos
-  and chat still use wc-token.
+- hubnet.js, in an integrated (?avrana=1) player page: before every connect, POST
+  /party/api/session/ticket (party cookie; the ticket never goes in a URL; 5 s per attempt) and
+  send the ticket in the hello. A request that reaches nothing, times out or gets a 5xx is
+  retried with the usual backoff and never becomes a ticketless hello; after 20 failures in a
+  row the page waits for online/visibility. A tab that held a ticket remembers its session
+  (sessionStorage; a session id, not a secret): when the party then answers "not a member",
+  "no game" or "another game" (or no party service answers), that session is over for the
+  page: it shows the ended state, never standalone play, and asks the party every 5 s while
+  visible, joining the next launch that includes it (a rematch is a new party session). A page
+  that never held a ticket keeps today's hello: the server decides (a watcher while the room
+  belongs to a party session; standalone otherwise, so the /party/ shell's direct launch works).
+- End: POST /games/<slug>/avrana/session/v0/end {"message": <signed end>}, the same guards as
+  launch. The room goes back to a non-running state at once (a fresh session object; players'
+  sockets get a `party_ended` fx and are closed; watchers stay and see the empty lobby) and the
+  session's tickets die. No `ended` is sent back: the party asked. An end for the latest
+  session that already finished here is acknowledged (200) too, so the host's End always
+  confirms, but it never touches a room that has moved on. 200 {"ok": true}; else 4xx.
+- `ended` (game -> party): BLUFF reports when its OWN rules stop a party game.
+  completed = one seat left standing (the results screen with a winner, including a loss to
+  test bots or a win by forfeits). abandoned = stopped before anyone won: the empty table
+  timed out, the last one here used End game, a newcomer took over an empty table, or every
+  seat forfeited in the same turn (no winner). No winner, score or result is sent (v0).
+  A party game that never starts is not reported; the party's End ends it.
+- The report is signed by GameSide.ended() under the room lock (admission for that session
+  stops there) and POSTed off the lock and off the event loop to $AVRANA_PARTY_URL +
+  /internal/party-session/v0/ended. $AVRANA_PARTY_URL must be a plain http loopback origin
+  (e.g. http://127.0.0.1:8191); anything else is ignored with an error in the log (and, at
+  startup, turns party sessions off; see Config). Exactly once: one
+  report per session; delivery is one attempt plus retries after 1, 2 and 4 s (3 s timeout
+  each) on no answer or 5xx, the same signed report each time (the party's replay guard and
+  session check count it at most once); 200 or any 4xx is final. Undelivered, the party shows
+  the game as on until the host's End. The report is never logged, only outcome and status.
+- After a session ends (reported or ended by the party) the room returns to its pre-launch
+  state: fresh, empty, not running, no party session. A completed game first finishes its
+  results screen; meanwhile tickets are refused and unticketed hellos only watch. Then the
+  session's phones get `party_ended`: integrated pages (hubnet.js) leave the room and show
+  "This game is over." beside the fixed Back to Party link, then join the next launch that
+  includes them. No automatic navigation away (ADR 0006 defers it). One party session is one
+  play-through: there is no replay inside it; a rematch is a new launch. Non-integrated pages
+  may play standalone again until the next launch.
+- A browser cannot produce `ended`: only the server builds it (key-signed), from BLUFF's own
+  rules. Watchers and browser-minted tokens cannot act; players cannot end a game others are
+  still in; no game route accepts an `ended` message; the party's ended route answers only
+  loopback, unproxied, signed, current-session reports.
+- A phone asleep when its session ended misses `party_ended`; on waking the party has no
+  ticket for it and the page shows the ended state (it remembered its session), never a
+  standalone seat. Open: avatar photos and chat still use wc-token.
 
 ## Shared local state
 

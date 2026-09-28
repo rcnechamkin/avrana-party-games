@@ -23,3 +23,9 @@ html[data-avrana="1"] [data-avrana-viewport] { height: 100% !important;
   max-height: 100% !important; min-height: 0 !important; --apph: 100%; }
 html[data-avrana="1"] [data-avrana-screen] { height: 100% !important;
   max-height: 100% !important; min-height: 0 !important; }
+
+/* hubnet.js: the party session is over (AVR-24); a status beside Back to Party, in flow. */
+#avrana-navigation .party-ended, .party-ended { display: inline-flex; align-items: center;
+  gap: 10px; min-height: 44px; padding: 0 10px; color: #fff; background: #101827;
+  font: 600 16px system-ui; }
+.party-ended a { color: #fff; }
