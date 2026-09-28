@@ -52,11 +52,16 @@ Protocol: core/party_protocol.py, vendored UNCHANGED from avrana-party
 avrana/party/protocol.py (ADR 0006 there), with its vectors in tests/vectors/. A test pins
 both hashes; re-vendor both files together, never edit them here.
 
-- Keys: $AVRANA_PARTY_KEYS names a directory holding <slug>.key (32-byte hex, 0600, the same
-  key the party holds for that game). Only core/party_session.GAMES (BLUFF) look for one. No
-  key means no party side and exactly today's standalone behaviour.
+- Config (deploy/avrana-party-session.conf, a systemd drop-in for the games service):
+  $AVRANA_PARTY_KEYS names a directory holding <slug>.key (32-byte hex, 0600, the same key the
+  party holds for that game; only core/party_session.GAMES = BLUFF look for one) and
+  $AVRANA_PARTY_URL is the Party Core service on loopback (where `ended` goes). Both or
+  neither: with a key but no usable URL, party sessions stay off (logged). Neither: exactly
+  today's standalone behaviour. The drop-in's values (/etc/avrana-party/game-keys,
+  http://127.0.0.1:8191) are PROPOSED until the Party Core deployment (AVR-51) confirms them.
 - Capability: /api/games adds "avranaSession": "avrana.party-session/v0" to a game ONLY when
-  this server loaded that game's key, i.e. when it can really verify tickets.
+  this server loaded that game's key and a party URL, i.e. when it can really verify tickets
+  and report the end.
 - Launch: POST /games/<slug>/avrana/session/v0/launch {"message": <signed launch>}. Loopback
   and unproxied only (nginx's X-Forwarded-For/X-Real-IP/Forwarded are refused), 8 KiB, signed,
   30 s, nonce-checked. It replaces the room: a fresh session object, old sockets closed.
@@ -84,8 +89,8 @@ both hashes; re-vendor both files together, never edit them here.
 - The report is signed by GameSide.ended() under the room lock (admission for that session
   stops there) and POSTed off the lock and off the event loop to $AVRANA_PARTY_URL +
   /internal/party-session/v0/ended. $AVRANA_PARTY_URL must be a plain http loopback origin
-  (e.g. http://127.0.0.1:8190); anything else is ignored with an error in the log. Unset:
-  nothing is sent (logged once per game), the session still ends here. Exactly once: one
+  (e.g. http://127.0.0.1:8191); anything else is ignored with an error in the log (and, at
+  startup, turns party sessions off; see Config). Exactly once: one
   report per session; delivery is one attempt plus retries after 1, 2 and 4 s (3 s timeout
   each) on no answer or 5xx, the same signed report each time (the party's replay guard and
   session check count it at most once); 200 or any 4xx is final. Undelivered, the party shows
@@ -95,7 +100,8 @@ both hashes; re-vendor both files together, never edit them here.
   results screen; meanwhile tickets are refused and unticketed hellos only watch. Then the
   session's phones get `party_ended`: integrated pages (hubnet.js) stop reconnecting and show
   "This game is over." beside the fixed Back to Party link. No automatic navigation (ADR 0006
-  defers it). Standalone play works again until the next launch.
+  defers it). One party session is one play-through: there is no replay inside it; a rematch
+  is a new launch. Standalone play works again until the next launch.
 - A browser cannot produce `ended`: only the server builds it (key-signed), from BLUFF's own
   rules. Watchers and browser-minted tokens cannot act; players cannot end a game others are
   still in; no game route accepts an `ended` message; the party's ended route answers only

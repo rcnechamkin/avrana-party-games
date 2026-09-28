@@ -216,13 +216,12 @@ class GameBinding:
         async with self.lock:
             # peek at the session first (signature, type, audience, time); then the full check,
             # replay guard included, exactly once
-            sid = _refusing(party_protocol.unseal, self.party.key, message, "end",
-                            self.party.game)["sid"]
-            if sid is not None and sid == self.party.sid:
-                _refusing(self.party.on_end, message)
-            elif sid is not None and sid == self._party_last_sid:
-                _refusing(party_protocol.open_message, self.party.key, message, "end",
-                          self.party.game, self.party.guard)
+            sid = party_protocol.unseal(self.party.key, message, "end", self.party.game)["sid"]
+            if sid == self.party.sid:
+                self.party.on_end(message)
+            elif sid == self._party_last_sid:
+                party_protocol.open_message(self.party.key, message, "end", self.party.game,
+                                            self.party.guard)
             else:
                 raise party_protocol.Invalid("session")
             running = self.party_room_sid == sid
@@ -351,7 +350,7 @@ class GameBinding:
                 if party and token not in self.party_roster:
                     await ws.close()            # a newer launch replaced the roster meanwhile
                     return
-                if not party and self.party is not None and self.party.sid is not None:
+                if not party and self.party_room_sid is not None:
                     await ws.close()            # a launch started a party session meanwhile:
                     return                      # the reconnect only watches
                 if len(self.player_sockets.get(token, ())) >= MAX_SOCKETS_PER_TOKEN:

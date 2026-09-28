@@ -41,8 +41,8 @@ PORT = int(os.environ.get("LANGAMES_PORT", "8096"))   # override to run a second
 
 app = FastAPI(title="GAMEHUB")
 bindings: dict[str, GameBinding] = {}
-party_sides = party_session.load_sides(os.environ.get(party_session.KEYS_ENV))
-party_url = party_session.party_url(os.environ.get(party_session.PARTY_URL_ENV))
+# Avrana party sessions: both halves or neither (deploy/avrana-party-session.conf)
+party_sides, party_url = party_session.configure(os.environ)
 
 for entry in REGISTRY:
     slug = entry["slug"]

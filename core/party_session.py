@@ -49,7 +49,7 @@ MAX_BODY = 8192
 PROXY_HEADERS = ("x-forwarded-for", "x-real-ip", "forwarded")
 LOOPBACK = ("127.0.0.1", "::1")
 
-PARTY_URL_ENV = "AVRANA_PARTY_URL"      # e.g. http://127.0.0.1:8190 (the party service itself)
+PARTY_URL_ENV = "AVRANA_PARTY_URL"      # the party service itself, e.g. http://127.0.0.1:8191
 ENDED_PATH = "/internal/party-session/v0/ended"
 POST_TIMEOUT = 3.0                      # s per attempt
 RETRY_DELAYS = (1.0, 2.0, 4.0)          # s; worst case ~19 s, inside the 30 s message lifetime
@@ -87,6 +87,21 @@ def local_unproxied(client_host, headers):
     return client_host in LOOPBACK and not any(headers.get(h) for h in PROXY_HEADERS)
 
 
+def configure(env):
+    """(sides, party_url) for this server from its environment ($AVRANA_PARTY_KEYS and
+    $AVRANA_PARTY_URL; deploy/avrana-party-session.conf sets both). Party sessions need both
+    halves: a game that could verify tickets but never report its end would be a half session,
+    so with a key and no usable party URL party sessions stay off (logged) and no game is
+    advertised as party-capable. Neither set: standalone, as before."""
+    sides = load_sides(env.get(KEYS_ENV))
+    url = party_url(env.get(PARTY_URL_ENV))
+    if sides and url is None:
+        log.error("party session keys found for %s but no usable %s: party sessions are off",
+                  ", ".join(sorted(sides)), PARTY_URL_ENV)
+        return {}, None
+    return sides, url
+
+
 def party_url(value):
     """The party's base URL from config, or None. Only a plain http origin on a loopback
     address is accepted (the party's internal routes answer nothing else); anything else is
@@ -102,7 +117,7 @@ def party_url(value):
     except ValueError:
         ok = False
     if not ok:
-        log.error("%s must be a loopback http origin such as http://127.0.0.1:8190; "
+        log.error("%s must be a loopback http origin such as http://127.0.0.1:8191; "
                   "`ended` reports are off", PARTY_URL_ENV)
         return None
     return "http://%s:%d" % ("[%s]" % host if ":" in host else host, port)

@@ -757,3 +757,56 @@ def test_the_server_reads_the_party_url_from_the_environment():
     import server
     assert server.party_url == party_session.party_url(
         __import__("os").environ.get(party_session.PARTY_URL_ENV))
+
+
+# ---- one party session is one play-through (decision 2) ----------------------------------------
+
+def test_a_rematch_is_a_new_party_session_with_a_fresh_table(party):
+    posts, _, _ = party
+
+    async def scenario():
+        b = binding(party)
+        a, c = await party_game(b)
+        await win_for_alice(a, c)
+        await asyncio.sleep(0.9)                                 # results screen -> released
+        assert b.party_room_sid is None
+        await b.party_launch(launch(b, sid=SID2))
+        assert b.party_room_sid == SID2 and b.session.g is None and b.session.players == {}
+        old, task = await connect(b, {"t": "hello", "ticket": ticket(ALICE)})
+        await task
+        assert old.closed and old.welcome() is None               # the first play-through's ticket
+        a2, c2 = await playing(b, {"t": "hello", "ticket": ticket(ALICE, sid=SID2)},
+                               {"t": "hello", "ticket": ticket(BOB, sid=SID2)})
+        assert a2[0].welcome()["pid"] and c2[0].welcome()["pid"]
+        await win_for_alice(a2, c2)
+        await reports(b)
+        assert [report_of(m)["sid"] for _, m, _ in posts] == [SID, SID2]
+        assert [report_of(m)["outcome"] for _, m, _ in posts] == ["completed", "completed"]
+        await shutdown(b, a, c, a2, c2)
+    run(scenario())
+
+
+# ---- deployment config: party sessions only when both halves are configured (decision 6) ----------
+
+def test_party_sessions_need_both_the_key_and_the_party_url(tmp_path, caplog):
+    proto.write_key(str(tmp_path / "bluff.key"), KEY)
+    env = {party_session.KEYS_ENV: str(tmp_path), party_session.PARTY_URL_ENV: "http://127.0.0.1:8191"}
+    sides, url = party_session.configure(env)
+    assert set(sides) == {"bluff"} and url == "http://127.0.0.1:8191"
+    with caplog.at_level(logging.ERROR):
+        sides, url = party_session.configure({party_session.KEYS_ENV: str(tmp_path)})
+    assert sides == {} and url is None                 # half-wired: not advertised, not launchable
+    assert party_session.PARTY_URL_ENV in caplog.text
+    sides, url = party_session.configure({party_session.KEYS_ENV: str(tmp_path),
+                                          party_session.PARTY_URL_ENV: "http://example.com:80"})
+    assert sides == {}
+    assert party_session.configure({}) == ({}, None)   # standalone, nothing logged as an error
+
+
+def test_the_tracked_systemd_drop_in_configures_both_halves():
+    from pathlib import Path
+    conf = (Path(__file__).resolve().parent.parent / "deploy" / "avrana-party-session.conf").read_text()
+    env = dict(line.split("=", 2)[1:] for line in conf.splitlines() if line.startswith("Environment="))
+    assert set(env) == {party_session.KEYS_ENV, party_session.PARTY_URL_ENV}
+    assert party_session.party_url(env[party_session.PARTY_URL_ENV]) == env[party_session.PARTY_URL_ENV]
+    assert env[party_session.KEYS_ENV].startswith("/etc/")
