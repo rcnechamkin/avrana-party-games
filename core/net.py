@@ -197,7 +197,11 @@ class GameBinding:
                 for r in roster if r["role"] == "player"}
             self.party_room_sid = self._party_last_sid = self.party.sid
             self._party_outcome = None
-            old = self._fresh_room()
+            # every phone comes back with a fresh ticket and the new roster decides its role:
+            # a watcher of the last session may be a player now (no reload needed); TV pages
+            # simply reconnect as watchers
+            old = self._fresh_room() + list(self.watch_sockets)
+            self.watch_sockets = set()
             event(self.slug, "party_launch", players=len(self.party_roster),
                   spectators=len(roster) - len(self.party_roster), dropped=len(old))
             await self._close_all(old)
