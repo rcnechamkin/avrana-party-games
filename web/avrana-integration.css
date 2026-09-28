@@ -1,10 +1,17 @@
 /* This owns only the declared integration surfaces, never game selectors. */
 html[data-avrana="1"] [data-avrana-global] { display: none !important; }
+/* Avrana system chrome: colours follow the Party page's prototype `avrana` theme
+   (avrana-party docs/UI-DESIGN-SYSTEM.md): base #121218, hairline border, off-white text. */
 #avrana-navigation { position: relative; z-index: 100; flex: 0 0 auto;
   width: 100%; box-sizing: border-box; padding: 6px 12px;
-  background: #101827; color: #fff; text-align: left; }
-#avrana-navigation a { display: inline-flex; align-items: center; min-height: 44px;
-  padding: 0 10px; color: #fff; font: 600 16px system-ui; text-decoration: none; }
+  background: #121218; border-bottom: 1px solid #2a2833; color: #f1eee8; text-align: left; }
+#avrana-navigation a { display: inline-flex; align-items: center; gap: 8px; min-height: 44px;
+  padding: 0 12px 0 10px; border-radius: 12px; color: #f1eee8;
+  font: 600 16px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-decoration: none; }
+#avrana-navigation a::before { content: ""; width: 8px; height: 8px; margin-left: 4px;
+  border-left: 2px solid #c9b8f0; border-bottom: 2px solid #c9b8f0; transform: rotate(45deg); }
+#avrana-navigation a:hover { background: #22212b; }
+#avrana-navigation a:focus-visible { outline: 3px solid #c9b8f0; outline-offset: 2px; }
 
 html[data-avrana="1"] [data-avrana-return] { display: none !important; }
 
