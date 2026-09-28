@@ -560,6 +560,9 @@ const Hub = (() => {
     function showEnded() {
       if (endedSession === null) endedSession = partyMemory.get() || "ended";
       banner.hidden = true;
+      // the last table (an old hand, a turn timer) must not stay on screen under the note
+      const room = document.getElementById("avrana-game-room");
+      if (room) room.style.display = "none";
       if (!endedNote) {
         const note = document.createElement("span");
         note.id = "party-ended";
@@ -584,6 +587,8 @@ const Hub = (() => {
     }
     function hideEnded() {
       if (endedNote) { endedNote.remove(); endedNote = null; }
+      const room = document.getElementById("avrana-game-room");
+      if (room) room.style.display = "";
     }
     open();
     // A phone waking up or getting its network back should not wait out the

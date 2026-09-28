@@ -25,6 +25,8 @@ function load({ integrated = true, answer = () => ticketFor(S1), tab = {} } = {}
                                appendChild(c) { added.push(c); }, insertBefore(c) { added.push(c); },
                                remove() { this.removed = true; }, setAttribute() {}, addEventListener() {} },
                              { get: (t, k) => (k in t ? t[k] : undefined), set: (t, k, v) => { t[k] = v; return true; } });
+  const room = el();
+  room.id = "avrana-game-room";
   const sockets = [];
   class FakeWS {
     constructor(url) { this.url = url; this.readyState = 0; this.sent = []; sockets.push(this); }
@@ -50,7 +52,7 @@ function load({ integrated = true, answer = () => ticketFor(S1), tab = {} } = {}
     localStorage: { getItem: (k) => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } },
     sessionStorage: { getItem: (k) => tab[k] ?? null, setItem: (k, v) => { tab[k] = String(v); }, removeItem: (k) => { delete tab[k]; } },
     document: {
-      querySelector: () => ({}), getElementById: () => null, createElement: el,
+      querySelector: () => ({}), getElementById: (id) => (id === "avrana-game-room" ? room : null), createElement: el,
       head: el(), body: el(), documentElement: el(), visibilityState: "visible",
       addEventListener: (ev, fn) => { (docListeners[ev] ||= []).push(fn); },
     },
@@ -77,7 +79,8 @@ function load({ integrated = true, answer = () => ticketFor(S1), tab = {} } = {}
   const run = async (ms, step = 500) => {
     for (let t = 0; t < ms; t += step) { advance(step); await flush(); await flush(); }
   };
-  return { Hub: ctx.Hub, sockets, calls, store, advance, added, tab, helloOf, ended, run,
+  const roomShown = () => room.style.display !== "none";
+  return { Hub: ctx.Hub, sockets, calls, store, advance, added, tab, helloOf, ended, run, roomShown,
            fire: (ev) => (listeners[ev] || []).forEach((f) => f()) };
 }
 
@@ -344,6 +347,34 @@ test("a page that never had a party session keeps today's fallback (the server d
   t.sockets[0].accept();
   assert.equal(t.helloOf(t.sockets[0]).token, "browser-minted-token");
   assert.ok(!t.ended());
+});
+
+test("the ended state hides the stale table, and the next play-through shows the room again", async () => {
+  // Found on the Pi over the Party Wi-Fi (AVR-23 remote run): the note said "This game is over."
+  // but the last table (the old hand, a turn timer) stayed on screen below it.
+  let launched = false;
+  const t = load({ answer: (n) => (n === 1 ? ticketFor(S1) : launched ? ticketFor(S2, "aps0.NEW.S") : NO_GAME) });
+  t.Hub.connect("/games/bluff/ws", { onState() {} });
+  await flush();
+  t.sockets[0].accept(); t.sockets[0].welcome();
+  assert.ok(t.roomShown());
+  t.sockets[0].drop();                             // asleep through the end (no party_ended fx)
+  await t.run(3000);
+  assert.ok(t.ended());
+  assert.ok(!t.roomShown(), "no stale table under the ended note");
+  launched = true;
+  await t.run(6000);
+  assert.equal(t.sockets.length, 2);
+  assert.ok(t.roomShown(), "the room is back for the new play-through");
+});
+
+test("party_ended hides the table too", async () => {
+  const t = load({ answer: (n) => (n === 1 ? ticketFor(S1) : NO_GAME) });
+  t.Hub.connect("/games/bluff/ws", { onState() {} });
+  await flush();
+  t.sockets[0].accept(); t.sockets[0].welcome();
+  t.sockets[0].onmessage({ data: JSON.stringify({ type: "fx", kind: "party_ended", outcome: "ended" }) });
+  assert.ok(!t.roomShown());
 });
 
 let passed = 0;
