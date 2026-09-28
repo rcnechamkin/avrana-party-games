@@ -134,14 +134,18 @@ const Hub = (() => {
     };
   })();
 
-  /* render a player's avatar into `el`: custom photo if they have one,
-     else their emoji. Sizing is em-based, so it scales with the host. */
+  /* render a player's avatar into `el`: custom photo if they have one (the server
+     also sends a chosen Avrana avatar as `pfp`, core/looks.py), else their own chosen
+     Avrana avatar id (gaze-NN, e.g. your local identity), else their emoji.
+     Sizing is em-based, so it scales with the host. */
+  const LOOK = /^gaze-(0[1-9]|[12]\d|3[0-2])$/;
   function fillAvatar(el, p) {
     el.textContent = "";
-    if (p && p.pfp) {
+    const picture = p && (p.pfp || (LOOK.test(p.avatar || "") ? "/shared/avatars/" + p.avatar + ".svg" : ""));
+    if (picture) {
       const img = document.createElement("img");
       img.className = "pfp";
-      img.src = p.pfp;
+      img.src = picture;
       img.alt = "";
       img.draggable = false;
       el.appendChild(img);

@@ -27,6 +27,8 @@ import random
 import re
 import time
 
+from core import looks
+
 COUNTDOWN_SECONDS = 3
 GAME_END_SECONDS = 20          # results screen, then auto back to lobby
 
@@ -49,7 +51,7 @@ def clean_name(raw) -> str:
 
 class Player:
     __slots__ = ("token", "pid", "name", "avatar", "color",
-                 "ready", "connected", "joined_at", "is_bot", "pfp")
+                 "ready", "connected", "joined_at", "is_bot", "pfp", "look")
 
     def __init__(self, token, pid, name, avatar, color, is_bot=False):
         self.token = token          # secret; never serialized to other clients
@@ -62,6 +64,19 @@ class Player:
         self.joined_at = time.time()
         self.is_bot = is_bot
         self.pfp = None             # custom picture URL (core.avatars), or None
+        self.look = None            # a chosen Avrana avatar id (core.looks), or None
+
+    def choose(self, avatar):
+        """Apply a requested avatar: a legacy emoji, or an Avrana avatar id (core.looks).
+        Anything else is ignored."""
+        if avatar in AVATARS:
+            self.avatar, self.look = avatar, None
+        elif looks.is_gaze(avatar):
+            self.avatar, self.look = looks.text_fallback(avatar, AVATARS), avatar
+
+    def picture(self, uploaded):
+        """The picture to show: an uploaded photo, else the chosen avatar's, else None."""
+        return uploaded or looks.picture(self.look)
 
     def public(self):
         return {"pid": self.pid, "name": self.name, "avatar": self.avatar,
@@ -188,6 +203,7 @@ class GameSession:
             color = COLORS[(self._pid_counter - 1) % len(COLORS)]
             av = avatar if avatar in AVATARS else AVATARS[(self._pid_counter - 1) % len(AVATARS)]
             p = Player(token, pid, clean_name(name), av, color)
+            p.choose(avatar)
             p.ready = False
             self.players[token] = p
             fx.append(self.fx("toast", msg="%s joined" % p.name, icon=p.avatar))
@@ -195,8 +211,7 @@ class GameSession:
             p.connected = True
             if name is not None:
                 p.name = clean_name(name)
-            if avatar in AVATARS:
-                p.avatar = avatar
+            p.choose(avatar)
             if self.in_game() and token in self.participants:
                 fx.extend(self.game_player_back(token))
         return p, fx
@@ -235,8 +250,7 @@ class GameSession:
         if p and not p.is_bot:
             if name is not None:
                 p.name = clean_name(name)
-            if avatar in AVATARS:
-                p.avatar = avatar
+            p.choose(avatar)
         return []
 
     def set_ready(self, token, ready):
