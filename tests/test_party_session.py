@@ -3,7 +3,7 @@
 Launch with a signed roster, admission by Party ticket in the WebSocket hello, a stable game token
 per participant, browser-minted `wc-token` ignored while a party session runs, and the
 capability advertised only when this server can really verify tickets. Completion, end and
-`ended` reporting are AVR-24; they are not tested here because they are not built here.
+`ended` reporting (AVR-24) are in test_party_session_end.py and test_party_session_cross_repo.py.
 """
 from __future__ import annotations
 

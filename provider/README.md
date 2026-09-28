@@ -44,9 +44,10 @@ bypasses /party/ and integrated clients and only deletes lan-games-shell-* cache
 It does not widen Avrana's /party/ worker scope. Existing pre-upgrade root worker
 registrations may require their normal update/refresh; test that path on devices.
 
-## Party session contract: avrana.party-session/v0 (BLUFF; AVR-22)
+## Party session contract: avrana.party-session/v0 (BLUFF; AVR-22, AVR-24)
 
-Status: TESTED here (unit + fake-socket tests, Windows and CI); not deployed; no real phone yet.
+Status: TESTED here (unit + fake-socket tests, Windows and CI; AVR-24 also against the real
+avrana-party service over loopback HTTP/WebSockets); not deployed; no real phone yet.
 Protocol: core/party_protocol.py, vendored UNCHANGED from avrana-party
 avrana/party/protocol.py (ADR 0006 there), with its vectors in tests/vectors/. A test pins
 both hashes; re-vendor both files together, never edit them here.
@@ -68,9 +69,40 @@ both hashes; re-vendor both files together, never edit them here.
 - hubnet.js, in an integrated (?avrana=1) page: before every connect, POST
   /party/api/session/ticket (party cookie; the ticket never goes in a URL) and send the ticket
   in the hello. No ticket (no party service, not a member, another game): today's hello.
-- Not yet (AVR-24): /end, `ended` reports (completed | abandoned) and returning to no session.
-  Until then a party session lasts until the next launch or a server restart. Avatar photos
-  and chat still use wc-token.
+- End: POST /games/<slug>/avrana/session/v0/end {"message": <signed end>}, the same guards as
+  launch. The room goes back to a non-running state at once (a fresh session object; players'
+  sockets get a `party_ended` fx and are closed; watchers stay and see the empty lobby) and the
+  session's tickets die. No `ended` is sent back: the party asked. An end for the latest
+  session that already finished here is acknowledged (200) too, so the host's End always
+  confirms, but it never touches a room that has moved on. 200 {"ok": true}; else 4xx.
+- `ended` (game -> party): BLUFF reports when its OWN rules stop a party game.
+  completed = one seat left standing (the results screen with a winner, including a loss to
+  test bots or a win by forfeits). abandoned = stopped before anyone won: the empty table
+  timed out, the last one here used End game, a newcomer took over an empty table, or every
+  seat forfeited in the same turn (no winner). No winner, score or result is sent (v0).
+  A party game that never starts is not reported; the party's End ends it.
+- The report is signed by GameSide.ended() under the room lock (admission for that session
+  stops there) and POSTed off the lock and off the event loop to $AVRANA_PARTY_URL +
+  /internal/party-session/v0/ended. $AVRANA_PARTY_URL must be a plain http loopback origin
+  (e.g. http://127.0.0.1:8190); anything else is ignored with an error in the log. Unset:
+  nothing is sent (logged once per game), the session still ends here. Exactly once: one
+  report per session; delivery is one attempt plus retries after 1, 2 and 4 s (3 s timeout
+  each) on no answer or 5xx, the same signed report each time (the party's replay guard and
+  session check count it at most once); 200 or any 4xx is final. Undelivered, the party shows
+  the game as on until the host's End. The report is never logged, only outcome and status.
+- After a session ends (reported or ended by the party) the room returns to its pre-launch
+  state: fresh, empty, not running, no party session. A completed game first finishes its
+  results screen; meanwhile tickets are refused and unticketed hellos only watch. Then the
+  session's phones get `party_ended`: integrated pages (hubnet.js) stop reconnecting and show
+  "This game is over." beside the fixed Back to Party link. No automatic navigation (ADR 0006
+  defers it). Standalone play works again until the next launch.
+- A browser cannot produce `ended`: only the server builds it (key-signed), from BLUFF's own
+  rules. Watchers and browser-minted tokens cannot act; players cannot end a game others are
+  still in; no game route accepts an `ended` message; the party's ended route answers only
+  loopback, unproxied, signed, current-session reports.
+- Open: a phone asleep when its session ended misses `party_ended`; on waking the party has no
+  ticket for it, so it rejoins the idle room as a standalone player (Back to Party still
+  there). Avatar photos and chat still use wc-token.
 
 ## Shared local state
 

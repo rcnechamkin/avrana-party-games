@@ -86,6 +86,7 @@ class GameSession:
         self.gen = 0
         self.seq = 0            # bumps on every mutation; used by core.net to
         self._pid_counter = 0   # detect stale queued bot actions
+        self._outcome = None    # see take_outcome()
 
     # ---- game hooks (override these) ------------------------------------
 
@@ -128,6 +129,15 @@ class GameSession:
     def run_bot(self, bot_token: str) -> list:
         """Execute the due bot's move. Return fx."""
         return []
+
+    def take_outcome(self):
+        """How the game that just stopped finished, returned once: "completed" (it reached its
+        own end), "abandoned" (it stopped by the game's own rules before that), or None. A game
+        sets self._outcome where its rules decide; core.net reads this after every mutation and
+        reports it to an Avrana party session (core/party_session.py). Games that never set it
+        never report. It carries no winner, score or result (party session v0)."""
+        out, self._outcome = getattr(self, "_outcome", None), None
+        return out
 
     # ---- shared machinery ------------------------------------------------
 
