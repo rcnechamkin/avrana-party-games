@@ -29,3 +29,5 @@ html[data-avrana="1"] [data-avrana-screen] { height: 100% !important;
   gap: 10px; min-height: 44px; padding: 0 10px; color: #fff; background: #101827;
   font: 600 16px system-ui; }
 .party-ended a { color: #fff; }
+/* Avrana system colours for the same status (layered; the rule above stays as tested). */
+#avrana-navigation .party-ended { background: #1b1b23; color: #f1eee8; border-radius: 12px; }
