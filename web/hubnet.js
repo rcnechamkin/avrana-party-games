@@ -366,13 +366,18 @@ const Hub = (() => {
       banner.hidden = true;
       document.body.appendChild(banner);
     }
-    let rejects = 0;
+    let rejects = 0, gaveUp = false, timer = null;
+    function schedule(wait) {
+      clearTimeout(timer);
+      timer = setTimeout(() => { timer = null; open(); }, wait);
+    }
     function open() {
       const proto = location.protocol === "https:" ? "wss" : "ws";
       const ws = new WebSocket(`${proto}://${location.host}${wsPath}`);
       conn.ws = ws;
-      let welcomed = false;
+      let welcomed = false, opened = false;
       ws.onopen = () => {
+        opened = true;
         conn.retry = 0;
         banner.hidden = true;
         if (opts.watch) {
@@ -406,11 +411,14 @@ const Hub = (() => {
       };
       ws.onclose = () => {
         if (conn.closedByUs) return;
-        if (!welcomed) {
-          // the server refused this join (room full / socket cap) — do NOT
-          // hammer it forever
+        if (!welcomed && opened) {
+          // the server accepted the socket but refused this join (room full /
+          // socket cap) — do NOT hammer it forever. A socket that never opened
+          // is a network failure (sleep, airplane mode, Wi-Fi rejoining): keep
+          // retrying, or a phone that was offline for ~5 s would never recover.
           rejects++;
           if (rejects >= 3) {
+            gaveUp = true;
             banner.hidden = true;
             toast("can't join right now — the room is full", "err");
             return;
@@ -419,11 +427,24 @@ const Hub = (() => {
         banner.hidden = false;
         const wait = Math.min(5000, 600 + conn.retry * 800);
         conn.retry++;
-        setTimeout(open, wait);
+        schedule(wait);
       };
       ws.onerror = () => { try { ws.close(); } catch (e) {} };
     }
     open();
+    // A phone waking up or getting its network back should not wait out the
+    // backoff: reconnect at once if the socket is neither open nor connecting.
+    const kick = () => {
+      if (conn.closedByUs || gaveUp) return;
+      const s = conn.ws && conn.ws.readyState;
+      if (s === 0 || s === 1) return;
+      conn.retry = 0;
+      schedule(0);
+    };
+    addEventListener("online", kick);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") kick();
+    });
     setInterval(() => conn.send({ t: "ping" }), 25000);
     return conn;
   }

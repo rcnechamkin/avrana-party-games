@@ -23,6 +23,7 @@ from collections import deque
 from fastapi import WebSocket, WebSocketDisconnect
 
 from core import avatars
+from core.events import event
 
 log = logging.getLogger("gamehub.net")
 
@@ -32,6 +33,8 @@ MAX_SOCKETS_PER_TOKEN = 4
 
 # Lobby verbs handled here for every game; anything else goes to game_action.
 LOBBY_VERBS = ("ready", "start", "settings", "profile", "leave_table")
+# Verbs worth a lifecycle log line (who started, who left or ended a game).
+LOGGED_VERBS = ("ready", "start", "again", "leave_table", "leave_game", "end_game")
 
 
 class GameBinding:
@@ -43,6 +46,11 @@ class GameBinding:
         self.watch_sockets: set[WebSocket] = set()
         self._timer_task: asyncio.Task | None = None
         self._bot_task: asyncio.Task | None = None
+        self._phase = session.phase
+
+    def _pid(self, token):
+        p = self.session.players.get(token)
+        return p.pid if p is not None else None
 
     # ---- push ----
 
@@ -74,6 +82,10 @@ class GameBinding:
             st = self.session.state_for(None)
             for ws in list(self.watch_sockets):
                 await self._send(ws, st)
+        if self.session.phase != self._phase:
+            event(self.slug, "phase", old=self._phase, new=self.session.phase,
+                  seated=[self._pid(t) for t in self.session.participants])
+            self._phase = self.session.phase
         self._sync_timer()
         self._sync_bot()
 
@@ -169,6 +181,7 @@ class GameBinding:
         if hello.get("watch"):
             watching = True
             self.watch_sockets.add(ws)
+            event(self.slug, "watch_open")
             async with self.lock:
                 await self._send(ws, {"type": "welcome", "watch": True})
                 await self._send(ws, self.session.state_for(None))
@@ -182,9 +195,12 @@ class GameBinding:
                 if len(self.player_sockets.get(token, ())) >= MAX_SOCKETS_PER_TOKEN:
                     await ws.close()
                     return
+                known = token in self.session.players
                 player, fxs = self.session.join(
                     token, hello.get("name"), hello.get("avatar"))
                 if player is None:
+                    event(self.slug, "join_rejected",
+                          reason=next((f.get("msg") for f in fxs if f.get("msg")), None))
                     for f in fxs:
                         await self._send(ws, {"type": "fx",
                                               **{k: v for k, v in f.items() if k != "to"}})
@@ -192,6 +208,9 @@ class GameBinding:
                     return
                 player.pfp = avatars.url_for(token)
                 self.player_sockets.setdefault(token, set()).add(ws)
+                event(self.slug, "rejoin" if known else "join", pid=player.pid, name=player.name,
+                      sockets=len(self.player_sockets[token]), phase=self.session.phase,
+                      seated=token in self.session.participants)
                 await self._send(ws, {"type": "welcome", "token": token,
                                       "pid": player.pid})
                 await self.push_all(fxs)
@@ -219,6 +238,8 @@ class GameBinding:
                     continue
                 if watching or token is None:
                     continue
+                if msg.get("t") in LOGGED_VERBS:
+                    event(self.slug, "verb", t=msg["t"], pid=self._pid(token))
                 async with self.lock:
                     try:
                         fxs = self.dispatch(token, msg)
@@ -239,6 +260,8 @@ class GameBinding:
                     socks = self.player_sockets.get(token)
                     if socks is not None:
                         socks.discard(ws)
+                        event(self.slug, "socket_close" if socks else "disconnect",
+                              pid=self._pid(token), sockets=len(socks), phase=self.session.phase)
                         if not socks:
                             del self.player_sockets[token]
                             fxs = self.session.leave(token)

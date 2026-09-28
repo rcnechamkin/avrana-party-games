@@ -41,6 +41,7 @@ import re
 import time
 
 from core.session import GameSession
+from core.events import event
 
 # ---- placeholder roles (original names; baseline Coup-style duties) ----------
 ROLES = {
@@ -154,6 +155,7 @@ class BluffSession(GameSession):
     def _log(self, text):
         self.g["log"].append(text)
         del self.g["log"][:-LOG_KEEP]
+        event("bluff", "table", text=text)    # the PUBLIC table log only (never hidden cards)
 
     def _alive(self, tok):
         return bool(self.g["hand"].get(tok))
