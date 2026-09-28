@@ -1,0 +1,78 @@
+{
+  "protocol": "avrana.party-session/v0",
+  "note": "Pins the aps0 envelope across repositories. key = bytes 0..31; verify at now = 2000000010.",
+  "key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "now": 2000000010,
+  "vectors": [
+    {
+      "name": "ticket",
+      "payload": {
+        "v": "avrana.party-session/v0",
+        "typ": "ticket",
+        "iss": "party",
+        "aud": "bluff",
+        "sid": "session-11111111111111111111111111111111",
+        "iat": 2000000000,
+        "exp": 2000000120,
+        "pid": "participant-22222222222222222222222222222222",
+        "role": "player"
+      },
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDEyMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsInBpZCI6InBhcnRpY2lwYW50LTIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyIiwicm9sZSI6InBsYXllciIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJ0aWNrZXQiLCJ2IjoiYXZyYW5hLnBhcnR5LXNlc3Npb24vdjAifQ.AbgjDIVYtCxeVaCAgysw7O7nvw2s4nYcoOy1l6zTqDU"
+    },
+    {
+      "name": "launch",
+      "payload": {
+        "v": "avrana.party-session/v0",
+        "typ": "launch",
+        "iss": "party",
+        "aud": "bluff",
+        "sid": "session-11111111111111111111111111111111",
+        "iat": 2000000000,
+        "exp": 2000000030,
+        "nonce": "aaaaaaaaaaaaaaaaaaaaaaaa",
+        "roster": [
+          {
+            "participant": "participant-22222222222222222222222222222222",
+            "name": "Zoë",
+            "role": "player"
+          }
+        ]
+      },
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDAzMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsIm5vbmNlIjoiYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwicm9zdGVyIjpbeyJuYW1lIjoiWm_DqyIsInBhcnRpY2lwYW50IjoicGFydGljaXBhbnQtMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIiLCJyb2xlIjoicGxheWVyIn1dLCJzaWQiOiJzZXNzaW9uLTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExIiwidHlwIjoibGF1bmNoIiwidiI6ImF2cmFuYS5wYXJ0eS1zZXNzaW9uL3YwIn0.-4cUiBpqOr4MKO372CyW-sU87LOMl2gAAUrJxmAZcaY"
+    },
+    {
+      "name": "end",
+      "payload": {
+        "v": "avrana.party-session/v0",
+        "typ": "end",
+        "iss": "party",
+        "aud": "bluff",
+        "sid": "session-11111111111111111111111111111111",
+        "iat": 2000000000,
+        "exp": 2000000030,
+        "nonce": "bbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDAzMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsIm5vbmNlIjoiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiIiwic2lkIjoic2Vzc2lvbi0xMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMSIsInR5cCI6ImVuZCIsInYiOiJhdnJhbmEucGFydHktc2Vzc2lvbi92MCJ9.UT-lxB6a3VJGlpaR7wfH36JkVipsD4lrULLHRw2KyeA"
+    },
+    {
+      "name": "ended",
+      "payload": {
+        "v": "avrana.party-session/v0",
+        "typ": "ended",
+        "iss": "bluff",
+        "aud": "party",
+        "sid": "session-11111111111111111111111111111111",
+        "iat": 2000000000,
+        "exp": 2000000030,
+        "nonce": "cccccccccccccccccccccccc",
+        "outcome": "completed"
+      },
+      "token": "aps0.eyJhdWQiOiJwYXJ0eSIsImV4cCI6MjAwMDAwMDAzMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJibHVmZiIsIm5vbmNlIjoiY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjIiwib3V0Y29tZSI6ImNvbXBsZXRlZCIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJlbmRlZCIsInYiOiJhdnJhbmEucGFydHktc2Vzc2lvbi92MCJ9.LiYReIkg0tzKQcIr_qZQuW-WEnHODHcO_bYkLb3RvgY"
+    }
+  ],
+  "game_token": {
+    "sid": "session-11111111111111111111111111111111",
+    "participant": "participant-22222222222222222222222222222222",
+    "token": "avr-618dd11c3e7de67da71018ceb261628d5293b863"
+  }
+}

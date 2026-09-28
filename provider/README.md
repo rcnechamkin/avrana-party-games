@@ -44,6 +44,34 @@ bypasses /party/ and integrated clients and only deletes lan-games-shell-* cache
 It does not widen Avrana's /party/ worker scope. Existing pre-upgrade root worker
 registrations may require their normal update/refresh; test that path on devices.
 
+## Party session contract: avrana.party-session/v0 (BLUFF; AVR-22)
+
+Status: TESTED here (unit + fake-socket tests, Windows and CI); not deployed; no real phone yet.
+Protocol: core/party_protocol.py, vendored UNCHANGED from avrana-party
+avrana/party/protocol.py (ADR 0006 there), with its vectors in tests/vectors/. A test pins
+both hashes; re-vendor both files together, never edit them here.
+
+- Keys: $AVRANA_PARTY_KEYS names a directory holding <slug>.key (32-byte hex, 0600, the same
+  key the party holds for that game). Only core/party_session.GAMES (BLUFF) look for one. No
+  key means no party side and exactly today's standalone behaviour.
+- Capability: /api/games adds "avranaSession": "avrana.party-session/v0" to a game ONLY when
+  this server loaded that game's key, i.e. when it can really verify tickets.
+- Launch: POST /games/<slug>/avrana/session/v0/launch {"message": <signed launch>}. Loopback
+  and unproxied only (nginx's X-Forwarded-For/X-Real-IP/Forwarded are refused), 8 KiB, signed,
+  30 s, nonce-checked. It replaces the room: a fresh session object, old sockets closed.
+- Hello: {"t":"hello","ticket":…} is admitted with GameSide.admit(). The player key is
+  game_token(sid, participant): the same participant reconnecting (with a fresh ticket) is
+  the same player and seat. The name is the roster's; the game cannot rename a party member.
+  The game token is never sent to the browser. Spectator tickets, and player tickets for
+  someone not on the roster, watch. A refused ticket gets an `invalid` fx and a close.
+- While a party session runs, a browser-minted wc-token (or any unticketed hello) only watches.
+- hubnet.js, in an integrated (?avrana=1) page: before every connect, POST
+  /party/api/session/ticket (party cookie; the ticket never goes in a URL) and send the ticket
+  in the hello. No ticket (no party service, not a member, another game): today's hello.
+- Not yet (AVR-24): /end, `ended` reports (completed | abandoned) and returning to no session.
+  Until then a party session lasts until the next launch or a server restart. Avatar photos
+  and chat still use wc-token.
+
 ## Shared local state
 
 wc-token/name/avatar/pfp remain the same compatible identity keys. Hub.identity

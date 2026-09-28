@@ -8,6 +8,9 @@ One GameBinding per registered game. It owns:
   * bot scheduling: after every push, if session.next_bot_action() says a bot
     is due, a task runs it after the given delay (dropped if session.seq moved)
 
+Party sessions (core/party_session.py, AVR-22): a binding given a GameSide admits players by
+Party ticket at the hello. While a party session runs, a browser-minted token only watches.
+
 Games never touch sockets; this file never touches game rules.
 """
 
@@ -22,7 +25,7 @@ from collections import deque
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from core import avatars
+from core import avatars, party_protocol
 from core.events import event
 
 log = logging.getLogger("gamehub.net")
@@ -37,10 +40,23 @@ LOBBY_VERBS = ("ready", "start", "settings", "profile", "leave_table")
 LOGGED_VERBS = ("ready", "start", "again", "leave_table", "leave_game", "end_game")
 
 
+def _refusing(fn, *args):
+    """The vendored protocol lets a malformed base64 segment escape as binascii.Error (a
+    ValueError) instead of Invalid; treat every such value as a refusal, never a crash."""
+    try:
+        return fn(*args)
+    except party_protocol.Invalid:
+        raise
+    except ValueError:
+        raise party_protocol.Invalid("malformed")
+
+
 class GameBinding:
-    def __init__(self, slug, session):
+    def __init__(self, slug, session, party=None):
         self.slug = slug
         self.session = session
+        self.party = party            # party_protocol.GameSide, or None: standalone only
+        self.party_roster: dict[str, dict] = {}   # game token -> roster entry (players only)
         self.lock = asyncio.Lock()
         self.player_sockets: dict[str, set[WebSocket]] = {}
         self.watch_sockets: set[WebSocket] = set()
@@ -164,6 +180,50 @@ class GameBinding:
                 self._sync_timer()
                 self._sync_bot()
 
+    # ---- party session (core/party_session.py) ----
+
+    async def party_launch(self, message):
+        """A signed launch from the party: this room now belongs to that session and roster.
+        The old room is replaced, not tidied: a fresh session object carries no hands, seats,
+        timers or players across (BLUFF's own to_lobby() refuses during its results screen).
+        Raises party_protocol.Invalid, changing nothing, if the message is refused."""
+        if self.party is None:
+            raise party_protocol.Invalid("no party side")
+        async with self.lock:
+            roster = _refusing(self.party.on_launch, message)
+            self.party_roster = {
+                party_protocol.game_token(self.party.key, self.party.sid, r["participant"]): r
+                for r in roster if r["role"] == "player"}
+            for task in (self._timer_task, self._bot_task):
+                if task is not None and not task.done():
+                    task.cancel()
+            self._timer_task = self._bot_task = None
+            old = [ws for socks in self.player_sockets.values() for ws in socks]
+            self.player_sockets = {}
+            self.session = type(self.session)()
+            self._phase = self.session.phase
+            event(self.slug, "party_launch", players=len(self.party_roster),
+                  spectators=len(roster) - len(self.party_roster), dropped=len(old))
+            for ws in old:
+                try:
+                    await ws.close()
+                except Exception:
+                    pass
+            await self.push_all([])
+        return roster
+
+    def _party_hello(self, hello):
+        """(token, name) for an admitted player; (None, None) to watch. Raises Invalid for a
+        ticket that is refused. The ticket itself is never logged."""
+        ticket = hello.get("ticket")
+        if ticket is None:
+            return None, None                   # a browser-minted token: watch only
+        token, role = _refusing(self.party.admit, ticket)
+        entry = self.party_roster.get(token)
+        if role != "player" or entry is None:
+            return None, None
+        return token, entry["name"]
+
     # ---- websocket endpoint ----
 
     async def endpoint(self, ws: WebSocket):
@@ -178,7 +238,26 @@ class GameBinding:
             await ws.close()
             return
 
-        if hello.get("watch"):
+        # a ticket always takes the party path (refused if this game cannot verify it); while a
+        # party session runs, so does every other hello
+        party = "ticket" in hello or (self.party is not None and self.party.sid is not None)
+        if party:
+            try:
+                if self.party is None:
+                    raise party_protocol.Invalid("no party side")
+                token, name = self._party_hello(hello)
+            except party_protocol.Invalid as e:
+                event(self.slug, "ticket_refused", reason=str(e))
+                await self._send(ws, {"type": "fx", "kind": "invalid",
+                                      "msg": "Party ticket refused. Go back to Party and try again."})
+                await ws.close()
+                return
+            watching = token is None
+        else:
+            watching = bool(hello.get("watch"))
+            name = hello.get("name")
+
+        if watching:
             watching = True
             self.watch_sockets.add(ws)
             event(self.slug, "watch_open")
@@ -186,18 +265,21 @@ class GameBinding:
                 await self._send(ws, {"type": "welcome", "watch": True})
                 await self._send(ws, self.session.state_for(None))
         else:
-            token = hello.get("token")
-            if not (isinstance(token, str) and 8 <= len(token) <= 64
-                    and not token.startswith("bot:")
-                    and token.replace("-", "").replace("_", "").isalnum()):
-                token = secrets.token_urlsafe(16)
+            if not party:
+                token = hello.get("token")
+                if not (isinstance(token, str) and 8 <= len(token) <= 64
+                        and not token.startswith("bot:")
+                        and token.replace("-", "").replace("_", "").isalnum()):
+                    token = secrets.token_urlsafe(16)
             async with self.lock:
+                if party and token not in self.party_roster:
+                    await ws.close()            # a newer launch replaced the roster meanwhile
+                    return
                 if len(self.player_sockets.get(token, ())) >= MAX_SOCKETS_PER_TOKEN:
                     await ws.close()
                     return
                 known = token in self.session.players
-                player, fxs = self.session.join(
-                    token, hello.get("name"), hello.get("avatar"))
+                player, fxs = self.session.join(token, name, hello.get("avatar"))
                 if player is None:
                     event(self.slug, "join_rejected",
                           reason=next((f.get("msg") for f in fxs if f.get("msg")), None))
@@ -211,8 +293,11 @@ class GameBinding:
                 event(self.slug, "rejoin" if known else "join", pid=player.pid, name=player.name,
                       sockets=len(self.player_sockets[token]), phase=self.session.phase,
                       seated=token in self.session.participants)
-                await self._send(ws, {"type": "welcome", "token": token,
-                                      "pid": player.pid})
+                # a party game token stays on the server: reconnects fetch a new ticket
+                welcome = {"type": "welcome", "pid": player.pid}
+                if not party:
+                    welcome["token"] = token
+                await self._send(ws, welcome)
                 await self.push_all(fxs)
 
         stamps: deque[float] = deque()
@@ -277,7 +362,9 @@ class GameBinding:
         if t == "settings":
             return s.set_settings(token, msg.get("patch"))
         if t == "profile":
-            fx = s.set_profile(token, msg.get("name"), msg.get("avatar"))
+            # a party member's name is the party's; the game may not rename them
+            name = None if token in self.party_roster else msg.get("name")
+            fx = s.set_profile(token, name, msg.get("avatar"))
             p = s.players.get(token)
             if p is not None:
                 p.pfp = avatars.url_for(token)   # re-check after uploads
