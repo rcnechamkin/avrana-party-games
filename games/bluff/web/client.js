@@ -11,8 +11,10 @@ const el = (tag, cls, text) => {
   return e;
 };
 
+const icon = window.BluffIcons || (() => document.createTextNode(""));
+document.querySelectorAll("[data-icon]").forEach((slot) => slot.appendChild(icon(slot.dataset.icon)));
+
 let ST = null;
-let leaveArmed = 0, endArmed = 0;   // two-tap confirms for "Leave game" / "End game"
 let takeoverTimer = null;
 let picking = null;          // action awaiting a target tap
 let sheet = null;            // "claim" when the claim menu is open
@@ -95,9 +97,14 @@ function cardFace(r, extra) {
   return c;
 }
 
-function actBtn(icon, label, onclick, cls, disabled) {
+// ic: a Lucide name for table controls (play, x, check, ...) or an emoji for game content
+// (roles, coins, the coup): the emoji are part of BLUFF's own personality.
+const LUCIDE = new Set(["play", "x", "check", "hand", "log-out", "circle-stop"]);
+function actBtn(ic, label, onclick, cls, disabled) {
   const b = el("button", "act " + (cls || ""));
-  b.appendChild(el("span", "ic", icon));
+  const slot = el("span", "ic");
+  if (LUCIDE.has(ic)) slot.appendChild(icon(ic)); else slot.textContent = ic;
+  b.appendChild(slot);
   b.appendChild(el("span", null, label));
   b.onclick = onclick;
   if (disabled) b.disabled = true;
@@ -111,12 +118,16 @@ setInterval(() => {
   if (!ST || !ST.deadline || !g() || ST.phase !== "playing") { t.hidden = true; return; }
   const left = Math.max(0, Math.ceil((ST.deadline - conn.now()) / 1000));
   t.hidden = false;
+  const show = (name, text) => {
+    if (t.dataset.icon !== name) { t.dataset.icon = name; t.replaceChildren(icon(name), el("span")); }
+    t.lastChild.textContent = text;
+  };
   if (g().paused) {
-    t.textContent = "⏸ " + Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0");
+    show("pause", Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0"));
     t.classList.remove("urgent");
     return;
   }
-  t.textContent = "⏱ " + left;
+  show("timer", String(left));
   t.classList.toggle("urgent", left <= 5);
 }, 250);
 
@@ -128,6 +139,7 @@ function render() {
   $("drawer").hidden = !drawerOpen;
   $("piles").classList.toggle("hide", inLobby);
   if (inLobby) { picking = null; sheet = null; celebrated = false; return renderLobby(st); }
+  $("play").classList.remove("lobby");
   if (!g()) return;
   renderOpponents();
   renderCenter();
@@ -277,7 +289,7 @@ function renderBar() {
         clearTimeout(takeoverTimer);
         takeoverTimer = setTimeout(render, 1000);
       }
-      else bar.appendChild(actBtn("▶", "Start a new game", () => send({ t: "end_game" }), "primary"));
+      else bar.appendChild(actBtn("play", "Start a new game", () => send({ t: "end_game" }), "primary"));
       return;
     }
     msg("Watching");
@@ -290,7 +302,7 @@ function renderBar() {
     if (picking) {
       const pa = (acts.find((x) => x.action === picking) || {}).label || "";
       msg(`${pa}: tap a glowing player`);
-      bar.appendChild(actBtn("✕", "Cancel", () => { picking = null; render(); }));
+      bar.appendChild(actBtn("x", "Cancel", () => { picking = null; render(); }));
       return;
     }
     const by = Object.fromEntries(acts.map((a) => [a.action, a]));
@@ -324,7 +336,7 @@ function renderBar() {
     msg("Tap one of your cards to give it up");
   } else if (pr && pr.kind === "exchange") {
     renderExchangeSheet(pr);
-    const ok = actBtn("✔", `Keep ${keepSel.length}/${pr.keep}`, () => gsend({ t: "keep", cards: keepSel }), "primary", keepSel.length !== pr.keep);
+    const ok = actBtn("check", `Keep ${keepSel.length}/${pr.keep}`, () => gsend({ t: "keep", cards: keepSel }), "primary", keepSel.length !== pr.keep);
     bar.appendChild(ok);
   } else {
     const w = (p.waiting || []).map(nameOf);
@@ -372,20 +384,18 @@ function renderDrawer() {
   box.textContent = "";
   const me = g().me;
   if (me && !me.left && me.cards.length && !g().winner) {
-    const armed = Date.now() - leaveArmed < 4000;
-    box.appendChild(actBtn("🏳", armed ? "Tap again to leave" : "Leave game", () => {
-      if (Date.now() - leaveArmed < 4000) { leaveArmed = 0; send({ t: "leave_game" }); }
-      else { leaveArmed = Date.now(); setTimeout(render, 4100); }
-      render();
-    }, armed ? "danger" : ""));
+    box.appendChild(actBtn("log-out", "Leave game", () => confirmAction({
+      title: "Leave this game?",
+      body: "Your seat plays on autopilot and you're out at the next turn. You'll watch the rest.",
+      yes: "Leave game",
+    }, () => send({ t: "leave_game" }))));
   }
   if (me && !g().winner) {
-    const armedE = Date.now() - endArmed < 4000;
-    box.appendChild(actBtn("⏹", armedE ? "Tap again to end" : "End game", () => {
-      if (Date.now() - endArmed < 4000) { endArmed = 0; send({ t: "end_game" }); }
-      else { endArmed = Date.now(); setTimeout(render, 4100); }
-      render();
-    }, armedE ? "danger" : ""));
+    box.appendChild(actBtn("circle-stop", "End game", () => confirmAction({
+      title: "End the game?",
+      body: "Everyone goes back to the lobby. This only works when nobody else is still playing.",
+      yes: "End game",
+    }, () => send({ t: "end_game" }))));
   }
   const ol = $("log");
   ol.textContent = "";
@@ -394,6 +404,18 @@ function renderDrawer() {
   help.textContent = "";
   for (const [r, v] of Object.entries(g().roles)) help.appendChild(el("div", null, `${v.icon} ${r}: ${v.text}`));
   help.appendChild(el("div", null, "Anyone: Income +1 · Foreign Aid +2 (blockable) · Coup: pay 7 (must at 10+)."));
+}
+
+// A consequential action asks first, in the table's own dialog (the message sent is unchanged).
+function confirmAction({ title, body, yes }, run) {
+  const d = $("confirm");
+  if (typeof d.showModal !== "function") { if (window.confirm(title + " " + body)) run(); return; }
+  $("confirm-title").textContent = title;
+  $("confirm-body").textContent = body;
+  $("confirm-yes").textContent = yes;
+  d.returnValue = "";
+  d.onclose = () => { if (d.returnValue === "yes") run(); };
+  d.showModal();
 }
 
 // ---------------------------------------------------------------- lobby
@@ -422,11 +444,14 @@ function renderLobby(st) {
   }
   const play = $("play");
   play.textContent = "";
+  play.classList.add("lobby");
   $("center").classList.remove("row");
   play.appendChild(el("div", "lobby-title", "BLUFF"));
   const bots = (st.settings && st.settings.bots) || 0;
   const step = el("div", "stepper");
-  const minus = el("button", null, "−"), plus = el("button", null, "+");
+  const minus = el("button"), plus = el("button");
+  minus.appendChild(icon("minus")); minus.setAttribute("aria-label", "Fewer test bots");
+  plus.appendChild(icon("plus")); plus.setAttribute("aria-label", "More test bots");
   minus.onclick = () => send({ t: "settings", patch: { bots: Math.max(0, bots - 1) } });
   plus.onclick = () => send({ t: "settings", patch: { bots: Math.min(5, bots + 1) } });
   step.append("Test bots", minus, el("b", null, String(bots)), plus);
@@ -438,9 +463,9 @@ function renderLobby(st) {
   bar.textContent = "";
   const me = st.you;
   if (me && me.ready && n >= st.min_players) {
-    bar.appendChild(actBtn("▶", "START GAME", () => send({ t: "start" }), "primary"));
-    bar.appendChild(actBtn("✕", "Not ready", () => send({ t: "ready", ready: false })));
+    bar.appendChild(actBtn("play", "START GAME", () => send({ t: "start" }), "primary"));
+    bar.appendChild(actBtn("x", "Not ready", () => send({ t: "ready", ready: false })));
   } else {
-    bar.appendChild(actBtn("✋", me && me.ready ? "Ready ✓" : "I'M READY", () => send({ t: "ready", ready: !(me && me.ready) }), "primary"));
+    bar.appendChild(actBtn(me && me.ready ? "check" : "hand", me && me.ready ? "Ready ✓" : "I'M READY", () => send({ t: "ready", ready: !(me && me.ready) }), "primary"));
   }
 }

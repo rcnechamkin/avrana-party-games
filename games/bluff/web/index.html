@@ -12,8 +12,8 @@
 <div data-avrana-viewport id="app">
   <div id="felt"><div id="felt-mark">🎭</div></div>
 
-  <button data-avrana-global id="home" class="round-btn" aria-label="Back to games">⌂</button>
-  <button id="history" class="round-btn" aria-label="What happened">☰</button>
+  <button data-avrana-global id="home" class="round-btn" aria-label="Back to games"><span data-icon="house"></span></button>
+  <button id="history" class="round-btn" aria-label="What happened"><span data-icon="scroll-text"></span></button>
   <div id="timer" class="corner-box red" hidden></div>
 
   <div id="opponents"></div>
@@ -35,14 +35,27 @@
   <div id="sheet" hidden></div>
   <div id="bar"></div>
 
-  <aside id="drawer" hidden>
-    <div class="drawer-head"><b>What happened</b><button id="drawer-close" class="round-btn small">✕</button></div>
+  <aside id="drawer" hidden aria-labelledby="drawer-title">
+    <div class="drawer-head"><h2 id="drawer-title">What happened</h2><button id="drawer-close" class="round-btn small" aria-label="Close"><span data-icon="x"></span></button></div>
     <ol id="log"></ol>
+    <h3 class="drawer-sub">Roles</h3>
     <div id="rolehelp"></div>
   </aside>
+
+  <dialog id="confirm" aria-labelledby="confirm-title" aria-describedby="confirm-body">
+    <form method="dialog">
+      <h2 id="confirm-title"></h2>
+      <p id="confirm-body"></p>
+      <div class="dlg-actions">
+        <button value="no" class="act" autofocus>Keep playing</button>
+        <button value="yes" id="confirm-yes" class="act danger"></button>
+      </div>
+    </form>
+  </dialog>
 </div>
 <canvas id="confetti"></canvas>
 <script src="/shared/hubnet.js?v=avrana1"></script>
+<script src="icons.js"></script>
 <script src="client.js"></script>
 </body>
 </html>
