@@ -15,8 +15,10 @@ function load({ integrated = true, answer = () => ({ status: 200, body: { game: 
   let now = 0;
   const listeners = {};
   const docListeners = {};
+  const added = [];
   const el = () => new Proxy({ style: {}, classList: { add() {}, remove() {}, toggle() {} },
-                               appendChild() {}, remove() {}, setAttribute() {}, addEventListener() {} },
+                               appendChild(c) { added.push(c); }, insertBefore(c) { added.push(c); },
+                               remove() {}, setAttribute() {}, addEventListener() {} },
                              { get: (t, k) => (k in t ? t[k] : undefined), set: (t, k, v) => { t[k] = v; return true; } });
   const sockets = [];
   class FakeWS {
@@ -64,7 +66,7 @@ function load({ integrated = true, answer = () => ({ status: 200, body: { game: 
     }
     now = until;
   };
-  return { Hub: ctx.Hub, sockets, calls, store, advance,
+  return { Hub: ctx.Hub, sockets, calls, store, advance, added,
            fire: (ev) => (listeners[ev] || []).forEach((f) => f()) };
 }
 
@@ -159,6 +161,29 @@ test("waking up while a ticket request is pending opens only one socket", async 
   assert.equal(t.sockets.length, 2, "exactly one new socket after the drop");
   assert.equal(t.calls.length, 2, "no second ticket request while one is pending");
 });
+
+for (const integrated of [true, false]) {
+  test(`party_ended (${integrated ? "integrated" : "standalone"}): ${integrated ? "stops reconnecting and says so" : "is ignored"}`, async () => {
+    const t = load({ integrated });
+    const seen = [];
+    t.Hub.connect("/games/bluff/ws", { onState() {}, onFx: (fx) => seen.push(fx.kind) });
+    await flush();
+    t.sockets[0].accept(); t.sockets[0].welcome();
+    t.sockets[0].onmessage({ data: JSON.stringify({ type: "fx", kind: "party_ended", outcome: "completed" }) });
+    t.sockets[0].drop();                       // the server closes the socket
+    t.advance(10000); await flush();
+    t.fire("online"); t.advance(1000); await flush();
+    assert.deepEqual(seen, ["party_ended"]);
+    if (integrated) {
+      assert.equal(t.sockets.length, 1, "no reconnect into a room the party session has left");
+      assert.equal(t.calls.length, 1, "no new ticket request");
+      assert.ok(t.added.some((n) => n.id === "party-ended" && /over/.test(n.textContent)));
+    } else {
+      assert.ok(t.sockets.length > 1, "standalone pages keep today's reconnect");
+      assert.ok(!t.added.some((n) => n.id === "party-ended"));
+    }
+  });
+}
 
 let passed = 0;
 for (const [name, fn] of tests) {

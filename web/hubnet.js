@@ -423,7 +423,10 @@ const Hub = (() => {
       ws.onmessage = (ev) => {
         let msg;
         try { msg = JSON.parse(ev.data); } catch (e) { return; }
-        if (msg.type === "welcome") {
+        if (msg.type === "fx" && msg.kind === "party_ended" && integrated) {
+          partyEnded(msg);
+          handlers.onFx && handlers.onFx(msg);
+        } else if (msg.type === "welcome") {
           welcomed = true;
           rejects = 0;
           if (msg.token) identity.token = msg.token;
@@ -460,6 +463,30 @@ const Hub = (() => {
         schedule(wait);
       };
       ws.onerror = () => { try { ws.close(); } catch (e) {} };
+    }
+    /* Avrana party session v0 (AVR-24): the party session this page played in is over (the
+       game finished or was abandoned, or the host ended it). Stop reconnecting, so the page does
+       not quietly rejoin the room as someone else, and point at the fixed return. No automatic
+       navigation (deferred by ADR 0006). */
+    function partyEnded(msg) {
+      conn.closedByUs = true;
+      clearTimeout(timer);
+      banner.hidden = true;
+      if (conn.ws) { try { conn.ws.close(); } catch (e) {} }
+      if (document.getElementById("party-ended")) return;
+      const note = document.createElement("span");
+      note.id = "party-ended";
+      note.className = "party-ended";
+      note.setAttribute("role", "status");
+      note.textContent = "This game is over.";
+      // beside the Back to Party link of the in-flow Party bar (avrana-integration.js)
+      const nav = document.getElementById("avrana-navigation");
+      if (nav) { nav.appendChild(note); return; }
+      const back = document.createElement("a");
+      back.href = (window.AvranaIntegration && window.AvranaIntegration.home) || "/party/";
+      back.textContent = "Back to Party";
+      note.appendChild(back);
+      document.body.insertBefore(note, document.body.firstChild);
     }
     open();
     // A phone waking up or getting its network back should not wait out the

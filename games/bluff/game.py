@@ -33,6 +33,12 @@ Lifecycle (phones sleep, so sockets come and go):
     * a player may forfeit (`leave_game`): their seat goes on autopilot at once and is
       eliminated at the next turn boundary.
     * `end_game` returns the room to the lobby when every other alive human is away/left.
+
+How a game finished (take_outcome(); reported to an Avrana party session, AVR-24):
+    completed  one seat is left standing: the results screen (game_end) with a winner
+    abandoned  stopped before anyone won: the empty table timed out, `end_game`, a takeover of
+               an empty table, or every seat forfeited at once (game_end with no winner)
+Recording it changes no rule; the results screen still runs its course.
 """
 
 from __future__ import annotations
@@ -522,7 +528,14 @@ class BluffSession(GameSession):
 
     def _abandon(self):
         self.g["paused"] = None
+        self._outcome = "abandoned"
         return self.to_lobby()
+
+    def end_game(self):
+        # the rules decided the game is over; without a winner (everyone forfeited in the same
+        # turn) nobody played it to an end, so it is reported as abandoned
+        self._outcome = "completed" if self.g["winner"] is not None else "abandoned"
+        return super().end_game()
 
     # ------------------------------------------------------------------ timers
 
