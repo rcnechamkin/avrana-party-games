@@ -759,7 +759,44 @@ def test_the_server_reads_the_party_url_from_the_environment():
         __import__("os").environ.get(party_session.PARTY_URL_ENV))
 
 
-# ---- one party session is one play-through (decision 2) ----------------------------------------
+# ---- Party state decides roles across launches (integration of AVR-22/23/24) ----------------------
+# The party's roster is authoritative: whoever watched under the last session, a new launch lets
+# every phone come back with a fresh ticket and the new roster decides its role. One party
+# session is one play-through; a rematch is a new session.
+
+def test_a_later_launch_drops_every_watcher_so_the_new_roster_decides(party):
+    async def scenario():
+        b = binding(party)
+        await b.party_launch(launch(b, entries=((ALICE, "Alice", "player"),)))
+        w = await connect(b, {"t": "hello", "ticket": ticket(CAROL, role="spectator")})
+        tv = await connect(b, {"t": "hello", "watch": True})
+        assert w[0].welcome() == {"type": "welcome", "watch": True}
+        await b.party_launch(launch(b, sid=SID2, entries=((CAROL, "Carol", "player"),)))
+        await settle()
+        assert w[0].closed and tv[0].closed and b.watch_sockets == set()
+        p = await connect(b, {"t": "hello", "ticket": ticket(CAROL, sid=SID2)})
+        assert not p[0].welcome().get("watch") and p[0].welcome()["pid"]
+        assert [q.name for q in b.session.humans()] == ["Carol"]
+        await shutdown(b, w, tv, p)
+    run(scenario())
+
+
+def test_a_watcher_left_after_an_end_is_a_player_in_the_next_launch(party):
+    async def scenario():
+        b = binding(party)
+        await b.party_launch(launch(b, entries=((ALICE, "Alice", "player"),)))
+        w = await connect(b, {"t": "hello", "ticket": ticket(CAROL, role="spectator")})
+        await b.party_end(proto.end_message(KEY, "bluff", SID))
+        await settle()
+        assert not w[0].closed                                   # watchers see the empty lobby
+        await b.party_launch(launch(b, sid=SID2, entries=((CAROL, "Carol", "player"),)))
+        await settle()
+        assert w[0].closed                                       # ... until the next launch
+        p = await connect(b, {"t": "hello", "ticket": ticket(CAROL, sid=SID2)})
+        assert proto.game_token(KEY, SID2, CAROL) in b.session.players
+        await shutdown(b, w, p)
+    run(scenario())
+
 
 def test_a_rematch_is_a_new_party_session_with_a_fresh_table(party):
     posts, _, _ = party
