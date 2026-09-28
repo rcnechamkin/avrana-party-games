@@ -44,10 +44,13 @@ bypasses /party/ and integrated clients and only deletes lan-games-shell-* cache
 It does not widen Avrana's /party/ worker scope. Existing pre-upgrade root worker
 registrations may require their normal update/refresh; test that path on devices.
 
-## Party session contract: avrana.party-session/v0 (BLUFF; AVR-22, AVR-24)
+## Party session contract: avrana.party-session/v0 (BLUFF; AVR-22, AVR-23, AVR-24)
 
-Status: TESTED here (unit + fake-socket tests, Windows and CI; AVR-24 also against the real
-avrana-party service over loopback HTTP/WebSockets); not deployed; no real phone yet.
+Status: TESTED here (unit + fake-socket tests, Windows and CI; also against the real
+avrana-party service over loopback HTTP/WebSockets, and in avrana-party's browser E2E
+tests/provider/party-session.spec.ts); not deployed; no real phone yet.
+The party is authoritative throughout: a network failure, reload, sleep/wake or an old
+browser token never changes a party player's role, seat or identity by itself.
 Protocol: core/party_protocol.py, vendored UNCHANGED from avrana-party
 avrana/party/protocol.py (ADR 0006 there), with its vectors in tests/vectors/. A test pins
 both hashes; re-vendor both files together, never edit them here.
@@ -64,16 +67,26 @@ both hashes; re-vendor both files together, never edit them here.
   and report the end.
 - Launch: POST /games/<slug>/avrana/session/v0/launch {"message": <signed launch>}. Loopback
   and unproxied only (nginx's X-Forwarded-For/X-Real-IP/Forwarded are refused), 8 KiB, signed,
-  30 s, nonce-checked. It replaces the room: a fresh session object, old sockets closed.
+  30 s, nonce-checked. It replaces the room: a fresh session object, and every old socket is
+  closed, watchers included, so each phone comes back with a fresh ticket and the new roster
+  decides its role (a watcher of the last session who is a player now plays, no reload).
 - Hello: {"t":"hello","ticket":…} is admitted with GameSide.admit(). The player key is
   game_token(sid, participant): the same participant reconnecting (with a fresh ticket) is
   the same player and seat. The name is the roster's; the game cannot rename a party member.
   The game token is never sent to the browser. Spectator tickets, and player tickets for
   someone not on the roster, watch. A refused ticket gets an `invalid` fx and a close.
 - While a party session runs, a browser-minted wc-token (or any unticketed hello) only watches.
-- hubnet.js, in an integrated (?avrana=1) page: before every connect, POST
-  /party/api/session/ticket (party cookie; the ticket never goes in a URL) and send the ticket
-  in the hello. No ticket (no party service, not a member, another game): today's hello.
+- hubnet.js, in an integrated (?avrana=1) player page: before every connect, POST
+  /party/api/session/ticket (party cookie; the ticket never goes in a URL; 5 s per attempt) and
+  send the ticket in the hello. A request that reaches nothing, times out or gets a 5xx is
+  retried with the usual backoff and never becomes a ticketless hello; after 20 failures in a
+  row the page waits for online/visibility. A tab that held a ticket remembers its session
+  (sessionStorage; a session id, not a secret): when the party then answers "not a member",
+  "no game" or "another game" (or no party service answers), that session is over for the
+  page: it shows the ended state, never standalone play, and asks the party every 5 s while
+  visible, joining the next launch that includes it (a rematch is a new party session). A page
+  that never held a ticket keeps today's hello: the server decides (a watcher while the room
+  belongs to a party session; standalone otherwise, so the /party/ shell's direct launch works).
 - End: POST /games/<slug>/avrana/session/v0/end {"message": <signed end>}, the same guards as
   launch. The room goes back to a non-running state at once (a fresh session object; players'
   sockets get a `party_ended` fx and are closed; watchers stay and see the empty lobby) and the
@@ -98,17 +111,18 @@ both hashes; re-vendor both files together, never edit them here.
 - After a session ends (reported or ended by the party) the room returns to its pre-launch
   state: fresh, empty, not running, no party session. A completed game first finishes its
   results screen; meanwhile tickets are refused and unticketed hellos only watch. Then the
-  session's phones get `party_ended`: integrated pages (hubnet.js) stop reconnecting and show
-  "This game is over." beside the fixed Back to Party link. No automatic navigation (ADR 0006
-  defers it). One party session is one play-through: there is no replay inside it; a rematch
-  is a new launch. Standalone play works again until the next launch.
+  session's phones get `party_ended`: integrated pages (hubnet.js) leave the room and show
+  "This game is over." beside the fixed Back to Party link, then join the next launch that
+  includes them. No automatic navigation away (ADR 0006 defers it). One party session is one
+  play-through: there is no replay inside it; a rematch is a new launch. Non-integrated pages
+  may play standalone again until the next launch.
 - A browser cannot produce `ended`: only the server builds it (key-signed), from BLUFF's own
   rules. Watchers and browser-minted tokens cannot act; players cannot end a game others are
   still in; no game route accepts an `ended` message; the party's ended route answers only
   loopback, unproxied, signed, current-session reports.
-- Open: a phone asleep when its session ended misses `party_ended`; on waking the party has no
-  ticket for it, so it rejoins the idle room as a standalone player (Back to Party still
-  there). Avatar photos and chat still use wc-token.
+- A phone asleep when its session ended misses `party_ended`; on waking the party has no
+  ticket for it and the page shows the ended state (it remembered its session), never a
+  standalone seat. Open: avatar photos and chat still use wc-token.
 
 ## Shared local state
 
