@@ -253,3 +253,32 @@ svg.lucide { width: 1em; height: 1em; flex: none; }
 .dlg-actions .act { min-height: 52px; font-size: 15px; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 .lg-reduced-fx *, .lg-reduced-fx *::before, .lg-reduced-fx *::after { animation: none !important; transition: none !important; }
+
+/* ---- BLUFF game art (art.js, Kenney Board Game Icons, CC0) -------------------------
+   One flat, one-colour family for everything that is the game itself. Each role has a
+   colour, so the five cards read as one deck; coins and the crown are gold. */
+.bart { display: block; width: 1em; height: 1em; }
+.role-banker { --role: #a8740c; } .role-agent { --role: #b3263a; } .role-smuggler { --role: #147a73; }
+.role-broker { --role: #4a4fb8; } .role-guardian { --role: #2d7a49; } .role-unknown { --role: #6b6b6b; }
+#felt-mark { color: #fff; filter: none; }
+#felt-mark .bart { width: 1em; height: 1em; }
+.card .idx .bart { width: calc(var(--cw, 92px) * .17); height: calc(var(--cw, 92px) * .17); color: var(--role); }
+.card .big .bart { width: calc(var(--cw, 92px) * .5); height: calc(var(--cw, 92px) * .5); color: var(--role); }
+.card .nm { color: var(--role, #222); }
+.card.mini .big .bart { width: calc(var(--cw) * .62); height: calc(var(--cw) * .62); }
+.act .ic .bart { width: 26px; height: 26px; }
+.coins-chip, .coins-in { display: inline-flex; align-items: center; gap: 4px; }
+.coins-chip .bart, .coins-in .bart { width: 1.15em; height: 1.15em; color: #f2c14e; }
+.crown { top: -22px; }
+.crown .bart { width: 24px; height: 24px; color: #ffd54a; filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
+.winner { display: inline-flex; align-items: center; gap: 8px; }
+.winner .bart { width: 34px; height: 34px; color: #ffd54a; }
+#log li.marked .bart { display: inline-block; width: 1.05em; height: 1.05em; vertical-align: -0.18em;
+  margin-right: 0.4em; color: var(--muted); }
+#rolehelp .role-row { display: flex; align-items: flex-start; gap: 8px; }
+#rolehelp .role-row .bart { flex: none; width: 20px; height: 20px; margin-top: 1px;
+  color: color-mix(in srgb, var(--role) 55%, #fff); }
+#rolehelp .role-row b { color: var(--text); }
+.avatar svg.lucide { width: 58%; height: 58%; }
+.ready-tick { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--go); color: #fff; font-size: 14px; border: 2px solid rgba(0,0,0,.35); }

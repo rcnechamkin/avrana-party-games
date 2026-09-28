@@ -13,4 +13,7 @@ while IFS= read -r -d '' script; do
   node --check "$script"
 done < <(git ls-files -z 'web/*.js' 'games/**/*.js' 'tests/*.mjs')
 
+# Generated game art must match its vendored sources (docs/ASSETS.md).
+node ops/build_bluff_art.mjs --check
+
 echo "static syntax checks passed"

@@ -13,4 +13,41 @@ Everything below is served from this repository; nothing is fetched at runtime.
 | Used by | `core/looks.py`: a player who chose `gaze-NN` gets this file as `pfp` (an uploaded photo still wins) and the emoji at the same position as `avatar` for text-only views |
 
 Refresh: regenerate in `avrana-party` (`npm run build:avatars`), then copy `web/party/avatars/*.svg`
-to `web/avatars/` here.
+to `web/avatars/` here. The standalone join picker (`Hub.buildAvatarGrid`) offers the same set.
+
+## BLUFF game art: `games/bluff/art/kenney/` → `games/bluff/web/art.js`
+
+| | |
+|---|---|
+| Pack | Board Game Icons 1.1 by Kenney (https://kenney.nl/assets/board-game-icons), **CC0 1.0** (`License.txt` kept) |
+| Download | `kenney_board-game-icons.zip`, SHA-256 `05f4358381d8b16b303b2f056393b76ce3f6a58228599e88caa2eab11d4c2946`, 2026-09-27 |
+| Files | 19 byte-for-byte originals from `Vector/Icons/`, not served |
+| Built by | `node ops/build_bluff_art.mjs` (dependency-free; `--check` runs in `ops/check_static.sh`): path data drawn inline with `currentColor` |
+
+Chosen for what each depicts in BLUFF, not for its file name:
+
+| BLUFF concept | Icon | | BLUFF concept | Icon |
+|---|---|---|---|---|
+| Banker (Tax) | `dollar` | | Income +1 | `token_add` |
+| Agent (Strike) | `sword` | | Foreign Aid +2 | `hand_token` |
+| Smuggler (Steal) | `pouch_remove` | | Coup | `exploding` |
+| Broker (Exchange) | `card_flipdouble` | | Claim a role | `hand_card` |
+| Guardian (blocks a Strike) | `shield` | | Challenge | `hand_cross` |
+| coin | `flip_full` | | Pass / Allow | `flip_head` |
+| winner | `crown_a` | | log: left / wins / out / too slow | `flag_square` / `award` / `skull` / `hourglass` |
+| unknown role | `hexagon_question` | | felt watermark | `cards_fan` |
+
+The server's role and log emoji (`games/bluff/game.py`) are unchanged protocol data; the client
+draws this art instead. Table controls (home, history, close, timer, ready, bots) use the Lucide
+subset in `games/bluff/web/icons.js` (ISC).
+
+## Library artwork: `web/gameart.js` → `ops/export_game_art.mjs`
+
+Each title's GameArt scene (first-party; BLUFF's is a two-card hand with an unverifiable claim) is
+exported as a static, square, self-contained SVG for Avrana Party's game library:
+`node ops/export_game_art.mjs ../avrana-party/assets/vendor/lan-games-art` (add `--check` to verify).
+
+## Shared system icons: `web/hubnet.js`
+
+The shared game shell (join/lobby controls and rule lists) uses 20 Lucide icons (lucide-static
+1.48.0, ISC) embedded in `hubnet.js`; see its comment for the list.
