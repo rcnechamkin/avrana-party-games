@@ -369,14 +369,19 @@ const Hub = (() => {
     // sound toggles say their state; other icon-only controls keep a name they already have
     if (!rest && (name.startsWith("volume") || !el.getAttribute("aria-label"))) el.setAttribute("aria-label", label);
   }
+  // Decoration only: it must never be able to break the connection plumbing below, so it
+  // needs a real DOM and swallows its own errors.
   function installIcons() {
-    document.querySelectorAll("[data-icon]:empty").forEach((slot) => slot.appendChild(icon(slot.dataset.icon)));
-    document.querySelectorAll("#mute-btn, #mute-btn2, #pfp-btn, #pfp-btn2, .pfp-btn, [data-avrana-return]")
-      .forEach((el) => {
-        upgradeControl(el);
-        new MutationObserver(() => upgradeControl(el))
-          .observe(el, { childList: true, characterData: true, subtree: true });
-      });
+    if (typeof document.querySelectorAll !== "function" || typeof MutationObserver !== "function") return;
+    try {
+      document.querySelectorAll("[data-icon]:empty").forEach((slot) => slot.appendChild(icon(slot.dataset.icon)));
+      document.querySelectorAll("#mute-btn, #mute-btn2, #pfp-btn, #pfp-btn2, .pfp-btn, [data-avrana-return]")
+        .forEach((el) => {
+          upgradeControl(el);
+          new MutationObserver(() => upgradeControl(el))
+            .observe(el, { childList: true, characterData: true, subtree: true });
+        });
+    } catch (e) { /* icons are optional */ }
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", installIcons, { once: true });
   else installIcons();
