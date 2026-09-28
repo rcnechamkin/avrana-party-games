@@ -51,5 +51,9 @@ jobs:
         run: npm run check:syntax
       - name: Provider service worker ownership
         run: node --test tests/avrana_worker.test.mjs
+      - name: Shared client reconnect and party tickets
+        run: |
+          node tests/hubnet_reconnect_test.mjs
+          node tests/hubnet_party_ticket_test.mjs
       - name: Prove deployment preserves runtime state
         run: bash ops/test_release_safety.sh

@@ -348,6 +348,25 @@ const Hub = (() => {
     setTimeout(() => t.remove(), 3200);
   }
 
+  /* Avrana party session v0 (AVR-22): in an integrated page, ask the party for a ticket for this
+     game before every connect. The party cookie (Path=/party/) authenticates the request; the
+     ticket travels only in the WebSocket hello, never in a URL. null = no party session for
+     this page (no party service, not a member, another game): use today's hello, which the game
+     server treats as a watcher while a party session runs. */
+  async function partyTicket() {
+    try {
+      const res = await fetch("/party/api/session/ticket", {
+        method: "POST", credentials: "same-origin", cache: "no-store",
+        headers: { "Content-Type": "application/json" }, body: "{}",
+      });
+      if (!res.ok) return null;
+      const body = await res.json();
+      return body && body.game === gameSlug && typeof body.ticket === "string" ? body.ticket : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
   /* connect(gamePath, handlers, opts) -> conn
      handlers: onState(st), onFx(fx), onWelcome(msg)
      opts.watch: connect as a read-only spectator (the big-screen / TV view) —
@@ -366,12 +385,21 @@ const Hub = (() => {
       banner.hidden = true;
       document.body.appendChild(banner);
     }
-    let rejects = 0, gaveUp = false, timer = null;
+    let rejects = 0, gaveUp = false, timer = null, fetching = false;
     function schedule(wait) {
       clearTimeout(timer);
       timer = setTimeout(() => { timer = null; open(); }, wait);
     }
     function open() {
+      if (!integrated || opts.watch) { start(null); return; }
+      if (fetching) return;                 // a wake-up while the ticket is on its way
+      fetching = true;
+      partyTicket().then((ticket) => {
+        fetching = false;
+        if (!conn.closedByUs) start(ticket);
+      });
+    }
+    function start(ticket) {
       const proto = location.protocol === "https:" ? "wss" : "ws";
       const ws = new WebSocket(`${proto}://${location.host}${wsPath}`);
       conn.ws = ws;
@@ -382,6 +410,8 @@ const Hub = (() => {
         banner.hidden = true;
         if (opts.watch) {
           ws.send(JSON.stringify({ t: "hello", watch: true }));
+        } else if (ticket) {
+          ws.send(JSON.stringify({ t: "hello", ticket, avatar: identity.avatar || undefined }));
         } else {
           ws.send(JSON.stringify({
             t: "hello", token: identity.token || undefined,
@@ -435,7 +465,7 @@ const Hub = (() => {
     // A phone waking up or getting its network back should not wait out the
     // backoff: reconnect at once if the socket is neither open nor connecting.
     const kick = () => {
-      if (conn.closedByUs || gaveUp) return;
+      if (conn.closedByUs || gaveUp || fetching) return;
       const s = conn.ws && conn.ws.readyState;
       if (s === 0 || s === 1) return;
       conn.retry = 0;
