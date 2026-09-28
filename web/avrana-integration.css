@@ -1,0 +1,18 @@
+/* This owns only the declared integration surfaces, never game selectors. */
+html[data-avrana="1"] [data-avrana-global] { display: none !important; }
+#avrana-navigation { position: relative; z-index: 100; flex: 0 0 auto;
+  width: 100%; box-sizing: border-box; padding: 6px 12px;
+  background: #101827; color: #fff; text-align: left; }
+#avrana-navigation a { display: inline-flex; align-items: center; min-height: 44px;
+  padding: 0 10px; color: #fff; font: 600 16px system-ui; text-decoration: none; }
+
+html[data-avrana="1"] [data-avrana-return] { display: none !important; }
+
+html[data-avrana="1"] body { display: flex; flex-direction: column;
+  height: 100dvh; margin: 0; overflow: hidden; }
+#avrana-game-room { position: relative; flex: 1; min-height: 0; min-width: 0;
+  contain: layout size; overflow: auto; }
+html[data-avrana="1"] [data-avrana-viewport] { height: 100% !important;
+  max-height: 100% !important; min-height: 0 !important; --apph: 100%; }
+html[data-avrana="1"] [data-avrana-screen] { height: 100% !important;
+  max-height: 100% !important; min-height: 0 !important; }

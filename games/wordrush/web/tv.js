@@ -5,7 +5,7 @@
 const $ = (id) => document.getElementById(id);
 let ST = null, curStage = "", seenTicker = 0;
 
-const joinUrl = new URL(".", location.href).href;
+const joinUrl = new URL("." + (window.AvranaIntegration?.integrated ? "?avrana=1" : ""), location.href).href;
 $("tv-url").textContent = joinUrl.replace(/^https?:\/\//, "");
 try { renderQR($("tv-qr"), joinUrl); } catch (e) { $("tv-qr").textContent = "scan the address below"; }
 

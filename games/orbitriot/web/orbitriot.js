@@ -468,6 +468,7 @@ function renderTVLobby(st) {
     const url = location.pathname.endsWith("/tv.html")
       ? new URL(".", location.href) : new URL(location.href);
     url.searchParams.delete("tv");
+    if (window.AvranaIntegration?.integrated) url.searchParams.set("avrana", "1");
     $("tv-url").textContent = `${location.host}${url.pathname}`;
     try { renderQR($("tv-qr"), url.toString()); } catch (error) { console.error("QR failed", error); }
   }

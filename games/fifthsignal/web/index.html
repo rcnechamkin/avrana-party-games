@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+<script src="/shared/avrana-integration.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>THE FIFTH SIGNAL · LAN GAMES</title>
@@ -11,14 +12,14 @@
 <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="15" fill="%23030713"/><circle cx="32" cy="32" r="22" fill="none" stroke="%233ff4ff" stroke-width="3"/><circle cx="32" cy="32" r="13" fill="none" stroke="%23a785ff" stroke-width="3"/><circle cx="32" cy="32" r="4" fill="%23ffffff"/></svg>'>
 <link rel="stylesheet" href="/shared/shared.css">
 <link rel="stylesheet" href="fifthsignal.css">
-<script src="/shared/brand.js" defer></script>
+<script src="/shared/brand.js?v=avrana1" defer></script>
 </head>
 <body class="signal-phone">
 <div class="signal-space" aria-hidden="true"><i></i><i></i><i></i></div>
 
 <main id="phone-app">
-  <section id="scr-join" class="phone-screen join-screen" hidden>
-    <a class="suite-home" href="/" aria-label="Back to all games"><span aria-hidden="true">‹</span><b>ALL GAMES</b></a>
+  <section data-avrana-screen id="scr-join" class="phone-screen join-screen" hidden>
+    <a class="suite-home" data-avrana-return href="/" aria-label="Back to all games"><span aria-hidden="true">‹</span><b>ALL GAMES</b></a>
     <div class="join-scroll">
       <div class="signal-lockup">
         <div class="signal-mark" aria-hidden="true">
@@ -31,12 +32,12 @@
 
       <div class="signal-card join-card">
         <label class="field-label" for="name-input">CREW CALL SIGN</label>
-        <input id="name-input" maxlength="14" autocomplete="off" spellcheck="false" placeholder="your name">
+        <input data-avrana-profile-name id="name-input" maxlength="14" autocomplete="off" spellcheck="false" placeholder="your name">
         <label class="field-label">IDENTITY BEACON</label>
-        <div id="avatar-grid" class="avatar-grid"></div>
-        <button id="pfp-btn" class="pfp-btn" type="button">📷 USE YOUR PROFILE PHOTO</button>
+        <div data-avrana-global id="avatar-grid" class="avatar-grid"></div>
+        <button data-avrana-global id="pfp-btn" class="pfp-btn" type="button">📷 USE YOUR PROFILE PHOTO</button>
         <button id="join-btn" class="signal-btn primary" type="button">BOARD THE AURORA</button>
-        <a class="tv-launch" href="tv.html" target="_blank" rel="noopener">
+        <a class="tv-launch" data-avrana-game-link href="tv.html" target="_blank" rel="noopener">
           <span>▣</span> OPEN MISSION CONTROL ON THE TV
         </a>
       </div>
@@ -44,15 +45,15 @@
     </div>
   </section>
 
-  <section id="scr-lobby" class="phone-screen lobby-screen" hidden>
+  <section data-avrana-screen id="scr-lobby" class="phone-screen lobby-screen" hidden>
     <header class="phone-topbar">
-      <a href="/" class="top-icon" aria-label="Back to all games">‹</a>
+      <a data-avrana-return href="/" class="top-icon" aria-label="Back to all games">‹</a>
       <div class="mini-lockup"><b>THE FIFTH SIGNAL</b><small>CREW ASSEMBLY</small></div>
-      <button id="pfp-btn2" class="top-icon" type="button" aria-label="Change profile photo">◎</button>
+      <button data-avrana-global id="pfp-btn2" class="top-icon" type="button" aria-label="Change profile photo">◎</button>
     </header>
 
     <div class="lobby-scroll">
-      <a class="tv-nudge signal-card" href="tv.html" target="_blank" rel="noopener">
+      <a class="tv-nudge signal-card" data-avrana-game-link href="tv.html" target="_blank" rel="noopener">
         <span class="tv-icon">▣</span>
         <p><b>PUT MISSION CONTROL ON A TV</b><small>Your phone carries private intel. Keep it close.</small></p>
         <em>OPEN ↗</em>
@@ -90,7 +91,7 @@
     </footer>
   </section>
 
-  <section id="scr-briefing" class="phone-screen briefing-screen" hidden>
+  <section data-avrana-screen id="scr-briefing" class="phone-screen briefing-screen" hidden>
     <header class="mission-head">
       <span class="live-pip"><i></i> MISSION LIVE</span>
       <b id="brief-mission-id">AURORA // 001</b>
@@ -107,7 +108,7 @@
     </div>
   </section>
 
-  <section id="scr-console" class="phone-screen console-screen" hidden>
+  <section data-avrana-screen id="scr-console" class="phone-screen console-screen" hidden>
     <header class="console-head">
       <div>
         <small id="console-round">CRISIS 1 / 5</small>
@@ -162,7 +163,7 @@
     <p id="game-status" class="a11y-live" role="status" aria-live="polite" aria-atomic="true"></p>
   </section>
 
-  <section id="scr-resolution" class="phone-screen resolution-screen" hidden>
+  <section data-avrana-screen id="scr-resolution" class="phone-screen resolution-screen" hidden>
     <header class="mission-head">
       <span class="live-pip"><i></i> INCIDENT REPORT</span>
       <b id="resolution-count">1 / 5</b>
@@ -181,7 +182,7 @@
     </div>
   </section>
 
-  <section id="scr-spectator" class="phone-screen spectator-screen" hidden>
+  <section data-avrana-screen id="scr-spectator" class="phone-screen spectator-screen" hidden>
     <header class="mission-head">
       <span class="live-pip"><i></i> OBSERVER LINK</span>
       <b id="spectator-phase">MISSION UNDERWAY</b>
@@ -203,13 +204,13 @@
       </article>
       <div class="section-head"><span>ACTIVE CREW</span><b>LIVE</b></div>
       <div id="spectator-crew" class="spectator-crew"></div>
-      <a class="spectator-tv signal-btn primary" href="tv.html" target="_blank" rel="noopener">▣ WATCH ON MISSION CONTROL</a>
+      <a class="spectator-tv signal-btn primary" data-avrana-game-link href="tv.html" target="_blank" rel="noopener">▣ WATCH ON MISSION CONTROL</a>
       <p class="spectator-note">Your phone is in observer mode. You’ll get a console in the next mission.</p>
-      <a class="end-home" href="/">BACK TO ALL GAMES</a>
+      <a class="end-home" data-avrana-return href="/">BACK TO ALL GAMES</a>
     </div>
   </section>
 
-  <section id="scr-sync" class="phone-screen sync-screen" hidden>
+  <section data-avrana-screen id="scr-sync" class="phone-screen sync-screen" hidden>
     <header class="mission-head">
       <span class="live-pip danger"><i></i> FINAL TRANSMISSION</span>
       <b id="sync-hull">HULL 20%</b>
@@ -230,7 +231,7 @@
     </div>
   </section>
 
-  <section id="scr-end" class="phone-screen end-screen" hidden>
+  <section data-avrana-screen id="scr-end" class="phone-screen end-screen" hidden>
     <div class="end-scroll">
       <div id="end-mark" class="end-mark"><span></span><b>5</b></div>
       <p id="end-kicker" class="signal-kicker">TRANSMISSION COMPLETE</p>
@@ -239,14 +240,14 @@
       <div id="end-crew" class="end-crew"></div>
       <div id="end-stats" class="end-stats signal-card"></div>
       <button id="again-btn" class="signal-btn primary" type="button">ANSWER ANOTHER SIGNAL</button>
-      <a class="end-home" href="/">BACK TO ALL GAMES</a>
+      <a class="end-home" data-avrana-return href="/">BACK TO ALL GAMES</a>
     </div>
   </section>
 </main>
 
 <div id="toasts" class="toasts"></div>
 <canvas id="confetti"></canvas>
-<script src="/shared/hubnet.js"></script>
+<script src="/shared/hubnet.js?v=avrana1"></script>
 <script src="phone.js"></script>
 </body>
 </html>

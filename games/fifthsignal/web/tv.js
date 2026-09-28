@@ -90,7 +90,7 @@ function flash(message, duration = 900) {
   host._timer = setTimeout(() => { host.hidden = true; }, duration);
 }
 
-const joinUrl = new URL(".", location.href).href;
+const joinUrl = new URL("." + (window.AvranaIntegration?.integrated ? "?avrana=1" : ""), location.href).href;
 $("tv-url").textContent = joinUrl.replace(/^https?:\/\//, "");
 try {
   renderQR($("tv-qr"), joinUrl);

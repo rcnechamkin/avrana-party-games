@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+<script src="/shared/avrana-integration.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>BRICKADE — LAN GAMES</title>
@@ -18,7 +19,7 @@
 </div>
 
 <!-- ============ JOIN ============ -->
-<section id="scr-join" class="scr" hidden>
+<section data-avrana-screen id="scr-join" class="scr" hidden>
   <div class="join-wrap">
     <div class="brand-lockup">
       <div class="brand-sigil" aria-hidden="true"><span></span></div>
@@ -35,10 +36,10 @@
         <span class="live-chip"><i></i> LIVE</span>
       </div>
       <label class="field-label" for="name-input">CALL SIGN</label>
-      <input id="name-input" maxlength="14" autocomplete="off" spellcheck="false" placeholder="your name">
+      <input data-avrana-profile-name id="name-input" maxlength="14" autocomplete="off" spellcheck="false" placeholder="your name">
       <label class="field-label">AVATAR</label>
-      <div id="avatar-grid" class="avatar-grid"></div>
-      <button id="pfp-btn" class="pfp-btn" type="button">📷 OR USE A PHOTO</button>
+      <div data-avrana-global id="avatar-grid" class="avatar-grid"></div>
+      <button data-avrana-global id="pfp-btn" class="pfp-btn" type="button">📷 OR USE A PHOTO</button>
       <button id="join-btn" class="btn btn-primary btn-big">TAKE THE NET</button>
     </div>
     <div class="join-features" aria-label="Game features">
@@ -50,15 +51,15 @@
 </section>
 
 <!-- ============ LOBBY ============ -->
-<section id="scr-lobby" class="scr" hidden>
+<section data-avrana-screen id="scr-lobby" class="scr" hidden>
   <header class="topbar lobby-topbar">
-    <a href="/" class="icon-btn hub-btn" title="Back to all games" aria-label="Back to all games">‹</a>
+    <a data-avrana-return href="/" class="icon-btn hub-btn" title="Back to all games" aria-label="Back to all games">‹</a>
     <span class="lobby-brand">
       <span class="wordmark-sm"><span class="wm-a">BRICK</span><span class="wm-b">ADE</span></span>
       <small>NEON NETWAR</small>
     </span>
     <span class="top-actions">
-      <button id="pfp-btn2" class="icon-btn" title="your photo" aria-label="Change player photo">📷</button>
+      <button data-avrana-global id="pfp-btn2" class="icon-btn" title="your photo" aria-label="Change player photo">📷</button>
       <button id="mute-btn" class="icon-btn" aria-label="Toggle sound">🔊</button>
     </span>
   </header>
@@ -99,7 +100,7 @@
 </section>
 
 <!-- ============ GAME ============ -->
-<section id="scr-game" class="scr" hidden>
+<section data-avrana-screen id="scr-game" class="scr" hidden>
   <canvas id="cv"></canvas>
   <div class="arena-vignette" aria-hidden="true"></div>
   <div id="game-chrome" class="game-chrome">
@@ -168,7 +169,7 @@
 </div>
 <canvas id="confetti"></canvas>
 
-<script src="/shared/hubnet.js"></script>
+<script src="/shared/hubnet.js?v=avrana1"></script>
 <script src="/shared/brag.js"></script>
 <script src="brickade.js"></script>
 </body>

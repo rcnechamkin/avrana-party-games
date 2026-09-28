@@ -57,7 +57,7 @@ const Sound = (() => {
   };
 })();
 
-const joinUrl = new URL(".", location.href).href;
+const joinUrl = new URL("." + (window.AvranaIntegration?.integrated ? "?avrana=1" : ""), location.href).href;
 $("tv-url").textContent = joinUrl.replace(/^https?:\/\//, "");
 try { renderQR($("tv-qr"), joinUrl); } catch (error) { $("tv-qr").textContent = "OPEN THE ADDRESS BELOW"; }
 async function holdWake() { try { S.wake = await navigator.wakeLock?.request("screen"); } catch (error) {} }

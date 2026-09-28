@@ -8,7 +8,7 @@ const GOAL = { line: "a full LINE", corners: "all 4 CORNERS", blackout: "the WHO
 let lastStage = "", built75 = false;
 
 /* join QR points at the controller page (this file sits next to it) */
-const joinUrl = new URL(".", location.href).href;
+const joinUrl = new URL("." + (window.AvranaIntegration?.integrated ? "?avrana=1" : ""), location.href).href;
 $("tv-url").textContent = joinUrl.replace(/^https?:\/\//, "");
 try { renderQR($("tv-qr"), joinUrl); } catch (e) { $("tv-qr").textContent = "scan the address below"; }
 

@@ -1,9 +1,10 @@
 <!doctype html>
 <html lang="en">
 <head>
+<script src="/shared/avrana-integration.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<link rel="manifest" href="/app.webmanifest">
+
 <link rel="apple-touch-icon" sizes="180x180" href="/shared/app-icon-180.png">
 <title>WORDCLASH</title>
 <meta name="description" content="A fast, local multiplayer word battle for phones and the big screen.">
@@ -16,13 +17,13 @@
 <body>
 <div class="bg-fx" aria-hidden="true"></div>
 
-<main id="app">
+<main data-avrana-viewport id="app">
 
   <!-- ============ JOIN ============ -->
   <section id="screen-join" class="screen" hidden>
     <div class="join-wrap">
       <div class="join-nav">
-        <a class="suite-link" href="/" aria-label="Return to all LAN Games">‹ <span>ALL GAMES</span></a>
+        <a class="suite-link" data-avrana-return href="/" aria-label="Return to all LAN Games">‹ <span>ALL GAMES</span></a>
         <span class="join-edition">LIVE PARTY EDITION</span>
       </div>
       <div class="join-emblem" aria-hidden="true">
@@ -33,11 +34,11 @@
       <p class="tagline">FIVE LETTERS. NO MERCY.</p>
       <div class="join-card" aria-labelledby="join-title">
         <label class="field-label" for="name-input">CALL SIGN</label>
-        <input id="name-input" type="text" maxlength="14" autocomplete="nickname" autocapitalize="words"
+        <input data-avrana-profile-name id="name-input" type="text" maxlength="14" autocomplete="nickname" autocapitalize="words"
                enterkeyhint="done" spellcheck="false" placeholder="your name">
         <span id="avatar-label" class="field-label">CHOOSE YOUR PLAYER</span>
-        <div id="avatar-grid" class="avatar-grid" role="group" aria-labelledby="avatar-label"></div>
-        <button id="pfp-btn" class="pfp-btn" type="button">📷 OR USE A PHOTO</button>
+        <div data-avrana-global id="avatar-grid" class="avatar-grid" role="group" aria-labelledby="avatar-label"></div>
+        <button data-avrana-global id="pfp-btn" class="pfp-btn" type="button">📷 OR USE A PHOTO</button>
         <button id="join-btn" class="btn btn-primary btn-big" type="button">ENTER LOBBY</button>
       </div>
       <p class="join-foot">local multiplayer &middot; no accounts &middot; no cloud</p>
@@ -47,11 +48,11 @@
   <!-- ============ LOBBY ============ -->
   <section id="screen-lobby" class="screen" hidden>
     <header class="topbar">
-      <a class="suite-link topbar-home" href="/" aria-label="Return to all LAN Games">‹ <span>GAMES</span></a>
+      <a class="suite-link topbar-home" data-avrana-return href="/" aria-label="Return to all LAN Games">‹ <span>GAMES</span></a>
       <span class="wordmark-sm" aria-label="WordClash"><span class="wm-a">WORD</span><span class="wm-b">CLASH</span></span>
       <div class="topbar-right">
         <button id="mute-btn" class="icon-btn" type="button" title="sound" aria-label="Mute game sound">🔊</button>
-        <button id="edit-profile-btn" class="icon-btn" type="button" title="profile" aria-label="Edit player profile">✏️</button>
+        <button data-avrana-global id="edit-profile-btn" class="icon-btn" type="button" title="profile" aria-label="Edit player profile">✏️</button>
       </div>
     </header>
 
@@ -95,7 +96,7 @@
   <!-- ============ GAME ============ -->
   <section id="screen-game" class="screen" hidden>
     <header class="hud">
-      <a class="hud-home" href="/" aria-label="Leave match and return to all games">‹</a>
+      <a class="hud-home" data-avrana-return href="/" aria-label="Leave match and return to all games">‹</a>
       <span id="hud-round" class="hud-pill">R1/3</span>
       <div id="hud-timer" class="hud-timer" role="progressbar" aria-label="Time remaining"
            aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><div id="hud-timer-fill"></div></div>
@@ -137,7 +138,7 @@
   <!-- ============ ROUND END ============ -->
   <section id="screen-roundend" class="screen" hidden>
     <div id="roundend-wrap" class="roundend-wrap">
-      <a class="suite-link result-home" href="/" aria-label="Return to all LAN Games">‹ <span>ALL GAMES</span></a>
+      <a class="suite-link result-home" data-avrana-return href="/" aria-label="Return to all LAN Games">‹ <span>ALL GAMES</span></a>
       <div id="re-emblem" class="result-emblem" aria-hidden="true">◆</div>
       <p id="re-outcome" class="re-outcome">ROUND COMPLETE</p>
       <p id="re-reason" class="re-reason">TIME'S UP</p>
@@ -151,7 +152,7 @@
   <!-- ============ PODIUM ============ -->
   <section id="screen-podium" class="screen" hidden>
     <div class="podium-wrap">
-      <a class="suite-link result-home" href="/" aria-label="Return to all LAN Games">‹ <span>ALL GAMES</span></a>
+      <a class="suite-link result-home" data-avrana-return href="/" aria-label="Return to all LAN Games">‹ <span>ALL GAMES</span></a>
       <p id="podium-kicker" class="podium-kicker">MATCH COMPLETE</p>
       <p class="podium-title">FINAL STANDINGS</p>
       <div id="podium" class="podium" aria-label="Final standings"></div>
@@ -173,14 +174,14 @@
 </div>
 
 <!-- profile modal -->
-<div id="profile-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="profile-title" hidden>
+<div data-avrana-global id="profile-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="profile-title" hidden>
   <div class="modal-card">
     <p id="profile-title" class="modal-title">PLAYER PROFILE</p>
     <label class="field-label" for="profile-name">CALL SIGN</label>
     <input id="profile-name" type="text" maxlength="14" autocomplete="nickname" autocapitalize="words"
            enterkeyhint="done" spellcheck="false">
     <div id="profile-avatars" class="avatar-grid" role="group" aria-label="Choose your player"></div>
-    <button id="pfp-btn2" class="pfp-btn" type="button">📷 USE A PHOTO INSTEAD</button>
+    <button data-avrana-global id="pfp-btn2" class="pfp-btn" type="button">📷 USE A PHOTO INSTEAD</button>
     <div class="modal-btns">
       <button id="profile-cancel" class="btn btn-ghost" type="button">CANCEL</button>
       <button id="profile-save" class="btn btn-primary" type="button">SAVE</button>
@@ -195,6 +196,7 @@
 <div id="wc-alert" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
 <canvas id="confetti"></canvas>
 
+<script src="/shared/hubnet.js?v=avrana1"></script>
 <script src="brag.js"></script>
 <script src="app.js"></script>
 </body>

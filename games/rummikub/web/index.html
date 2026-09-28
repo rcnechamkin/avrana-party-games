@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+<script src="/shared/avrana-integration.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>RUMMIKUB — GAMEHUB</title>
@@ -16,28 +17,28 @@
 <div class="bg-fx" aria-hidden="true"></div>
 
 <!-- ============ JOIN ============ -->
-<section id="scr-join" class="scr" hidden>
+<section data-avrana-screen id="scr-join" class="scr" hidden>
   <div class="join-wrap">
     <h1 class="wordmark"><span class="wm-a">RUMMI</span><span class="wm-b">KUB</span></h1>
     <p class="tagline">MELD 30. THEN WRECK THE TABLE. LEGALLY.</p>
     <div class="join-card">
       <label class="field-label" for="name-input">CALL SIGN</label>
-      <input id="name-input" maxlength="14" autocomplete="off" spellcheck="false" placeholder="your name">
+      <input data-avrana-profile-name id="name-input" maxlength="14" autocomplete="off" spellcheck="false" placeholder="your name">
       <label class="field-label">AVATAR</label>
-      <div id="avatar-grid" class="avatar-grid"></div>
-      <button id="pfp-btn" class="pfp-btn" type="button">📷 OR USE A PHOTO</button>
+      <div data-avrana-global id="avatar-grid" class="avatar-grid"></div>
+      <button data-avrana-global id="pfp-btn" class="pfp-btn" type="button">📷 OR USE A PHOTO</button>
       <button id="join-btn" class="btn btn-primary btn-big">RACK UP</button>
     </div>
   </div>
 </section>
 
 <!-- ============ LOBBY ============ -->
-<section id="scr-lobby" class="scr" hidden>
+<section data-avrana-screen id="scr-lobby" class="scr" hidden>
   <header class="topbar">
-    <a href="/" class="icon-btn" style="display:grid;place-items:center">🕹</a>
+    <a data-avrana-return href="/" class="icon-btn" style="display:grid;place-items:center">🕹</a>
     <span class="wordmark-sm"><span class="wm-a">RUMMI</span><span class="wm-b">KUB</span></span>
     <span style="display:flex;gap:8px">
-      <button id="pfp-btn2" class="icon-btn" title="your photo">📷</button>
+      <button data-avrana-global id="pfp-btn2" class="icon-btn" title="your photo">📷</button>
       <button id="mute-btn" class="icon-btn">🔊</button>
     </span>
   </header>
@@ -75,9 +76,9 @@
 </section>
 
 <!-- ============ GAME ============ -->
-<section id="scr-game" class="scr" hidden>
+<section data-avrana-screen id="scr-game" class="scr" hidden>
   <header class="rk-head">
-    <a href="/" class="head-link">🕹</a>
+    <a data-avrana-return href="/" class="head-link">🕹</a>
     <div id="seat-strip" class="seat-strip"></div>
     <div id="pool-chip" class="pool-chip">🁵 <b>64</b></div>
   </header>
@@ -125,7 +126,7 @@
 <div id="countdown-overlay" class="countdown-overlay" hidden><span id="countdown-num">3</span></div>
 <canvas id="confetti"></canvas>
 
-<script src="/shared/hubnet.js"></script>
+<script src="/shared/hubnet.js?v=avrana1"></script>
 <script src="/shared/brag.js"></script>
 <script src="rummikub.js"></script>
 </body>

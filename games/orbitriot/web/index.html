@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+<script src="/shared/avrana-integration.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>ORBIT RIOT — LAN GAMES</title>
@@ -11,14 +12,14 @@
 <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="15" fill="%23050711"/><circle cx="32" cy="32" r="13" fill="%23ff3dbb"/><path d="M7 39Q31 3 57 27" fill="none" stroke="%234cf7ff" stroke-width="5" stroke-linecap="round"/></svg>'>
 <link rel="stylesheet" href="/shared/shared.css">
 <link rel="stylesheet" href="orbitriot.css">
-  <script src="/shared/brand.js" defer></script>
+  <script src="/shared/brand.js?v=avrana1" defer></script>
 </head>
 <body>
 <div class="cosmos" aria-hidden="true"><i></i><i></i><i></i></div>
 
 <!-- PHONE: profile / lobby -->
 <main id="phone-app" hidden>
-  <section id="scr-join" class="phone-screen" hidden>
+  <section data-avrana-screen id="scr-join" class="phone-screen" hidden>
     <div class="join-shell">
       <div class="brand-lockup">
         <div class="brand-orbit" aria-hidden="true"><span>●</span></div>
@@ -28,28 +29,28 @@
       </div>
       <div class="join-card glass">
         <label class="field-label" for="name-input">YOUR CALL SIGN</label>
-        <input id="name-input" maxlength="14" autocomplete="off" spellcheck="false" placeholder="your name">
+        <input data-avrana-profile-name id="name-input" maxlength="14" autocomplete="off" spellcheck="false" placeholder="your name">
         <label class="field-label">PICK YOUR COMET PILOT</label>
-        <div id="avatar-grid" class="avatar-grid"></div>
-        <button id="pfp-btn" class="pfp-btn" type="button">📷 OR USE A PHOTO</button>
+        <div data-avrana-global id="avatar-grid" class="avatar-grid"></div>
+        <button data-avrana-global id="pfp-btn" class="pfp-btn" type="button">📷 OR USE A PHOTO</button>
         <button id="join-btn" class="btn btn-primary btn-big">JOIN THE RIOT</button>
-        <a class="tv-launch" href="tv.html" target="_blank" rel="noopener">📺 OPEN THE BIG-SCREEN VIEW</a>
+        <a class="tv-launch" data-avrana-game-link href="tv.html" target="_blank" rel="noopener">📺 OPEN THE BIG-SCREEN VIEW</a>
       </div>
       <p class="join-foot">2–8 PHONES · ONE TV · ZERO APP DOWNLOADS</p>
     </div>
   </section>
 
-  <section id="scr-lobby" class="phone-screen" hidden>
+  <section data-avrana-screen id="scr-lobby" class="phone-screen" hidden>
     <header class="phone-topbar">
-      <a href="/" class="icon-btn home-btn" aria-label="Game hub">🕹</a>
+      <a data-avrana-return href="/" class="icon-btn home-btn" aria-label="Game hub">🕹</a>
       <div><span class="mini-brand">ORBIT <b>RIOT</b></span><small>LAUNCH BAY</small></div>
-      <button id="pfp-btn2" class="icon-btn" aria-label="Change photo">📷</button>
+      <button data-avrana-global id="pfp-btn2" class="icon-btn" aria-label="Change photo">📷</button>
     </header>
     <div class="lobby-scroll">
       <div class="tv-nudge glass">
         <span class="tv-nudge-icon">📺</span>
         <div><b>PUT THIS ONE ON THE BIG SCREEN</b><small>The TV shows the arena. Phones keep every trajectory secret.</small></div>
-        <a href="tv.html" target="_blank" rel="noopener">OPEN</a>
+        <a data-avrana-game-link href="tv.html" target="_blank" rel="noopener">OPEN</a>
       </div>
       <div class="section-title"><span>PILOTS</span><b id="ready-count">0/8 READY</b></div>
       <div id="player-grid" class="pilot-grid"></div>
@@ -74,7 +75,7 @@
   </section>
 
   <!-- PHONE: private controller -->
-  <section id="scr-aim" class="phone-screen game-phone" hidden>
+  <section data-avrana-screen id="scr-aim" class="phone-screen game-phone" hidden>
     <header class="game-head">
       <span id="heat-chip">HEAT 1/5</span>
       <div class="score-pill"><small>YOUR SCORE</small><b id="my-score">0</b></div>
@@ -110,7 +111,7 @@
   </section>
 
   <!-- PHONE: watch the shared display -->
-  <section id="scr-watch" class="phone-screen watch-screen" hidden>
+  <section data-avrana-screen id="scr-watch" class="phone-screen watch-screen" hidden>
     <header class="game-head">
       <span id="watch-heat">HEAT 1/5</span>
       <div class="score-pill"><small>YOUR SCORE</small><b id="watch-score">0</b></div>
@@ -190,7 +191,7 @@
 </main>
 
 <div id="toasts" class="toasts"></div>
-<script src="/shared/hubnet.js"></script>
+<script src="/shared/hubnet.js?v=avrana1"></script>
 <script src="/shared/qr.js"></script>
 <script src="/shared/brag.js"></script>
 <script src="orbitriot.js"></script>
