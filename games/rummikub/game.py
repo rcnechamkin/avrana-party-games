@@ -314,7 +314,7 @@ class RummikubSession(GameSession):
     def game_player_back(self, token):
         if self.g and token in self.g["order"]:
             p = self.players[token]
-            return [self.fx("toast", msg="%s is back" % p.name, icon=p.avatar)]
+            return [self.fx("toast", msg="%s is back" % p.name, icon=p.toast_icon)]
         return []
 
     # ---------------- serialization ----------------

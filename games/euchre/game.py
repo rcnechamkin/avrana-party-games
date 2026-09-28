@@ -483,7 +483,7 @@ class EuchreSession(GameSession):
             return []
         p = self.players[token]
         return [self.fx("toast", msg="%s is back at the table" % p.name,
-                        icon=p.avatar)]
+                        icon=p.toast_icon)]
 
     # ---------------- serialization ----------------
 

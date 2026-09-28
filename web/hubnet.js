@@ -134,14 +134,18 @@ const Hub = (() => {
     };
   })();
 
-  /* render a player's avatar into `el`: custom photo if they have one,
-     else their emoji. Sizing is em-based, so it scales with the host. */
+  /* render a player's avatar into `el`: custom photo if they have one (the server
+     also sends a chosen Avrana avatar as `pfp`, core/looks.py), else their own chosen
+     Avrana avatar id (gaze-NN, e.g. your local identity), else their emoji.
+     Sizing is em-based, so it scales with the host. */
+  const LOOK = /^gaze-(0[1-9]|[12]\d|3[0-2])$/;
   function fillAvatar(el, p) {
     el.textContent = "";
-    if (p && p.pfp) {
+    const picture = p && (p.pfp || (LOOK.test(p.avatar || "") ? "/shared/avatars/" + p.avatar + ".svg" : ""));
+    if (picture) {
       const img = document.createElement("img");
       img.className = "pfp";
-      img.src = p.pfp;
+      img.src = picture;
       img.alt = "";
       img.draggable = false;
       el.appendChild(img);
@@ -186,13 +190,14 @@ const Hub = (() => {
         + '<p class="crop-title">FRAME YOUR FACE</p>'
         + '<div class="crop-stage"><canvas class="crop-cv"></canvas>'
         + '<div class="crop-ring"></div></div>'
-        + '<div class="crop-zoom"><span>👤</span>'
-        + '<input type="range" class="crop-slider" min="1" max="4" step="0.01" value="1">'
-        + '<span>🔍</span></div>'
+        + '<div class="crop-zoom"><span data-icon="zoom-out"></span>'
+        + '<input type="range" class="crop-slider" aria-label="Zoom" min="1" max="4" step="0.01" value="1">'
+        + '<span data-icon="zoom-in"></span></div>'
         + '<p class="crop-hint">drag to move · pinch or slide to zoom</p>'
         + '<div class="crop-btns"><button class="btn crop-cancel">CANCEL</button>'
         + '<button class="btn btn-primary crop-ok">USE PHOTO</button></div></div>';
       document.body.appendChild(ov);
+      ov.querySelectorAll("[data-icon]").forEach((slot) => slot.appendChild(icon(slot.dataset.icon)));
       const cv = ov.querySelector(".crop-cv");
       const ctx = cv.getContext("2d");
       const slider = ov.querySelector(".crop-slider");
@@ -310,7 +315,7 @@ const Hub = (() => {
         const url = await uploadPfp(blob);
         const conn = getConn && getConn();
         if (conn) conn.send({ t: "profile" });
-        toast("📷 picture saved");
+        toast("Photo saved");
         onDone && onDone(url);
       } catch (e) {
         toast(e.message || "upload failed", "err");
@@ -318,20 +323,85 @@ const Hub = (() => {
     });
   }
 
+  /* The standalone join screens' picker offers the same 32 Avrana avatars as the Party
+     profile (web/avatars/, core/looks.py). A stored legacy emoji preselects the avatar at
+     its position, exactly like the Party profile's migration. */
+  const LOOKS = Array.from({ length: 32 }, (_, i) => "gaze-" + String(i + 1).padStart(2, "0"));
   function buildAvatarGrid(host, current, onPick) {
     host.textContent = "";
-    for (const a of AVATARS) {
+    const legacy = AVATARS.indexOf(current);
+    const chosen = LOOKS.includes(current) ? current : legacy >= 0 ? LOOKS[legacy] : null;
+    LOOKS.forEach((a, i) => {
       const c = document.createElement("button");
-      c.className = "avatar-cell" + (a === current ? " sel" : "");
-      c.textContent = a;
+      c.type = "button";
+      c.className = "avatar-cell" + (a === chosen ? " sel" : "");
+      c.setAttribute("aria-label", "Avatar " + (i + 1));
+      c.setAttribute("aria-pressed", String(a === chosen));
+      const img = document.createElement("img");
+      img.src = "/shared/avatars/" + a + ".svg";
+      img.alt = "";
+      img.draggable = false;
+      c.appendChild(img);
       c.onclick = () => {
-        host.querySelectorAll(".avatar-cell").forEach((x) => x.classList.remove("sel"));
+        host.querySelectorAll(".avatar-cell").forEach((x) => {
+          x.classList.remove("sel"); x.setAttribute("aria-pressed", "false");
+        });
         c.classList.add("sel");
+        c.setAttribute("aria-pressed", "true");
         onPick(a);
       };
       host.appendChild(c);
-    }
+    });
   }
+
+  /* System icons for the shared game shell (Avrana system language): Lucide line icons,
+     from lucide-static 1.48.0 (ISC licence, https://lucide.dev/license; docs/ASSETS.md).
+     Markup opts in with <span data-icon="name"></span>; a few controls whose games still
+     write an emoji glyph into them (sound, photo, back) are upgraded in place, so no game
+     script has to change. Game artwork is never touched here. */
+  const UI_ICONS = {"camera":[["path",{"d":"M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"}],["circle",{"cx":"12","cy":"13","r":"3"}]],"volume-2":[["path",{"d":"M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"}],["path",{"d":"M16 9a5 5 0 0 1 0 6"}],["path",{"d":"M19.364 18.364a9 9 0 0 0 0-12.728"}]],"volume-x":[["path",{"d":"M11 4.702a.7.7 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.7.7 0 0 0 11 19.298z"}],["path",{"d":"m16.5 14.5 5-5"}],["path",{"d":"m16.5 9.5 5 5"}]],"house":[["path",{"d":"M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"}],["path",{"d":"M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"}]],"tv":[["path",{"d":"m17 2-5 5-5-5"}],["rect",{"width":"20","height":"15","x":"2","y":"7","rx":"2"}]],"arrow-up-right":[["path",{"d":"M7 7h10v10"}],["path",{"d":"M7 17 17 7"}]],"circle-user-round":[["path",{"d":"M17.925 20.056a6 6 0 0 0-11.851.001"}],["circle",{"cx":"12","cy":"11","r":"4"}],["circle",{"cx":"12","cy":"12","r":"10"}]],"sparkles":[["path",{"d":"M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"}],["path",{"d":"M20 2v4"}],["path",{"d":"M22 4h-4"}],["circle",{"cx":"4","cy":"20","r":"2"}]],"target":[["circle",{"cx":"12","cy":"12","r":"10"}],["circle",{"cx":"12","cy":"12","r":"6"}],["circle",{"cx":"12","cy":"12","r":"2"}]],"moon":[["path",{"d":"M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"}]],"sun":[["circle",{"cx":"12","cy":"12","r":"4"}],["path",{"d":"M12 2v2"}],["path",{"d":"M12 20v2"}],["path",{"d":"m4.93 4.93 1.41 1.41"}],["path",{"d":"m17.66 17.66 1.41 1.41"}],["path",{"d":"M2 12h2"}],["path",{"d":"M20 12h2"}],["path",{"d":"m6.34 17.66-1.41 1.41"}],["path",{"d":"m19.07 4.93-1.41 1.41"}]],"trophy":[["path",{"d":"M10 14.66V17a1 1 0 0 1-1 1 2 2 0 0 0-2 2v2"}],["path",{"d":"M14 14.66V17a1 1 0 0 0 1 1 2 2 0 0 1 2 2v2"}],["path",{"d":"M17.916 10H19.5A2.5 2.5 0 0 0 22 7.5V5a1 1 0 0 0-1-1h-3"}],["path",{"d":"M4 22h16"}],["path",{"d":"M6 9a6 6 0 0 0 12 0V3a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1z"}],["path",{"d":"M6.084 10H4.5A2.5 2.5 0 0 1 2 7.5V5a1 1 0 0 1 1-1h3"}]],"a-large-small":[["path",{"d":"m15 16 2.536-7.328a1.02 1.02 1 0 1 1.928 0L22 16"}],["path",{"d":"M15.697 14h5.606"}],["path",{"d":"m2 16 4.039-9.69a.5.5 0 0 1 .923 0L11 16"}],["path",{"d":"M3.304 13h6.392"}]],"compass":[["circle",{"cx":"12","cy":"12","r":"10"}],["path",{"d":"m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"}]],"zap":[["path",{"d":"M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z"}]],"radio-tower":[["path",{"d":"M4.9 16.1C1 12.2 1 5.8 4.9 1.9"}],["path",{"d":"M7.8 4.7a6.14 6.14 0 0 0-.8 7.5"}],["circle",{"cx":"12","cy":"9","r":"2"}],["path",{"d":"M16.2 4.8c2 2 2.26 5.11.8 7.47"}],["path",{"d":"M19.1 1.9a9.96 9.96 0 0 1 0 14.1"}],["path",{"d":"M9.5 18h5"}],["path",{"d":"m8 22 4-11 4 11"}]],"heart-pulse":[["path",{"d":"M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"}],["path",{"d":"M3.22 13H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27"}]],"layout-grid":[["rect",{"width":"7","height":"7","x":"3","y":"3","rx":"1"}],["rect",{"width":"7","height":"7","x":"14","y":"3","rx":"1"}],["rect",{"width":"7","height":"7","x":"14","y":"14","rx":"1"}],["rect",{"width":"7","height":"7","x":"3","y":"14","rx":"1"}]],"zoom-in":[["circle",{"cx":"11","cy":"11","r":"8"}],["line",{"x1":"21","x2":"16.65","y1":"21","y2":"16.65"}],["line",{"x1":"11","x2":"11","y1":"8","y2":"14"}],["line",{"x1":"8","x2":"14","y1":"11","y2":"11"}]],"zoom-out":[["circle",{"cx":"11","cy":"11","r":"8"}],["line",{"x1":"21","x2":"16.65","y1":"21","y2":"16.65"}],["line",{"x1":"8","x2":"14","y1":"11","y2":"11"}]]};
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  function icon(name) {
+    const svg = document.createElementNS(SVG_NS, "svg");
+    for (const [k, v] of Object.entries({ viewBox: "0 0 24 24", fill: "none", stroke: "currentColor",
+      "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round", class: "ui-ic",
+      "aria-hidden": "true", focusable: "false" })) svg.setAttribute(k, v);
+    for (const [tag, props] of UI_ICONS[name] || []) {
+      const child = document.createElementNS(SVG_NS, tag);
+      for (const [k, v] of Object.entries(props)) child.setAttribute(k, v);
+      svg.appendChild(child);
+    }
+    return svg;
+  }
+  // glyph -> [icon, accessible name when the control shows only the icon]
+  const CONTROL_GLYPHS = [["\u{1F50A}", "volume-2", "Sound on"], ["\u{1F507}", "volume-x", "Sound off"],
+    ["\u{1F4F7}", "camera", "Your photo"], ["\u{1F579}", "house", "All games"], ["\u25CE", "circle-user-round", "Your photo"]];
+  function upgradeControl(el) {
+    const text = (el.textContent || "").trim();
+    const hit = CONTROL_GLYPHS.find(([glyph]) => text.startsWith(glyph));
+    if (!hit) return;
+    const [glyph, name, label] = hit;
+    const rest = text.slice(glyph.length).replace(/^\uFE0F/, "").trim();
+    el.replaceChildren(icon(name), ...(rest ? [document.createTextNode(" " + rest)] : []));
+    // sound toggles say their state; other icon-only controls keep a name they already have
+    if (!rest && (name.startsWith("volume") || !el.getAttribute("aria-label"))) el.setAttribute("aria-label", label);
+  }
+  // Decoration only: it must never be able to break the connection plumbing below, so it
+  // needs a real DOM and swallows its own errors.
+  function installIcons() {
+    if (typeof document.querySelectorAll !== "function" || typeof MutationObserver !== "function") return;
+    try {
+      document.querySelectorAll("[data-icon]:empty").forEach((slot) => slot.appendChild(icon(slot.dataset.icon)));
+      document.querySelectorAll("#mute-btn, #mute-btn2, #pfp-btn, #pfp-btn2, .pfp-btn, [data-avrana-return]")
+        .forEach((el) => {
+          upgradeControl(el);
+          new MutationObserver(() => upgradeControl(el))
+            .observe(el, { childList: true, characterData: true, subtree: true });
+        });
+    } catch (e) { /* icons are optional */ }
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", installIcons, { once: true });
+  else installIcons();
 
   function toast(msg, cls = "") {
     let holder = document.getElementById("toasts");
@@ -682,7 +752,7 @@ const Hub = (() => {
   }
   queueMicrotask(installGameShell);
 
-  return { AVATARS, identity, buildAvatarGrid, toast, connect, confettiBurst,
+  return { AVATARS, identity, buildAvatarGrid, toast, connect, confettiBurst, icon,
            fillAvatar, uploadPfp, removePfp, editPhoto, wirePfpButton,
            prefs, feedback, applyPrefs };
 })();

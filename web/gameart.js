@@ -118,6 +118,18 @@ window.GameArt = (() => {
         ${tile(175, 96, 82, 123, "A", "ga-card")}
       </g>
       <path class="ga-streak" d="M61 308Q146 252 246 310"/>`,
+    // A two-card hand: one hidden, one face up with a role nobody can verify, and the coins.
+    bluff: `
+      <g class="ga-float" transform="rotate(-8 150 190)">
+        <rect class="ga-panel" x="52" y="88" width="98" height="140" rx="12"/>
+        <path class="ga-b-stroke" d="M72 114l58 88M130 114l-58 88"/>
+        ${tile(140, 74, 106, 152, "", "ga-card")}
+        ${ball(193, 140, 28, "ga-core")}
+        <text class="ga-ball-label ga-dark" x="193" y="154">?</text>
+      </g>
+      <g class="ga-drift">${ball(100, 300, 22, "ga-core")}${ball(131, 289, 22, "ga-b")}
+        ${ball(162, 302, 22, "ga-core")}</g>
+      <path class="ga-line" d="M52 338h196"/>`,
     charades: `
       <g class="ga-float">
         <path class="ga-panel ga-solid" d="M43 116q53-37 106 0v96q-53 63-106 0z"/>

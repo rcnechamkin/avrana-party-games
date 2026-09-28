@@ -129,6 +129,7 @@ input::placeholder { color: var(--faint); font-weight: 400; }
   filter: drop-shadow(0 1px 1px rgba(255,255,255,.24));
 }
 .avatar-cell:active { transform: scale(0.92); }
+.avatar-cell img { width: 86%; height: 86%; border-radius: 50%; pointer-events: none; }
 .avatar-cell.sel {
   border-color: var(--cyan);
   box-shadow: 0 0 0 1px var(--cyan), 0 0 16px rgba(34, 211, 238, 0.35);
@@ -320,4 +321,93 @@ img.pfp {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ---- Avrana pre-game shell -------------------------------------------------------------
+   The join and lobby screens (#scr-join, #scr-lobby) are Avrana system UI: who is here,
+   the rules, the options and the one button that starts things. They take the Avrana Party
+   prototype theme (avrana-party docs/UI-DESIGN-SYSTEM.md): charcoal surfaces, hairline
+   borders, one muted-purple primary action, 44 px+ targets, system type, line icons.
+   Gameplay screens keep each game's own look; the game's wordmark and key art stay its own.
+   Scoped with :root :is(...) so it outranks per-game sheets without touching them. */
+:root :is(#scr-join, #scr-lobby) {
+  --bg: #121218; --surface: #1b1b23; --raised: #262730; --line: #34343f; --text: #eeebe5;
+  --muted: #b0afc0; --faint: #8f8da0; --cyan: #c5b3e8; --violet: #c5b3e8; --green: #70c696;
+  --danger: #e66e6d; --av-primary: #765fb8; --av-primary-ink: #faf9fe;
+  --av-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #121218; color: var(--text); font-family: var(--av-sans);
+}
+body:has(:is(#scr-join, #scr-lobby):not([hidden])) { background: #121218; }
+body:has(:is(#scr-join, #scr-lobby):not([hidden])) .bg-fx { display: none; }
+.ui-ic { width: 1.2em; height: 1.2em; flex: none; vertical-align: -0.22em; }
+:root :is(#scr-join, #scr-lobby) [data-icon] .ui-ic { color: var(--cyan); }
+
+/* type: readable, not tiny; section labels are quiet eyebrows */
+:root :is(#scr-join, #scr-lobby) :is(.tagline, .seat-note) {
+  font-family: var(--av-sans); font-size: 15px; letter-spacing: 0; line-height: 1.45; color: var(--muted);
+}
+:root :is(#scr-join, #scr-lobby) :is(.sec-head h2, .lobby-sec h2, .field-label) {
+  font-family: var(--av-sans); font-size: 13px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted);
+}
+:root :is(#scr-join, #scr-lobby) .sec-badge { font-family: var(--av-sans); color: var(--muted); }
+:root :is(#scr-join, #scr-lobby) .howto { list-style: none; padding: 0; display: grid; gap: 10px; }
+:root :is(#scr-join, #scr-lobby) .howto li {
+  font-family: var(--av-sans); font-size: 15px; line-height: 1.5; color: var(--text); letter-spacing: 0;
+}
+
+/* surfaces */
+:root :is(#scr-join, #scr-lobby) .join-card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 20px;
+  box-shadow: none; backdrop-filter: none;
+}
+:root :is(#scr-join, #scr-lobby) .player-card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: none;
+}
+:root :is(#scr-join, #scr-lobby) .player-card.is-ready { border-color: color-mix(in srgb, var(--green) 60%, var(--line)); }
+:root :is(#scr-join, #scr-lobby) .pc-avatar { width: 40px; height: 40px; border-radius: 50%; overflow: hidden; background: var(--raised); }
+:root :is(#scr-join, #scr-lobby) .pc-avatar img.pfp { width: 100%; height: 100%; border-radius: 50%; box-shadow: none; }
+:root :is(#scr-join, #scr-lobby) .pc-name { font-family: var(--av-sans); font-size: 15px; }
+:root :is(#scr-join, #scr-lobby) .pc-status { font-family: var(--av-sans); font-size: 13px; color: var(--muted); }
+:root :is(#scr-join, #scr-lobby) .pc-status.rdy { color: var(--green); }
+
+/* controls: 44 px+, calm, one clear primary */
+:root :is(#scr-join, #scr-lobby) .icon-btn {
+  display: inline-grid; place-items: center; width: 44px; height: 44px; font-size: 20px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px; color: var(--text);
+}
+:root :is(#scr-join, #scr-lobby) :is(input[type="text"], input:not([type])) {
+  background: #121218; border: 1px solid var(--line); border-radius: 12px; font-family: var(--av-sans);
+  font-size: 17px; min-height: 48px;
+}
+:root :is(#scr-join, #scr-lobby) :is(input, button, a):focus-visible { outline: 3px solid var(--cyan); outline-offset: 2px; }
+:root :is(#scr-join, #scr-lobby) .btn {
+  font-family: var(--av-sans); letter-spacing: 0.02em; min-height: 48px; border-radius: 12px;
+  background: var(--raised); border: 1px solid var(--line); color: var(--text); box-shadow: none;
+}
+:root :is(#scr-join, #scr-lobby) .btn-big { min-height: 56px; border-radius: 14px; font-size: 18px; }
+:root :is(#scr-join, #scr-lobby) :is(.btn-primary, .btn-ready, .btn-go) {
+  background: var(--av-primary); border-color: transparent; color: var(--av-primary-ink);
+  box-shadow: none; animation: none;
+}
+:root :is(#scr-join, #scr-lobby) .btn-ready.is-ready {
+  background: transparent; border: 2px solid var(--green); color: var(--green); box-shadow: none;
+}
+:root :is(#scr-join, #scr-lobby) .seg {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 3px; gap: 3px;
+}
+:root :is(#scr-join, #scr-lobby) .seg button {
+  min-height: 44px; min-width: 44px; padding: 0 12px; border-radius: 9px; font-family: var(--av-sans);
+  font-size: 15px; font-weight: 650; letter-spacing: 0.02em; color: var(--muted); box-shadow: none;
+}
+:root :is(#scr-join, #scr-lobby) .seg button.sel {
+  background: color-mix(in srgb, var(--av-primary) 55%, var(--raised)); color: var(--av-primary-ink);
+  box-shadow: inset 0 0 0 1px var(--av-primary);
+}
+:root :is(#scr-join, #scr-lobby) .stepper button {
+  width: 44px; height: 44px; border-radius: 12px; background: var(--surface);
+  border: 1px solid var(--line); color: var(--text);
+}
+:root :is(#scr-join, #scr-lobby) .pfp-btn { font-family: var(--av-sans); font-size: 14px; min-height: 44px; }
+@media (prefers-reduced-motion: reduce) {
+  :root :is(#scr-join, #scr-lobby) * { animation: none !important; transition: none !important; }
 }

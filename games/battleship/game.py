@@ -534,7 +534,7 @@ class BattleshipSession(GameSession):
         if self.g and token in self.g["players"]:
             self.g["afk"].discard(token)
             p = self.players.get(token)
-            return [self.fx("toast", icon=p.avatar if p else "⚓",
+            return [self.fx("toast", icon=p.toast_icon if p else "⚓",
                             msg="%s is back at the helm" % self._name(token))]
         return []
 

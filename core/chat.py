@@ -16,7 +16,8 @@ from collections import deque
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from core import avatars, chatmedia
+from core import avatars, chatmedia, looks
+from core.session import AVATARS
 from core.session import clean_name
 
 HISTORY = 60
@@ -183,12 +184,15 @@ class ChatHub:
         self._id += 1
         name = clean_name(hello.get("name")) if hello.get("name") else "PLAYER"
         avatar = hello.get("avatar") if isinstance(hello.get("avatar"), str) else "🙂"
+        chosen = looks.picture(avatar)            # an Avrana avatar travels as a picture
+        if chosen:
+            avatar = looks.text_fallback(avatar, AVATARS)
         return {
             "id": self._id,
             "by": uid,
             "name": name,
             "avatar": avatar,
-            "pfp": avatars.url_for(token),
+            "pfp": avatars.url_for(token) or chosen,
             "text": text,
             "img": img,
             "iw": msg.get("iw") if img else None,

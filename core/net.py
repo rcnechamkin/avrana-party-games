@@ -370,7 +370,7 @@ class GameBinding:
                                               **{k: v for k, v in f.items() if k != "to"}})
                     await ws.close()
                     return
-                player.pfp = avatars.url_for(token)
+                player.pfp = player.picture(avatars.url_for(token))
                 self.player_sockets.setdefault(token, set()).add(ws)
                 event(self.slug, "rejoin" if known else "join", pid=player.pid, name=player.name,
                       sockets=len(self.player_sockets[token]), phase=self.session.phase,
@@ -449,7 +449,7 @@ class GameBinding:
             fx = s.set_profile(token, name, msg.get("avatar"))
             p = s.players.get(token)
             if p is not None:
-                p.pfp = avatars.url_for(token)   # re-check after uploads
+                p.pfp = p.picture(avatars.url_for(token))   # re-check after uploads
             return fx
         if t == "again":
             return s.to_lobby() if s.phase == "game_end" else []
