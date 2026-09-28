@@ -359,6 +359,26 @@ def test_a_browser_cannot_claim_a_participant_by_sending_its_game_token():
     run(scenario())
 
 
+def test_a_browser_hello_that_raced_a_launch_is_not_seated_in_the_party_session():
+    """The hello is classified before the lock. A launch queued ahead of it on a busy room's lock
+    must not let that browser-minted token join the party session it started."""
+    async def scenario():
+        b = binding()
+        await b.lock.acquire()                             # the room is busy (a push, a bot, …)
+        starting = asyncio.create_task(b.party_launch(launch(b)))
+        await settle()
+        assert b.party.sid is None                         # the launch waits its turn
+        x = await connect(b, {"t": "hello", "token": "tok-browser-0001", "name": "Eve"})
+        b.lock.release()
+        await starting
+        await settle()
+        assert b.party.sid == SID
+        assert b.session.players == {} and b.player_sockets == {}
+        assert x[0].welcome() is None or x[0].welcome().get("watch")
+        await shutdown(b, x)
+    run(scenario())
+
+
 def test_party_names_cannot_be_changed_from_the_game():
     async def scenario():
         b = binding()
