@@ -84,6 +84,14 @@ Phone-size screenshots were taken with headless Playwright/Chromium (2–6 playe
 
 - **One table per server** (one BLUFF room). The game lives in memory, so a server restart
   loses it.
+- **Party sessions never share state (AVR-25).** Each Avrana party launch replaces the room with
+  a fresh one: no hands, seats, coins, turn, pending step, log, bots or player mappings carry
+  over. A connection acts only on the room it joined, so a message read just before a new launch
+  is dropped, not dispatched. Old tickets and game tokens never reach a newer session.
+  **After a server restart mid-session:** the new process holds no party session. Phones
+  presenting the lost session's ticket are told it is invalid and never seated. No `ended` is
+  reported for it. The Party Host's End for everyone still closes it on the Party side (this server
+  refuses that end; Party Core closes the session anyway, or after 15 s with no answer), and the next launch starts clean. Tests: `tests/test_bluff_session_isolation.py`.
 - **Framework-level issues (not fixed; they'd need `core/`):** oversized WebSocket frames are
   dropped only after being received; every message pushes full state to every socket
   (amplification); one device can fill all 6 *lobby* seats with invented tokens.
