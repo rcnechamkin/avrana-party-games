@@ -19,6 +19,7 @@ CHAT_DIR = Path(__file__).parent.parent / "data" / "chatmedia"
 MAX_BYTES = 16 * 1024 * 1024        # input cap; big phone photos are downscaled
 MAX_DIM = 1600                      # static images are shrunk to fit this box
 MAX_FILES = 400                     # prune oldest beyond this
+MAX_TOTAL_BYTES = 256 * 1024 * 1024  # and beyond this many bytes (AVR-30: 400 x 16 MB GIFs was ~6.4 GB)
 EXT = {"GIF": "gif", "PNG": "png", "JPEG": "jpg", "WEBP": "webp"}
 
 
@@ -51,7 +52,7 @@ def save(data: bytes) -> dict:
         w, h = img.size
         name = "%s.%s" % (hashlib.sha256(data).hexdigest()[:20], EXT[fmt])
         (CHAT_DIR / name).write_bytes(data)
-        _prune()
+        _prune(keep=name)
         return {"url": "/chatmedia/" + name, "w": w, "h": h}
 
     # static: orient, (down)scale, re-encode to WebP
@@ -63,13 +64,24 @@ def save(data: bytes) -> dict:
     blob = out.getvalue()
     name = "%s.webp" % hashlib.sha256(blob).hexdigest()[:20]
     (CHAT_DIR / name).write_bytes(blob)
-    _prune()
+    _prune(keep=name)
     return {"url": "/chatmedia/" + name, "w": img.width, "h": img.height}
 
 
-def _prune() -> None:
+def _prune(keep: str | None = None) -> None:
+    """Delete the oldest files beyond MAX_FILES, then beyond MAX_TOTAL_BYTES. The file just
+    saved (`keep`) is never deleted, so an upload always works even when it alone is over."""
     files = sorted(CHAT_DIR.glob("*.*"), key=lambda p: p.stat().st_mtime)
-    for p in files[:-MAX_FILES]:
+    doomed = files[:-MAX_FILES]
+    rest = files[len(doomed):]
+    total = sum(p.stat().st_size for p in rest)
+    for p in rest:
+        if total <= MAX_TOTAL_BYTES:
+            break
+        if p.name != keep:
+            total -= p.stat().st_size
+            doomed.append(p)
+    for p in doomed:
         try:
             p.unlink()
         except OSError:
