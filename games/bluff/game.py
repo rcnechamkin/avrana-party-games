@@ -738,6 +738,13 @@ class BluffSession(GameSession):
                 p.connected = False
                 p.ready = False
             return self.game_player_left(token)
+        if self.party_round and token in self.participants:
+            # a party round's seats are the party's: a phone that drops before the start keeps
+            # its seat (it starts away); nothing here aborts the round (AVR-129)
+            self.seq += 1
+            if token in self.players:
+                self.players[token].connected = False
+            return []
         if self.phase == "countdown" and token in self.players \
                 and not self.players[token].is_bot and self.players[token].ready:
             # a refresh during the 3-2-1 must not cost the seat: keep the player (and
@@ -850,4 +857,21 @@ class BluffSession(GameSession):
                                     "pool": list(g["hand"][viewer_token]) + list(g["exchange_draw"] or []),
                                     "keep": len(g["hand"][viewer_token])}
             st["me"] = me
+        return st
+
+    def game_state_spectator(self):
+        """A Party spectator's view (AVR-129): intentionally omniscient. The public table plus
+        every seat's hidden cards (and the exchange draw while one is open), so watching BLUFF
+        shows every bluff. core.net sends this only to Party spectator sockets: never to a
+        player, and never to an anonymous watcher or a TV (a screen the players can see)."""
+        st = self.game_state(None)
+        if st is None:
+            return None
+        g = self.g
+        for seat, t in zip(st["seats"], g["seats"]):
+            seat["cards"] = list(g["hand"][t])
+        p = (g["pending"] or {}) if self.phase == "playing" else {}
+        if p.get("stage") == "exchange":
+            st["exchange_draw"] = list(g["exchange_draw"] or [])
+        st["omniscient"] = True
         return st

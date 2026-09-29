@@ -52,6 +52,17 @@ def assert_fresh(b, room_before):
     assert b.player_sockets == {}
 
 
+def assert_new_round(b, room_before, seats):
+    """A launch replaced the room (AVR-129): a new session object with only the new roster's
+    players seated, none of them here yet, nothing of the old room, no game dealt yet."""
+    s = b.session
+    assert s is not room_before and s.party_round and s.phase == "countdown"
+    assert list(s.players) == list(seats) and s.participants == list(seats)
+    assert not any(p.connected for p in s.players.values())
+    assert s.g is None and s.settings == BluffSession.DEFAULT_SETTINGS
+    assert b.player_sockets == {}
+
+
 def assert_fresh_table(room, seats):
     """BLUFF just started in `room` with exactly these seats and nothing carried in."""
     g = room.g
@@ -136,7 +147,7 @@ def test_session_a_abandoned_then_session_b_starts_with_nothing_of_a(party):
         await b.party_launch(launch(b))
         a = await connect(b, {"t": "hello", "ticket": ticket(ALICE)})
         c = await connect(b, {"t": "hello", "ticket": ticket(BOB)})
-        await a[0].inbox.put({"t": "settings", "patch": {"bots": 2}})   # session A's own setting
+        await a[0].inbox.put({"t": "settings", "patch": {"bots": 2}})   # refused in a party round
         for ws, _ in (a, c):
             await ws.inbox.put({"t": "ready", "ready": True})
         await settle()
@@ -146,7 +157,7 @@ def test_session_a_abandoned_then_session_b_starts_with_nothing_of_a(party):
             if b.session.phase == "playing":
                 break
         room_a = b.session
-        assert room_a.phase == "playing" and len(room_a.g["seats"]) == 4     # two test bots
+        assert room_a.phase == "playing" and len(room_a.g["seats"]) == 2     # no test bots (AVR-129)
         await c[0].close()                               # Bob's phone is gone
         await c[1]
         await settle()
@@ -191,13 +202,14 @@ def test_a_launch_mid_game_replaces_the_table_and_no_old_timer_or_bot_fires_into
         assert room_a.phase == "playing" and room_a.deadline is not None
         await b.party_launch(launch(b, sid=SID2, entries=B_ROSTER))
         room_b = b.session
-        assert_fresh(b, room_a)
+        assert_new_round(b, room_a, [B_ALICE, B_BOB])
         marks = (room_b.seq, room_b.gen, room_b.phase)
         a_marks = (room_a.seq, room_a.gen, len(room_a.g["log"]))
         await asyncio.sleep(0.8)                         # past A's turn deadline and bot delay
         assert (room_b.seq, room_b.gen, room_b.phase) == marks
         assert (room_a.seq, room_a.gen, len(room_a.g["log"])) == a_marks   # A is inert too
-        assert b._timer_task is None and b._bot_task is None
+        assert b._bot_task is None                       # the only timer is B's arrival wait
+        assert room_b.deadline is not None and room_b.phase == "countdown"
         assert a[0].closed and not mentions(a[0], "Ann")
         await shutdown(b, a)
     run(scenario())
@@ -271,7 +283,8 @@ def test_old_credentials_never_reach_a_newer_session(party):
         assert w[0].welcome() == {"type": "welcome", "watch": True}
         await w[0].inbox.put({"t": "ready", "ready": True})
         await settle()
-        assert room_b.players == {} and b.player_sockets == {}
+        assert A_ALICE not in room_b.players and b.player_sockets == {}
+        assert not any(p.connected for p in room_b.players.values())
         # session A's launch replayed, and session A's End: refused, session B untouched
         with pytest.raises(proto.Invalid):
             await b.party_launch(first)

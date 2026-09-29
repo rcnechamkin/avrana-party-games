@@ -122,9 +122,10 @@ def test_nobody_else_takes_an_empty_seat_or_sees_its_hand():
             assert w[0].last_state()["game"]["me"] is None
             await w[0].close()
             await w[1]
-        # a spectator ticket for Alice's participant id only watches too
+        # a spectator ticket for Alice's participant id only watches too: as a Party spectator
+        # (AVR-129: the intentionally omniscient view), never in Alice's seat
         s = await connect(b, {"t": "hello", "ticket": ticket(ALICE, role="spectator")})
-        assert s[0].welcome() == {"type": "welcome", "watch": True}
+        assert s[0].welcome() == {"type": "welcome", "watch": True, "spectator": True}
         await s[0].close()
         await s[1]
         assert b.session.g["seats"].count(ALICE_TOKEN) == 1

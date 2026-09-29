@@ -41,7 +41,11 @@ let drawerOpen = false, celebrated = false;
 const brief = window.BluffBriefing || null;
 let briefOffered = false, briefHinted = false;
 
+// AVR-129: while the Party sets up a round of BLUFF (Play or Watch, the Party Host's start), the
+// page shows this setup screen; the Party's own panel (party-follow.js) holds the choices.
+let SETUP = false;
 const conn = Hub.connect("/games/bluff/ws", {
+  onSetup: (on) => { SETUP = on; if (on) renderSetup(); else if (ST) render(); },
   onFx: (fx) => {
     if (fx.kind === "toast") Hub.toast((fx.icon ? fx.icon + " " : "") + fx.msg);
     if (fx.kind === "invalid") Hub.toast(fx.msg, "err");
@@ -61,6 +65,11 @@ $("home").onclick = () => { location.href = window.AvranaIntegration?.home || "/
 $("history").onclick = () => { drawerOpen = true; render(); };
 $("drawer-close").onclick = () => { drawerOpen = false; render(); };
 $("rules").onclick = () => brief && brief.open("reference");
+// The Party asks before a member's Play (party-follow.js): nobody plays without the briefing.
+window.AvranaPregame = {
+  beforePlay: () => (!brief || brief.acknowledged() ? Promise.resolve(true)
+    : new Promise((resolve) => brief.open("first", () => resolve(true)))),
+};
 if (!brief) $("rules").hidden = true;
 // The briefing's "I'm ready" is this player's Ready, while there is a lobby to be ready in.
 function readyAfterBriefing() {
@@ -126,7 +135,7 @@ function cardFace(r, extra) {
 
 // ic: a Lucide name for table controls (play, x, check, ...) or "art:<name>" for BLUFF's
 // own game art (roles, coins, the coup, a claim, a challenge).
-const LUCIDE = new Set(["play", "x", "check", "hand", "log-out", "circle-stop"]);
+const LUCIDE = new Set(["play", "x", "check", "hand", "log-out", "circle-stop", "circle-help"]);
 function actBtn(ic, label, onclick, cls, disabled) {
   const b = el("button", "act " + (cls || ""));
   const slot = el("span", "ic");
@@ -162,8 +171,25 @@ setInterval(() => {
 
 // ---------------------------------------------------------------- render
 
+function renderSetup() {
+  for (const id of ["hand", "lost", "me-seat", "opponents", "bar"]) $(id).textContent = "";
+  $("sheet").hidden = true; $("coins").hidden = true; $("timer").hidden = true;
+  $("piles").classList.add("hide");
+  const play = $("play");
+  play.textContent = "";
+  play.classList.add("lobby");
+  $("center").classList.remove("row");
+  play.appendChild(el("div", "lobby-title", "BLUFF"));
+  const how = actBtn("circle-help", "How to play", () => brief && brief.open("reference"));
+  if (brief) play.appendChild(how);
+  $("caption").textContent = "Round setup: choose Play or Watch above. The Party Host starts the round.";
+  // first play: the briefing before anything else (its acknowledgement also gates Play)
+  if (brief && !brief.acknowledged() && !briefOffered) { briefOffered = true; brief.open("first"); }
+}
+
 function render() {
   const st = ST;
+  if (SETUP) return renderSetup();
   const inLobby = st.phase === "lobby" || st.phase === "countdown";
   briefing(st, inLobby);
   $("drawer").hidden = !drawerOpen;
@@ -225,7 +251,9 @@ function renderOpponents() {
     const pres = { reconnecting: "reconnecting…", away: "away", left: "left" }[s.presence];
     if (pres && s.alive) seat.appendChild(el("div", "presence " + s.presence, pres));
     const info = el("div", "info"), cards = el("div", "cards");
-    for (let k = 0; k < s.influence; k++) cards.appendChild(el("div", "back mini"));
+    // a Party spectator's view shows every hand (AVR-129); players only ever get backs
+    if (s.cards) for (const r of s.cards) cards.appendChild(cardFace(r, "mini"));
+    else for (let k = 0; k < s.influence; k++) cards.appendChild(el("div", "back mini"));
     for (const r of s.revealed) cards.appendChild(cardFace(r, "mini dead"));
     info.appendChild(cards);
     info.appendChild(coinsEl(s.coins, "chip coins-chip"));
@@ -344,7 +372,7 @@ function renderBar() {
       else bar.appendChild(actBtn("play", "Start a new game", () => send({ t: "end_game" }), "primary"));
       return;
     }
-    msg("Watching");
+    msg(ST.spectator ? "Watching this round: you see every hand" : "Watching");
     return;
   }
   if (me.left) { msg("You left this game: watching"); return; }
@@ -516,6 +544,14 @@ function renderLobby(st) {
   play.classList.add("lobby");
   $("center").classList.remove("row");
   play.appendChild(el("div", "lobby-title", "BLUFF"));
+  if (st.party_round) {                   // AVR-129: the Party chose the table; no ready/start here
+    const here = st.players.filter((p) => p.connected).length;
+    $("caption").textContent = here < st.players.length
+      ? `Starting: ${here} of ${st.players.length} players here` : "Starting…";
+    $("deck-n").textContent = "";
+    $("bar").textContent = "";
+    return;
+  }
   const bots = (st.settings && st.settings.bots) || 0;
   const step = el("div", "stepper");
   const minus = el("button"), plus = el("button");

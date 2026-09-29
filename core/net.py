@@ -15,6 +15,12 @@ binding reports `ended` once, off the lock; the party's /end resets the room at 
 the room then goes back to its pre-launch state (fresh, empty, no party session) and the
 session's phones get a `party_ended` fx, after any results screen.
 
+Party rounds (AVR-129): the party ran the pregame, so a launch seats its roster's players at once
+(GameSession.party_start) and the game's own ready/start lobby is skipped. A spectator ticket gets
+a Party spectator socket, which is sent state_for(None, spectator=True): what the game lets
+spectators see (BLUFF: every hand). Player sockets and anonymous watchers (a browser token, a TV)
+never get it.
+
 Games never touch sockets; this file never touches game rules.
 """
 
@@ -60,6 +66,7 @@ class GameBinding:
         self.lock = asyncio.Lock()
         self.player_sockets: dict[str, set[WebSocket]] = {}
         self.watch_sockets: set[WebSocket] = set()
+        self.spectator_sockets: set[WebSocket] = set()   # Party spectators (spectator tickets)
         self._timer_task: asyncio.Task | None = None
         self._bot_task: asyncio.Task | None = None
         self._phase = session.phase
@@ -85,7 +92,7 @@ class GameBinding:
                 for socks in list(self.player_sockets.values()):
                     for ws in list(socks):
                         await self._send(ws, msg)
-                for ws in list(self.watch_sockets):
+                for ws in list(self.watch_sockets) + list(self.spectator_sockets):
                     await self._send(ws, msg)
             else:
                 for ws in list(self.player_sockets.get(to, ())):
@@ -97,6 +104,10 @@ class GameBinding:
         if self.watch_sockets:
             st = self.session.state_for(None)
             for ws in list(self.watch_sockets):
+                await self._send(ws, st)
+        if self.spectator_sockets:
+            st = self.session.state_for(None, spectator=True)
+            for ws in list(self.spectator_sockets):
                 await self._send(ws, st)
         if self.session.phase != self._phase:
             event(self.slug, "phase", old=self._phase, new=self.session.phase,
@@ -200,12 +211,14 @@ class GameBinding:
             # every phone comes back with a fresh ticket and the new roster decides its role:
             # a watcher of the last session may be a player now (no reload needed); TV pages
             # simply reconnect as watchers
-            old = self._fresh_room() + list(self.watch_sockets)
-            self.watch_sockets = set()
+            old = self._fresh_room() + list(self.watch_sockets) + list(self.spectator_sockets)
+            self.watch_sockets, self.spectator_sockets = set(), set()
             event(self.slug, "party_launch", players=len(self.party_roster),
                   spectators=len(roster) - len(self.party_roster), dropped=len(old))
             await self._close_all(old)
-            await self.push_all([])
+            # the party ran the pregame and its host started the round: seat its players now
+            fxs = self.session.party_start([(t, r["name"]) for t, r in self.party_roster.items()])
+            await self.push_all(fxs)
         return roster
 
     async def party_end(self, message):
@@ -281,27 +294,32 @@ class GameBinding:
         msg = {"type": "fx", "kind": "party_ended", "outcome": outcome,
                "msg": "This game is over. Go Back to Party."}
         players = [ws for socks in self.player_sockets.values() for ws in socks]
-        for ws in players + list(self.watch_sockets):
+        spectators, self.spectator_sockets = list(self.spectator_sockets), set()
+        for ws in players + spectators + list(self.watch_sockets):
             await self._send(ws, msg)
         self.party_room_sid = None
         self._party_outcome = None
         self.party_roster = {}
+        # Party spectators stay, like watchers, but only ever see the public view from now on:
+        # the omniscient view belonged to that party session and never reaches a later room
+        self.watch_sockets |= set(spectators)
         old = self._fresh_room()
         event(self.slug, "party_release", outcome=outcome, dropped=len(old))
         await self._close_all(old)
         await self.push_all([])
 
     def _party_hello(self, hello):
-        """(token, name) for an admitted player; (None, None) to watch. Raises Invalid for a
-        ticket that is refused. The ticket itself is never logged."""
+        """(token, name, spectator) for an admitted player; (None, None, spectator) to watch,
+        where `spectator` is True only for a Party spectator ticket (AVR-129). Raises Invalid for
+        a ticket that is refused. The ticket itself is never logged."""
         ticket = hello.get("ticket")
         if ticket is None:
-            return None, None                   # a browser-minted token: watch only
+            return None, None, False            # a browser-minted token: watch only (public)
         token, role = self.party.admit(ticket)
         entry = self.party_roster.get(token)
         if role != "player" or entry is None:
-            return None, None
-        return token, entry["name"]
+            return None, None, role == "spectator"
+        return token, entry["name"], False
 
     # ---- websocket endpoint ----
 
@@ -310,6 +328,7 @@ class GameBinding:
         token = None
         room = None                             # the room this connection joined (AVR-25)
         watching = False
+        spectating = False                      # a Party spectator (AVR-129)
         try:
             raw = await asyncio.wait_for(ws.receive_text(), timeout=15)
             hello = json.loads(raw)
@@ -325,7 +344,7 @@ class GameBinding:
             try:
                 if self.party is None:
                     raise party_protocol.Invalid("no party side")
-                token, name = self._party_hello(hello)
+                token, name, spectating = self._party_hello(hello)
             except party_protocol.Invalid as e:
                 event(self.slug, "ticket_refused", reason=str(e))
                 await self._send(ws, {"type": "fx", "kind": "invalid",
@@ -339,11 +358,17 @@ class GameBinding:
 
         if watching:
             watching = True
-            self.watch_sockets.add(ws)
-            event(self.slug, "watch_open")
             async with self.lock:
-                await self._send(ws, {"type": "welcome", "watch": True})
-                await self._send(ws, self.session.state_for(None))
+                if spectating:
+                    self.spectator_sockets.add(ws)
+                    event(self.slug, "spectate_open")
+                    await self._send(ws, {"type": "welcome", "watch": True, "spectator": True})
+                    await self._send(ws, self.session.state_for(None, spectator=True))
+                else:
+                    self.watch_sockets.add(ws)
+                    event(self.slug, "watch_open")
+                    await self._send(ws, {"type": "welcome", "watch": True})
+                    await self._send(ws, self.session.state_for(None))
         else:
             if not party:
                 token = hello.get("token")
@@ -430,6 +455,7 @@ class GameBinding:
         finally:
             if watching:
                 self.watch_sockets.discard(ws)
+                self.spectator_sockets.discard(ws)
             elif token is not None:
                 async with self.lock:
                     # a replaced room already forgot this socket; the next room never hears of it
