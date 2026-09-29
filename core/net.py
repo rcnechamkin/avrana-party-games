@@ -308,6 +308,7 @@ class GameBinding:
     async def endpoint(self, ws: WebSocket):
         await ws.accept()
         token = None
+        room = None                             # the room this connection joined (AVR-25)
         watching = False
         try:
             raw = await asyncio.wait_for(ws.receive_text(), timeout=15)
@@ -372,6 +373,7 @@ class GameBinding:
                     return
                 player.pfp = player.picture(avatars.url_for(token))
                 self.player_sockets.setdefault(token, set()).add(ws)
+                room = self.session             # this connection acts on this room only (AVR-25)
                 event(self.slug, "rejoin" if known else "join", pid=player.pid, name=player.name,
                       sockets=len(self.player_sockets[token]), phase=self.session.phase,
                       seated=token in self.session.participants)
@@ -408,6 +410,12 @@ class GameBinding:
                 if msg.get("t") in LOGGED_VERBS:
                     event(self.slug, "verb", t=msg["t"], pid=self._pid(token))
                 async with self.lock:
+                    if self.session is not room:
+                        # read before a launch or release replaced the room, and dispatched
+                        # after it: an old session's message never reaches the next room
+                        event(self.slug, "stale_message_dropped")
+                        await self._close_all([ws])
+                        break
                     try:
                         fxs = self.dispatch(token, msg)
                         await self.push_all(fxs)
@@ -424,7 +432,8 @@ class GameBinding:
                 self.watch_sockets.discard(ws)
             elif token is not None:
                 async with self.lock:
-                    socks = self.player_sockets.get(token)
+                    # a replaced room already forgot this socket; the next room never hears of it
+                    socks = self.player_sockets.get(token) if self.session is room else None
                     if socks is not None:
                         socks.discard(ws)
                         event(self.slug, "socket_close" if socks else "disconnect",
