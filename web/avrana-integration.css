@@ -31,3 +31,13 @@ html[data-avrana="1"] [data-avrana-screen] { height: 100% !important;
 .party-ended a { color: #fff; }
 /* Avrana system colours for the same status (layered; the rule above stays as tested). */
 #avrana-navigation .party-ended { background: #1b1b23; color: #f1eee8; border-radius: 12px; }
+
+/* Party navigation (AVR-128; avrana-party web/party/lib/party-follow.js): where the party is, and
+   the Party Host's End for everyone. In flow beside Back to Party, never over game controls. */
+#avrana-party-follow { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  min-height: 44px; padding: 0 8px; font: 600 16px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+#avrana-party-follow:empty { display: none; }
+#avrana-party-end { min-height: 44px; padding: 0 14px; border: 1px solid #e2837b; border-radius: 12px;
+  background: transparent; color: #f1eee8; font: 600 16px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+#avrana-party-end[hidden] { display: none; }
+#avrana-party-end:focus-visible { outline: 3px solid #c9b8f0; outline-offset: 2px; }
