@@ -37,6 +37,9 @@ let picking = null;          // action awaiting a target tap
 let sheet = null;            // "claim" when the claim menu is open
 let keepSel = [], keepKey = "";
 let drawerOpen = false, celebrated = false;
+// How to play (briefing.js): shown once before a new player's first Ready; ? reopens it any time.
+const brief = window.BluffBriefing || null;
+let briefOffered = false, briefHinted = false;
 
 const conn = Hub.connect("/games/bluff/ws", {
   onFx: (fx) => {
@@ -57,6 +60,13 @@ const gsend = (m) => send(Object.assign({ step: g() && g().pending.step }, m));
 $("home").onclick = () => { location.href = window.AvranaIntegration?.home || "/"; };
 $("history").onclick = () => { drawerOpen = true; render(); };
 $("drawer-close").onclick = () => { drawerOpen = false; render(); };
+$("rules").onclick = () => brief && brief.open("reference");
+if (!brief) $("rules").hidden = true;
+// The briefing's "I'm ready" is this player's Ready, while there is a lobby to be ready in.
+function readyAfterBriefing() {
+  if (ST && (ST.phase === "lobby" || ST.phase === "countdown") && ST.you && !ST.you.ready)
+    send({ t: "ready", ready: true });
+}
 
 // Opponent seats as [x, y] % of the opponents' zone (#opponents: header row down to
 // your own avatar row), each seat anchored at its top-centre, listed clockwise
@@ -155,6 +165,7 @@ setInterval(() => {
 function render() {
   const st = ST;
   const inLobby = st.phase === "lobby" || st.phase === "countdown";
+  briefing(st, inLobby);
   $("drawer").hidden = !drawerOpen;
   $("piles").classList.toggle("hide", inLobby);
   if (inLobby) { picking = null; sheet = null; celebrated = false; return renderLobby(st); }
@@ -166,6 +177,25 @@ function render() {
   renderBar();
   renderDrawer();
   if (g().winner && !celebrated) { celebrated = true; if (g().me && g().winner === g().me.pid) Hub.confettiBurst(140); }
+}
+
+// First play: open the briefing once per page load for a seated lobby player who has never
+// acknowledged it (a reload before acknowledging shows it again). A game already running is
+// never covered by it (a reconnect, a watcher): a toast points at ? instead. While the rules
+// are open, a line says when the table is waiting on this player.
+function briefing(st, inLobby) {
+  if (!brief) return;
+  const me = !inLobby && st.game && st.game.me;
+  brief.status(me && !me.left && (me.prompt || (me.actions || []).length)
+    ? (me.prompt ? "Your call is waiting: close to answer." : "It's your turn: close to play.") : "");
+  if (brief.acknowledged()) return;
+  if (inLobby && st.you && !st.you.ready && !briefOffered) {
+    briefOffered = true;
+    brief.open("first", readyAfterBriefing);
+  } else if (!inLobby && !briefHinted && !brief.isOpen()) {
+    briefHinted = true;
+    Hub.toast("New to BLUFF? Tap ? for how to play");
+  }
 }
 
 function orderedOpponents() {
@@ -505,6 +535,10 @@ function renderLobby(st) {
     bar.appendChild(actBtn("play", "START GAME", () => send({ t: "start" }), "primary"));
     bar.appendChild(actBtn("x", "Not ready", () => send({ t: "ready", ready: false })));
   } else {
-    bar.appendChild(actBtn(me && me.ready ? "check" : "hand", me && me.ready ? "Ready" : "I'M READY", () => send({ t: "ready", ready: !(me && me.ready) }), "primary"));
+    bar.appendChild(actBtn(me && me.ready ? "check" : "hand", me && me.ready ? "Ready" : "I'M READY", () => {
+      // nobody enters play without the briefing's acknowledgement
+      if (!(me && me.ready) && brief && !brief.acknowledged()) return brief.open("first", readyAfterBriefing);
+      send({ t: "ready", ready: !(me && me.ready) });
+    }, "primary"));
   }
 }

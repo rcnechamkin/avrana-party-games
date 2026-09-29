@@ -80,6 +80,30 @@ LANGAMES_PORT=8200 .venv/bin/python tests/sim_bluff.py --serve --server-seed 19 
 Phone-size screenshots were taken with headless Playwright/Chromium (2–6 players; 390×844,
 360×740, 390×664). Chromium is **not** iOS Safari; see "real-device checks" below.
 
+## How to play: first-play briefing and rules (AVR-90)
+
+`web/briefing.js` is one dialog with two modes:
+- **First play:** six short cards, 231 words (about a minute): goal, a turn, claims, challenges,
+  blocks, controls. It opens once per page load for a seated lobby player who has never
+  acknowledged it. The last button, "I'm ready", is also that player's Ready. Escape can't skip it;
+  "Not now" closes it, but the lobby's Ready opens it again until it is acknowledged.
+- **Reference:** the `?` button beside Back to games reopens the same cards any time. Escape or
+  Close; the game underneath is untouched. While it is open, a line says when the table is
+  waiting on you.
+
+Decisions:
+- The acknowledgement is per browser (`localStorage` `bluff-briefed` = version). Private mode
+  falls back to memory for that page. Nothing is sent to the server, and the dialog never touches
+  the connection, so reconnect and seat restore (AVR-23) are unaffected.
+- A player arriving while a game is already running (reconnect, watcher, a late Party member)
+  is never covered by it; a toast points at `?` instead.
+- A Party member taken into BLUFF by the Party Host's start (AVR-127) arrives at the lobby like
+  anyone else, so a first-timer sees the briefing before their Ready.
+- All words live in `CARDS`. The numbers and block rules come from `FACTS`/`BLOCKS`, which
+  `tests/test_bluff_briefing.py` pins to `game.py`: change a rule and the test tells you to
+  change the briefing. Bump `VERSION` to make everyone read it again.
+- Human check for AVR-27: `games/bluff/PLAYTEST-BRIEFING.md`.
+
 ## Known limitations
 
 - **One table per server** (one BLUFF room). The game lives in memory, so a server restart

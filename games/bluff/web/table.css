@@ -282,3 +282,69 @@ svg.lucide { width: 1em; height: 1em; flex: none; }
 .avatar svg.lucide { width: 58%; height: 58%; }
 .ready-tick { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
   background: var(--go); color: #fff; font-size: 14px; border: 2px solid rgba(0,0,0,.35); }
+
+/* ---- how to play (briefing.js, AVR-90) ------------------------------------------------
+   The first-play briefing and the rules sheet: one dialog in the table's own system language
+   (ink surface, hairline border, the two radii, .act buttons, BLUFF's game art, 44 px+ targets).
+   Text is in rem so it follows the phone's text size; the card scrolls rather than clips. */
+#rules { left: 64px; top: calc(10px + env(safe-area-inset-top)); }
+html[data-avrana="1"] #rules { left: 12px; }          /* Back to Party replaces the home button */
+/* a bottom sheet: Back / Next stay in the same place under the thumb whatever the card's length */
+#briefing { width: min(94vw, 420px); max-height: calc(100dvh - 24px); padding: 0;
+  margin: auto auto calc(10px + env(safe-area-inset-bottom));
+  border: 1px solid var(--ink-line); border-radius: 20px; background: var(--ink-solid);
+  color: var(--text); box-shadow: 0 10px 30px rgba(0,0,0,.5); overflow: hidden; }
+#briefing[open] { display: flex; flex-direction: column; }
+#briefing::backdrop { background: rgba(0,0,0,.6); }
+.brief-head { display: flex; align-items: center; gap: 8px; padding: 10px 10px 0 18px; }
+.brief-titles { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.brief-titles h2 { margin: 0; font-size: .8125rem; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted); }
+.brief-count { font-size: .8125rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.brief-later { min-height: 44px; padding: 0 14px; border-radius: var(--r-field);
+  background: transparent; border: 1px solid var(--ink-line); color: var(--muted);
+  font-weight: 650; font-size: .9375rem; }
+.brief-nudge { margin: 10px 14px 0; padding: 8px 12px; border-radius: var(--r-field);
+  background: var(--gold); color: #2a1d00; font-weight: 800; font-size: .9375rem; }
+.brief-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 6px 20px 4px;
+  overscroll-behavior: contain; }
+.brief-card { text-align: center; animation: brief-in .18s ease-out; }
+@keyframes brief-in { from { opacity: 0; translate: 10px 0; } }
+.brief-hero { width: 84px; height: 84px; margin: 6px auto 0; border-radius: 22px;
+  display: grid; place-items: center; background: rgba(255,255,255,.06);
+  border: 1px solid var(--ink-line); color: var(--gold); }
+.brief-hero .bart { width: 54px; height: 54px; }
+.brief-card.tone-claim .brief-hero { color: #a9b8f2; }
+.brief-card.tone-stop .brief-hero { color: #ff8a98; }
+.brief-title { margin: 12px 0 6px; font-size: 1.375rem; line-height: 1.2; font-weight: 800; }
+.brief-line { margin: 0 0 6px; font-size: 1.0625rem; line-height: 1.45; color: var(--text); }
+.brief-items { list-style: none; margin: 10px 0 8px; padding: 0; display: grid; gap: 6px; text-align: left; }
+.brief-items li { display: flex; align-items: center; gap: 12px; padding: 9px 12px;
+  border-radius: var(--r-field); background: rgba(255,255,255,.05); border: 1px solid var(--ink-line);
+  font-size: 1rem; line-height: 1.35; color: var(--muted); }
+.brief-items b { color: var(--text); }
+.brief-mark { flex: none; width: 30px; height: 30px; display: grid; place-items: center; color: var(--gold); }
+.brief-mark .bart { width: 28px; height: 28px; }
+.brief-mark svg.lucide { width: 26px; height: 26px; }
+.brief-items li[class*="role-"] .brief-mark { color: color-mix(in srgb, var(--role) 55%, #fff); }
+.brief-dots { display: flex; justify-content: center; }
+.brief-dots button { width: 44px; height: 44px; display: grid; place-items: center; background: none; border-radius: 50%; }
+.brief-dots span { width: 10px; height: 10px; border-radius: 5px; background: rgba(255,255,255,.3);
+  transition: width .15s, background-color .15s; }
+.brief-dots button[aria-current] span { width: 24px; background: var(--gold); }
+.brief-nav { display: flex; gap: 8px; padding: 0 12px 12px; }
+.brief-nav .act { flex-direction: row; gap: 6px; min-height: 52px; font-size: 1rem; }
+.brief-nav .act svg.lucide { width: 1.25em; height: 1.25em; }
+.brief-nav .brief-back { flex: 1; }
+.brief-nav .brief-next { flex: 2; }
+.brief-nav .brief-back:disabled { opacity: .35; }
+/* short phones: a smaller hero and tighter rows, so the longest card still fits at 360x640 */
+@media (max-height: 700px) {
+  #briefing { max-height: calc(100dvh - 16px); margin-bottom: calc(6px + env(safe-area-inset-bottom)); }
+  .brief-hero { width: 52px; height: 52px; border-radius: 14px; margin-top: 2px; }
+  .brief-hero .bart { width: 34px; height: 34px; }
+  .brief-title { margin: 6px 0 4px; font-size: 1.125rem; }
+  .brief-line { font-size: 1rem; line-height: 1.35; margin-bottom: 4px; }
+  .brief-items { gap: 4px; margin: 6px 0; }
+  .brief-items li { padding: 5px 10px; font-size: .9375rem; line-height: 1.3; }
+}
