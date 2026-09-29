@@ -115,3 +115,25 @@ def test_build_keeps_real_img():
     r = chatmedia.save(_png(color=(9, 9, 9)))
     out = hub._build("avatoken0001", "u", {}, {"text": "", "img": r["url"]})
     assert out is not None and out["img"] == r["url"]
+
+
+def test_prune_bounds_total_bytes_keeping_the_newest(tmp_path, monkeypatch):
+    """AVR-30: 400 files alone allowed ~6.4 GB of 16 MB animated GIFs; bytes are capped too."""
+    import os
+    monkeypatch.setattr(chatmedia, "CHAT_DIR", tmp_path)
+    monkeypatch.setattr(chatmedia, "MAX_TOTAL_BYTES", 1000)
+    for i in range(6):                                   # 6 x 300 B, oldest first
+        p = tmp_path / ("%020x.gif" % i)
+        p.write_bytes(b"x" * 300)
+        os.utime(p, (1000 + i, 1000 + i))
+    chatmedia._prune()
+    left = sorted(p.name for p in tmp_path.iterdir())
+    assert sum(p.stat().st_size for p in tmp_path.iterdir()) <= 1000
+    assert left == ["%020x.gif" % i for i in (3, 4, 5)]  # the newest survive
+
+
+def test_prune_never_deletes_the_file_just_saved(tmp_path, monkeypatch):
+    monkeypatch.setattr(chatmedia, "CHAT_DIR", tmp_path)
+    monkeypatch.setattr(chatmedia, "MAX_TOTAL_BYTES", 10)  # smaller than any one image
+    r = chatmedia.save(_png())
+    assert (tmp_path / r["url"].rsplit("/", 1)[1]).is_file()
