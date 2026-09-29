@@ -16,6 +16,14 @@ for every game:
 A concrete game subclasses GameSession and implements the game_* hooks.
 All game logic is synchronous and IO-free — core.net owns sockets and sleep.
 
+Party rounds (AVR-129, avrana-party ADR 0010): when an Avrana party launches a game, the party
+has already run the pregame (who plays, who watches) and its Party Host started the round. The
+launch roster's players are seated with party_start(); the game's own ready/start lobby is
+skipped, its lobby verbs are refused, and it starts once every seat's phone is here (or after
+PARTY_ARRIVAL_SECONDS, with the missing seats away). Party spectators get
+state_for(..., spectator=True): the game decides in game_state_spectator() what they may see
+(default: the public view). Player sockets never get it; neither do anonymous watchers (a TV).
+
 fx conventions (dicts): {"kind": ..., "to": token-or-None, ...}. to=None
 broadcasts. Kinds shared by all games: toast, invalid, countdown, lobby,
 game_start, game_end. Games add their own kinds freely.
@@ -31,6 +39,8 @@ from core import looks
 
 COUNTDOWN_SECONDS = 3
 GAME_END_SECONDS = 20          # results screen, then auto back to lobby
+PARTY_ARRIVAL_SECONDS = 15     # a party round starts by then even if a seat's phone is missing
+PARTY_LOBBY_MSG = "The Party Host starts rounds from the Party."
 
 AVATARS = ["🦊", "🐸", "🦖", "🐙", "🦉", "🐯", "🐼", "🦄",
            "👾", "🤖", "🐲", "😈", "🦈", "🐝", "🦩", "🐢"]
@@ -108,6 +118,7 @@ class GameSession:
         self.seq = 0            # bumps on every mutation; used by core.net to
         self._pid_counter = 0   # detect stale queued bot actions
         self._outcome = None    # see take_outcome()
+        self.party_round = False  # seated by party_start(): the Party ran the pregame
 
     # ---- game hooks (override these) ------------------------------------
 
@@ -132,6 +143,11 @@ class GameSession:
         """Personalized game payload (mask hidden info per viewer!).
         viewer_token is None for spectators/TV."""
         return None
+
+    def game_state_spectator(self) -> dict | None:
+        """What a Party spectator sees (AVR-129). Default: the public view. A game may show
+        spectators more (BLUFF shows every hand); only Party spectator sockets ever get this."""
+        return self.game_state(None)
 
     def game_player_left(self, token: str) -> list:
         """A participant's last socket dropped mid-game. Return fx."""
@@ -230,6 +246,7 @@ class GameSession:
             p.choose(avatar)
             if self.in_game() and token in self.participants:
                 fx.extend(self.game_player_back(token))
+            fx.extend(self._party_arrived())
         return p, fx
 
     def leave(self, token):
@@ -269,8 +286,38 @@ class GameSession:
             p.choose(avatar)
         return []
 
+    def party_start(self, seats):
+        """Seat a Party round (AVR-129): seats = [(token, name)] in the party's roster order.
+        The party's pregame chose these players and its host started the round, so there is no
+        ready/start here: the round starts when every seat's phone has arrived (a short 3-2-1),
+        or after PARTY_ARRIVAL_SECONDS with the missing seats away."""
+        self.seq += 1
+        self.party_round = True
+        for token, name in seats:
+            self._pid_counter += 1
+            p = Player(token, "p%d" % self._pid_counter, clean_name(name),
+                       AVATARS[(self._pid_counter - 1) % len(AVATARS)],
+                       COLORS[(self._pid_counter - 1) % len(COLORS)])
+            p.ready, p.connected = True, False
+            self.players[token] = p
+        self.participants = [t for t, _ in seats]
+        self.phase = "countdown"
+        self._bump(time.time() + PARTY_ARRIVAL_SECONDS)
+        return [self.fx("toast", msg="The round is starting: waiting for the players' phones")]
+
+    def _party_arrived(self):
+        """In a party countdown: once every seat is here, shorten the wait to the usual 3-2-1."""
+        if self.party_round and self.phase == "countdown" and self.participants and all(
+                self.players[t].connected for t in self.participants if t in self.players) \
+                and self.deadline and self.deadline - time.time() > COUNTDOWN_SECONDS:
+            self._bump(time.time() + COUNTDOWN_SECONDS)
+            return [self.fx("countdown", seconds=COUNTDOWN_SECONDS, by=None)]
+        return []
+
     def set_ready(self, token, ready):
         self.seq += 1
+        if self.party_round:
+            return [self.fx("invalid", to=token, msg=PARTY_LOBBY_MSG)]
         p = self.players.get(token)
         if not p or p.is_bot or self.phase not in ("lobby", "countdown"):
             return []
@@ -283,7 +330,7 @@ class GameSession:
 
     def set_settings(self, token, patch):
         self.seq += 1
-        if self.phase != "lobby" or token not in self.players:
+        if self.phase != "lobby" or token not in self.players or self.party_round:
             return []
         if isinstance(patch, dict):
             self.settings.update(self.validate_settings(patch))
@@ -291,6 +338,8 @@ class GameSession:
 
     def start(self, token):
         self.seq += 1
+        if self.party_round:
+            return [self.fx("invalid", to=token, msg=PARTY_LOBBY_MSG)]
         p = self.players.get(token)
         if not p or self.phase != "lobby" or not p.ready:
             return []
@@ -305,6 +354,15 @@ class GameSession:
         self.seq += 1
         if gen != self.gen or self.deadline is None:
             return []
+        if self.phase == "countdown" and self.party_round:
+            # the party's roster is the table; a seat whose phone has not arrived starts away
+            fx = [self.fx("game_start")]
+            fx.extend(self.game_start())
+            for t in self.participants:
+                p = self.players.get(t)
+                if p is not None and not p.connected:
+                    fx.extend(self.game_player_left(t))
+            return fx
         if self.phase == "countdown":
             ready = self._connected_ready()
             if len(ready) < self.MIN_PLAYERS:
@@ -346,9 +404,11 @@ class GameSession:
 
     # ---- state envelope ---------------------------------------------------
 
-    def state_for(self, viewer_token=None):
+    def state_for(self, viewer_token=None, spectator=False):
+        """The state for one socket. `spectator` is a Party spectator (a spectator ticket; never a
+        player token, never an anonymous watcher): it gets game_state_spectator()."""
         now = time.time()
-        viewer = self.players.get(viewer_token)
+        viewer = None if spectator else self.players.get(viewer_token)
         st = {
             "type": "state",
             "now": int(now * 1000),
@@ -360,7 +420,10 @@ class GameSession:
                         sorted(self.players.values(), key=lambda q: q.joined_at)],
             "you": viewer.public() if viewer else None,
             "game": None,
+            "party_round": self.party_round,
         }
+        if spectator:
+            st["spectator"] = True
         if self.in_game():
-            st["game"] = self.game_state(viewer_token)
+            st["game"] = self.game_state_spectator() if spectator else self.game_state(viewer_token)
         return st

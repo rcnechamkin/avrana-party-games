@@ -543,6 +543,9 @@ def test_end_keeps_watchers_connected_and_shows_them_the_empty_lobby(party):
         await settle()
         assert not w[0].closed and fxs(w[0], "party_ended")
         assert w[0].last_state()["phase"] == "lobby" and w[0].last_state()["players"] == []
+        # AVR-129: the spectator view ended with the session; from now on it is a plain watcher
+        assert w[0] in b.watch_sockets and w[0] not in b.spectator_sockets
+        assert "spectator" not in w[0].last_state()
         await shutdown(b, w)
     run(scenario())
 
@@ -636,7 +639,7 @@ def test_a_new_launch_during_the_results_screen_starts_clean(party):
         a, c = await party_game(b)
         await win_for_alice(a, c)
         await b.party_launch(launch(b, sid=SID2))
-        assert b.party.sid == SID2 and b.party_room_sid == SID2 and b.session.phase == "lobby"
+        assert b.party.sid == SID2 and b.party_room_sid == SID2 and b.session.phase == "countdown"
         await asyncio.sleep(0.9)                        # the old results timer is gone
         assert b.party_room_sid == SID2 and b.party.sid == SID2
         await reports(b)
@@ -770,10 +773,10 @@ def test_a_later_launch_drops_every_watcher_so_the_new_roster_decides(party):
         await b.party_launch(launch(b, entries=((ALICE, "Alice", "player"),)))
         w = await connect(b, {"t": "hello", "ticket": ticket(CAROL, role="spectator")})
         tv = await connect(b, {"t": "hello", "watch": True})
-        assert w[0].welcome() == {"type": "welcome", "watch": True}
+        assert w[0].welcome() == {"type": "welcome", "watch": True, "spectator": True}
         await b.party_launch(launch(b, sid=SID2, entries=((CAROL, "Carol", "player"),)))
         await settle()
-        assert w[0].closed and tv[0].closed and b.watch_sockets == set()
+        assert w[0].closed and tv[0].closed and b.watch_sockets == set() == b.spectator_sockets
         p = await connect(b, {"t": "hello", "ticket": ticket(CAROL, sid=SID2)})
         assert not p[0].welcome().get("watch") and p[0].welcome()["pid"]
         assert [q.name for q in b.session.humans()] == ["Carol"]
@@ -808,7 +811,8 @@ def test_a_rematch_is_a_new_party_session_with_a_fresh_table(party):
         await asyncio.sleep(0.9)                                 # results screen -> released
         assert b.party_room_sid is None
         await b.party_launch(launch(b, sid=SID2))
-        assert b.party_room_sid == SID2 and b.session.g is None and b.session.players == {}
+        assert b.party_room_sid == SID2 and b.session.g is None
+        assert not any(p.connected for p in b.session.players.values())   # seated, not here yet
         old, task = await connect(b, {"t": "hello", "ticket": ticket(ALICE)})
         await task
         assert old.closed and old.welcome() is None               # the first play-through's ticket

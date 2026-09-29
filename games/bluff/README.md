@@ -97,8 +97,25 @@ Decisions:
   the connection, so reconnect and seat restore (AVR-23) are unaffected.
 - A player arriving while a game is already running (reconnect, watcher, a late Party member)
   is never covered by it; a toast points at `?` instead.
-- A Party member taken into BLUFF by the Party Host's start (AVR-127) arrives at the lobby like
-  anyone else, so a first-timer sees the briefing before their Ready.
+- A Party member taken into BLUFF by the Party Host (AVR-127) arrives at BLUFF's **setup screen**
+  (AVR-129). There the Party's panel asks Play or Watch this round, and the Party Host starts the
+  round. A first-timer sees the briefing on arrival, and again when they tap Play, before the
+  Play counts (`window.AvranaPregame.beforePlay`).
+
+## Party rounds (AVR-129; avrana-party ADR 0010)
+
+- **The pregame is the Party's.** Every member who is here chooses Play or Watch. Only the Party
+  Host can start, and only once everyone has chosen and 2–6 chose Play. BLUFF's own ready/start
+  lobby is skipped: the launch roster's players are seated at once (`core/session.py`
+  `party_start`), and BLUFF deals after a 3-2-1 once every seat's phone is here. After 15 s a
+  missing seat starts away, so the usual grace and autopilot apply. BLUFF's ready, start and
+  settings (test bots) are refused in a Party round. Standalone BLUFF keeps its own lobby.
+- **Spectators see every hand, on purpose.** A Party spectator (a spectator ticket) gets
+  `game_state_spectator()`: the public table plus every seat's cards, and the exchange draw while
+  one is open. Players still get only their own cards. A TV or a browser-token watcher gets only
+  the public view, because players can see that screen. Tests: `tests/test_bluff_party_pregame.py`.
+- **Roles change only between rounds.** During a round a Party member cannot switch between Play
+  and Watch; members who arrive late watch until the next setup.
 - All words live in `CARDS`. The numbers and block rules come from `FACTS`/`BLOCKS`, which
   `tests/test_bluff_briefing.py` pins to `game.py`: change a rule and the test tells you to
   change the briefing. Bump `VERSION` to make everyone read it again.
