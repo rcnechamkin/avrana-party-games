@@ -423,8 +423,9 @@ const Hub = (() => {
      party player's role, seat or identity on its own.
 
      Before every connect the page asks the party for a ticket for this game
-     (POST /party/api/session/ticket; the party cookie, Path=/party/, authenticates it). The
-     ticket travels only in the WebSocket hello, never in a URL. partyTicket() answers:
+     (POST /party/api/session/ticket {game}; the party cookie, Path=/party/, authenticates it; a
+     party that plays another game answers 409 no_game, AVR-128). The ticket travels only in the
+     WebSocket hello, never in a URL. partyTicket() answers:
        ticket     a ticket for this game (and its session id): play; the game seats the roster
        transient  the request reached nothing, timed out (TICKET_WAIT) or the party failed (5xx):
                   retry with the usual backoff and never send a ticketless hello, or a seated
@@ -463,7 +464,7 @@ const Hub = (() => {
       try {
         res = await fetch("/party/api/session/ticket", {
           method: "POST", credentials: "same-origin", cache: "no-store",
-          headers: { "Content-Type": "application/json" }, body: "{}",
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify({ game: gameSlug }),
           signal: ctl ? ctl.signal : undefined,
         });
       } catch (error) {

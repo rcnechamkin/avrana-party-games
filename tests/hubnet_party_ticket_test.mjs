@@ -97,7 +97,7 @@ test("integrated: the ticket goes only in the hello, never the URL, with no brow
   assert.equal(init.method, "POST");
   assert.equal(init.credentials, "same-origin");
   assert.equal(init.cache, "no-store");
-  assert.equal(init.body, "{}");
+  assert.equal(init.body, '{"game":"bluff"}');            // names its game (AVR-128)
   assert.equal(t.sockets.length, 1);
   assert.ok(!t.sockets[0].url.includes("aps0"), "ticket must never be in the URL");
   t.sockets[0].accept();

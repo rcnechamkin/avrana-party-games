@@ -40,6 +40,15 @@
     const style = document.createElement('link');
     style.rel = 'stylesheet'; style.href = '/shared/avrana-integration.css';
     document.head.appendChild(style);
+    // Follow the party (AVR-128): Party Core decides where the party is; when the Party Host
+    // switches games or ends this one, this page follows, like Party Home. The module belongs to
+    // the Party (/party/lib/, HTTPS Full Mode only); without it, or without Party Core, nothing
+    // changes here.
+    if (window.isSecureContext) {
+      import('/party/lib/party-follow.js')
+        .then((m) => m.startPartyFollow({ here: m.gameOfPath(location.pathname), container: nav }))
+        .catch(() => {});
+    }
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install, { once: true });
   else install();
