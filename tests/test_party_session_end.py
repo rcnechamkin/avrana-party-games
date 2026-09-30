@@ -244,14 +244,20 @@ def test_natural_completion_reports_completed_once_off_the_lock(party, caplog):
     run(scenario())
 
 
-def test_after_the_results_screen_the_room_is_released_and_phones_are_told(party):
+def test_party_results_are_held_until_the_host_goes_home_then_released_and_phones_told(party):
+    """avrana-party ADR 0011: a Party round's results stay on screen (no timer) until the Party
+    Host moves the party on; Party Home is the protocol's end for that finished session."""
     async def scenario():
         b = binding(party)
         a, c = await party_game(b)
         old = b.session
         await win_for_alice(a, c)
         assert not a[0].closed and not fxs(a[0], "party_ended")   # results first
-        await asyncio.sleep(0.9)
+        await asyncio.sleep(0.9)                                   # past the old results timer
+        assert b.session is old and old.phase == "game_end" and old.deadline is None
+        assert b.party_room_sid == SID and not a[0].closed
+        await b.party_end(proto.end_message(KEY, "bluff", SID))    # the host's Party Home
+        await settle()
         assert b.session is not old and b.session.phase == "lobby"
         assert b.session.players == {} and b.session.g is None
         assert b.player_sockets == {} and b.party_roster == {}
@@ -288,7 +294,10 @@ def test_during_the_results_screen_an_unticketed_hello_only_watches(party):
 
 # ---- abandoned ---------------------------------------------------------------------------------
 
-def test_abandonment_by_bluff_rules_reports_abandoned_and_releases_at_once(party):
+def test_in_a_party_round_no_player_ends_the_game_on_their_own(party):
+    """avrana-party ADR 0011: entering and leaving a Party round are the Party Host's moves.
+    BLUFF's own end_game (a lone player, or a newcomer's takeover of an empty table) is refused;
+    the host ends it through the Party."""
     posts, _, _ = party
 
     async def scenario():
@@ -298,11 +307,10 @@ def test_abandonment_by_bluff_rules_reports_abandoned_and_releases_at_once(party
         await c[1]
         await settle()
         await a[0].inbox.put({"t": "end_game"})          # Alice is the last one here
-        await reports(b)
-        assert [report_of(m)["outcome"] for _, m, _ in posts] == ["abandoned"]
-        assert b.session.phase == "lobby" and b.session.players == {}
-        assert a[0].closed and fxs(a[0], "party_ended")[-1]["outcome"] == "abandoned"
-        assert b.party.sid is None and b.party_room_sid is None
+        await settle()
+        assert fxs(a[0], "invalid")[-1]["msg"] == "Only the Party Host can end this game."
+        assert b.session.phase == "playing" and posts == []
+        assert b.party.sid == SID and b.party_room_sid == SID
         await shutdown(b, a)
     run(scenario())
 
@@ -371,7 +379,7 @@ def test_without_a_party_url_nothing_is_sent_and_it_is_logged_once(party, caplog
             await win_for_alice(a, c)
             await reports(b)
             assert b.party.sid is None                   # the session is over all the same
-            await asyncio.sleep(0.9)
+            await b.party_end(proto.end_message(KEY, "bluff", sid))   # the host's Party Home
             assert b.party_room_sid is None
             await shutdown(b, a, c)
     caplog.set_level(logging.WARNING)
@@ -808,9 +816,9 @@ def test_a_rematch_is_a_new_party_session_with_a_fresh_table(party):
         b = binding(party)
         a, c = await party_game(b)
         await win_for_alice(a, c)
-        await asyncio.sleep(0.9)                                 # results screen -> released
-        assert b.party_room_sid is None
-        await b.party_launch(launch(b, sid=SID2))
+        await asyncio.sleep(0.9)                                 # results are held for the party
+        assert b.party_room_sid == SID and b.session.phase == "game_end"
+        await b.party_launch(launch(b, sid=SID2))                # the host's Play again
         assert b.party_room_sid == SID2 and b.session.g is None
         assert not any(p.connected for p in b.session.players.values())   # seated, not here yet
         old, task = await connect(b, {"t": "hello", "ticket": ticket(ALICE)})

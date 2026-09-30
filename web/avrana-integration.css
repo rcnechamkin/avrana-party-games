@@ -41,3 +41,21 @@ html[data-avrana="1"] [data-avrana-screen] { height: 100% !important;
   background: transparent; color: #f1eee8; font: 600 16px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 #avrana-party-end[hidden] { display: none; }
 #avrana-party-end:focus-visible { outline: 3px solid #c9b8f0; outline-offset: 2px; }
+
+/* The console model (avrana-party ADR 0011): in a Party the game owns the viewport. No Party bar
+   for anyone, except the host's single fallback control on a game that has no shell of its own. */
+#avrana-navigation[hidden] { display: none; }
+html[data-avrana-party="on"] #avrana-navigation:not([data-avrana-host]) { display: none; }
+html[data-avrana-party="on"] #avrana-navigation > a { display: none; }
+/* hubnet.js in a Party: the round is over and the room is gone (a reconnect during the results):
+   a quiet panel in the page, with the host's choices or who the party waits for. */
+.party-round-over { position: fixed; inset: 0; z-index: 90; display: grid; place-content: center;
+  gap: 16px; padding: 24px; text-align: center; background: #16151d; color: #f1eee8;
+  font: 17px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.party-round-over h2 { margin: 0; font-size: 24px; font-weight: 750; }
+.party-round-over p { margin: 0; color: #c9c3d6; }
+.party-round-over .actions { display: grid; gap: 10px; min-width: min(20rem, 80vw); }
+.party-round-over button { min-height: 48px; padding: 0 18px; border-radius: 12px; font: 650 16px system-ui;
+  border: 1px solid #4a4658; background: #26242f; color: #f1eee8; }
+.party-round-over button.primary { background: #7057b8; border-color: #7057b8; color: #fff; }
+.party-round-over button:focus-visible { outline: 3px solid #c9b8f0; outline-offset: 2px; }

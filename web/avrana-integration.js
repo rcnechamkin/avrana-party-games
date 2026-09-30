@@ -32,6 +32,10 @@
     nav.id = 'avrana-navigation';
     const back = document.createElement('a');
     back.href = home; back.textContent = 'Back to Party';
+    // The console model (avrana-party ADR 0011): while this phone is in a Party, the Party decides
+    // where it is and only the Party Host moves it, so there is no Back to Party. The bar waits
+    // for the Party's answer and shows only on a standalone page (or, for the host, one control).
+    if (window.isSecureContext) nav.hidden = true;
     // Give full-screen clients the remaining space rather than clipping their
     // controls below a new header. Containment also bounds fixed game overlays.
     const room = document.createElement('div'); room.id = 'avrana-game-room';
@@ -45,9 +49,12 @@
     // the Party (/party/lib/, HTTPS Full Mode only); without it, or without Party Core, nothing
     // changes here.
     if (window.isSecureContext) {
+      const reveal = () => { nav.hidden = false; };     // Party mode hides it again in CSS
+      const late = setTimeout(reveal, 4000);             // a slow or missing Party never strands it
       import('/party/lib/party-follow.js')
         .then((m) => m.startPartyFollow({ here: m.gameOfPath(location.pathname), container: nav }))
-        .catch(() => {});
+        .catch(() => null)
+        .then(() => { clearTimeout(late); reveal(); });
     }
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install, { once: true });

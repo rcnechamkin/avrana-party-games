@@ -53,6 +53,9 @@ svg.lucide { width: 1em; height: 1em; flex: none; }
 .round-btn.small { position: static; width: 44px; height: 44px; font-size: 20px; box-shadow: none; }
 #home { left: 12px; top: calc(10px + env(safe-area-inset-top)); }
 #history { right: 12px; top: calc(10px + env(safe-area-inset-top)); }
+/* The Party Host's End for everyone (avrana-party ADR 0011): in the table's own chrome. */
+#party-end { left: 64px; top: calc(10px + env(safe-area-inset-top)); }   /* beside ?, clear of the timer */
+#party-end[hidden] { display: none; }
 .corner-box { position: absolute; z-index: 15; padding: 8px 16px; border-radius: var(--r-field);
   font-weight: 800; font-size: 22px; box-shadow: 0 3px 8px rgba(0,0,0,.45); }
 /* timer: a pill in the header row, clear of every seat; red only when it matters */

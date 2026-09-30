@@ -653,6 +653,41 @@ const Hub = (() => {
       // the last table (an old hand, a turn timer) must not stay on screen under the note
       const room = document.getElementById("avrana-game-room");
       if (room) room.style.display = "none";
+      const P = window.AvranaParty;
+      if (!endedNote && P && P.active) {
+        // In a Party (avrana-party ADR 0011) only the Party Host moves the party on: Play again
+        // or Party Home. Everyone else waits here; nobody walks back on their own.
+        const panel = document.createElement("section");
+        panel.id = "party-ended";
+        panel.className = "party-round-over";
+        panel.setAttribute("role", "status");
+        const draw = () => {
+          const title = document.createElement("h2");
+          title.textContent = "Round over";
+          const kids = [title];
+          if (P.isHost()) {
+            const actions = document.createElement("div");
+            actions.className = "actions";
+            const again = document.createElement("button");
+            again.type = "button"; again.className = "primary"; again.textContent = "Play again";
+            again.onclick = () => P.playAgain();
+            const home = document.createElement("button");
+            home.type = "button"; home.textContent = "Back to Party Home";
+            home.onclick = () => P.goHome();
+            actions.append(again, home);
+            kids.push(actions);
+          } else {
+            const wait = document.createElement("p");
+            wait.textContent = "Waiting for " + (P.hostName() || "the host") + " to choose what’s next.";
+            kids.push(wait);
+          }
+          panel.replaceChildren(...kids);
+        };
+        draw();
+        P.onChange(draw);
+        document.body.appendChild(panel);
+        endedNote = panel;
+      }
       if (!endedNote) {
         const note = document.createElement("span");
         note.id = "party-ended";

@@ -97,10 +97,11 @@ Decisions:
   the connection, so reconnect and seat restore (AVR-23) are unaffected.
 - A player arriving while a game is already running (reconnect, watcher, a late Party member)
   is never covered by it; a toast points at `?` instead.
-- A Party member taken into BLUFF by the Party Host (AVR-127) arrives at BLUFF's **setup screen**
-  (AVR-129). There the Party's panel asks Play or Watch this round, and the Party Host starts the
-  round. A first-timer sees the briefing on arrival, and again when they tap Play, before the
-  Play counts (`window.AvranaPregame.beforePlay`).
+- In a Party (avrana-party ADR 0011, the console model) a round's setup is **Party Home's own
+  full-screen scene**, not this page: its premise and concise rules come from
+  `web/onboarding.json` (numbers as `{facts}`, pinned to game.py by `tests/test_bluff_briefing.py`),
+  and a first-timer's Play opens those rules first ("Got it, I'll play"), acknowledging the same
+  `bluff-briefed` key as this briefing.
 
 ## Party rounds (AVR-129; avrana-party ADR 0010)
 
@@ -116,6 +117,13 @@ Decisions:
   the public view, because players can see that screen. Tests: `tests/test_bluff_party_pregame.py`.
 - **Roles change only between rounds.** During a round a Party member cannot switch between Play
   and Watch; members who arrive late watch until the next setup.
+- **The round is the Party Host's** (ADR 0011). BLUFF draws the host's controls in its own chrome
+  (`window.AvranaParty`): an End button beside `?` (confirmed in the table's dialog), and on the
+  results screen Play again / Party Home, while everyone else sees who they wait for. The results
+  are held until the host moves on (no timer). In a Party round nobody else can end the game:
+  `end_game` and the empty-table takeover are refused; a player's own forfeit stays. The Party
+  bar (Back to Party) is hidden for everyone in a Party; standalone BLUFF keeps its lobby, its
+  timers and its Back link.
 - All words live in `CARDS`. The numbers and block rules come from `FACTS`/`BLOCKS`, which
   `tests/test_bluff_briefing.py` pins to `game.py`: change a rule and the test tells you to
   change the briefing. Bump `VERSION` to make everyone read it again.
