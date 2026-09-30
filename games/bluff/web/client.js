@@ -41,11 +41,15 @@ let drawerOpen = false, celebrated = false;
 const brief = window.BluffBriefing || null;
 let briefOffered = false, briefHinted = false;
 
-// AVR-129: while the Party sets up a round of BLUFF (Play or Watch, the Party Host's start), the
-// page shows this setup screen; the Party's own panel (party-follow.js) holds the choices.
+// In a Party (avrana-party ADR 0011) the round's setup is the Party's own full-screen scene on
+// Party Home; this page only runs the round and its results. If it is ever opened during a setup,
+// it shows nothing of the table until the round starts (the Party takes the phone to the setup).
 let SETUP = false;
+// The Party underneath (party-follow.js): the host's controls live in this table's own chrome.
+const party = () => (window.AvranaParty && window.AvranaParty.active ? window.AvranaParty : null);
+document.addEventListener("avrana-party", () => { if (ST) render(); });
 const conn = Hub.connect("/games/bluff/ws", {
-  onSetup: (on) => { SETUP = on; if (on) renderSetup(); else if (ST) render(); },
+  onSetup: (on) => { SETUP = on; $("app").hidden = on; if (!on && ST) render(); },
   onFx: (fx) => {
     if (fx.kind === "toast") Hub.toast((fx.icon ? fx.icon + " " : "") + fx.msg);
     if (fx.kind === "invalid") Hub.toast(fx.msg, "err");
@@ -65,11 +69,10 @@ $("home").onclick = () => { location.href = window.AvranaIntegration?.home || "/
 $("history").onclick = () => { drawerOpen = true; render(); };
 $("drawer-close").onclick = () => { drawerOpen = false; render(); };
 $("rules").onclick = () => brief && brief.open("reference");
-// The Party asks before a member's Play (party-follow.js): nobody plays without the briefing.
-window.AvranaPregame = {
-  beforePlay: () => (!brief || brief.acknowledged() ? Promise.resolve(true)
-    : new Promise((resolve) => brief.open("first", () => resolve(true)))),
-};
+// The Party Host ends a Party round for everyone from the table itself (no Party bar on top).
+$("party-end").onclick = () => confirmAction({ title: "End the game for everyone?",
+  body: "Everyone goes back to Party Home. This round can't be resumed.", yes: "End game" },
+() => party() && party().end());
 if (!brief) $("rules").hidden = true;
 // The briefing's "I'm ready" is this player's Ready, while there is a lobby to be ready in.
 function readyAfterBriefing() {
@@ -135,7 +138,7 @@ function cardFace(r, extra) {
 
 // ic: a Lucide name for table controls (play, x, check, ...) or "art:<name>" for BLUFF's
 // own game art (roles, coins, the coup, a claim, a challenge).
-const LUCIDE = new Set(["play", "x", "check", "hand", "log-out", "circle-stop", "circle-help"]);
+const LUCIDE = new Set(["play", "x", "check", "hand", "log-out", "circle-stop", "circle-help", "house"]);
 function actBtn(ic, label, onclick, cls, disabled) {
   const b = el("button", "act " + (cls || ""));
   const slot = el("span", "ic");
@@ -171,25 +174,11 @@ setInterval(() => {
 
 // ---------------------------------------------------------------- render
 
-function renderSetup() {
-  for (const id of ["hand", "lost", "me-seat", "opponents", "bar"]) $(id).textContent = "";
-  $("sheet").hidden = true; $("coins").hidden = true; $("timer").hidden = true;
-  $("piles").classList.add("hide");
-  const play = $("play");
-  play.textContent = "";
-  play.classList.add("lobby");
-  $("center").classList.remove("row");
-  play.appendChild(el("div", "lobby-title", "BLUFF"));
-  const how = actBtn("circle-help", "How to play", () => brief && brief.open("reference"));
-  if (brief) play.appendChild(how);
-  $("caption").textContent = "Round setup: choose Play or Watch above. The Party Host starts the round.";
-  // first play: the briefing before anything else (its acknowledgement also gates Play)
-  if (brief && !brief.acknowledged() && !briefOffered) { briefOffered = true; brief.open("first"); }
-}
-
 function render() {
   const st = ST;
-  if (SETUP) return renderSetup();
+  if (SETUP) return;
+  const P = party();
+  $("party-end").hidden = !(P && st.party_round && st.phase === "playing" && P.isHost());
   const inLobby = st.phase === "lobby" || st.phase === "countdown";
   briefing(st, inLobby);
   $("drawer").hidden = !drawerOpen;
@@ -360,7 +349,16 @@ function renderBar() {
   bar.classList.toggle("call", !!(me && me.prompt));
   $("sheet").hidden = true;
   const msg = (t) => bar.appendChild(el("div", "bar-msg", t));
-  if (p.stage === "over") { msg("Back to the lobby in a moment…"); return; }
+  if (p.stage === "over") {
+    const P = party();
+    if (!(ST.party_round && P)) { msg("Back to the lobby in a moment…"); return; }
+    // A Party round's results stay until the Party Host moves everyone on (ADR 0011).
+    if (P.isHost()) {
+      bar.appendChild(actBtn("play", "Play again", () => P.playAgain(), "primary"));
+      bar.appendChild(actBtn("house", "Party Home", () => P.goHome()));
+    } else msg(`Waiting for ${P.hostName() || "the host"} to choose what's next`);
+    return;
+  }
   if (!me) {
     if (g().paused) {                      // an empty table: a newcomer may start fresh
       const wait = Math.ceil(((g().takeover_at || 0) - conn.now()) / 1000);
@@ -482,7 +480,8 @@ function renderDrawer() {
       yes: "Leave game",
     }, () => send({ t: "leave_game" }))));
   }
-  if (me && !g().winner) {
+  // In a Party round only the Party Host ends the game (their End beside ?; ADR 0011)
+  if (me && !g().winner && !ST.party_round) {
     box.appendChild(actBtn("circle-stop", "End game", () => confirmAction({
       title: "End the game?",
       body: "Everyone goes back to the lobby. This only works when nobody else is still playing.",

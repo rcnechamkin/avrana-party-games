@@ -118,3 +118,33 @@ def test_page_loads_the_briefing_and_offers_rules():
     key = re.search(r'const KEY = "([^"]+)"', SRC).group(1)
     assert key == "bluff-briefed" and not key.startswith(("wc-", "lg-"))
     assert "send(" not in SRC and "WebSocket" not in SRC
+
+
+# ---- the Party's setup scene reads BLUFF's onboarding as data (avrana-party ADR 0011) -----------
+ONBOARDING = json.loads((WEB / "onboarding.json").read_text(encoding="utf-8"))
+
+
+def test_onboarding_facts_are_the_briefings_facts():
+    """onboarding.json is the concise rules sheet the Party's setup scene shows. Its numbers come
+    only from its `facts` (as {placeholders}); those must be the briefing's, which the tests above
+    pin to game.py."""
+    assert ONBOARDING["schema"] == "avrana.onboarding/v0" and ONBOARDING["game"] == "bluff"
+    assert ONBOARDING["facts"] == FACTS and ONBOARDING["blocks"] == BLOCKS
+    ack = ONBOARDING["ack"]
+    assert ack["key"] == re.search(r'KEY = "([^"]+)"', SRC).group(1)
+    assert ack["version"] == re.search(r'VERSION = "([^"]+)"', SRC).group(1)
+
+
+def test_onboarding_is_short_and_states_no_bare_numbers():
+    rules = ONBOARDING["rules"]
+    assert 3 <= len(rules) <= 6                              # one sheet, not a wizard
+    for section in rules:
+        assert section["title"] and 1 <= len(section["points"]) <= 5
+        for point in section["points"]:
+            for name in re.findall(r"\{(\w+)\}", point):
+                assert name in FACTS, name                  # every placeholder is a fact
+            assert not re.search(r"\d", re.sub(r"\{\w+\}", "", point)), point
+    words = " ".join(p for s in rules for p in s["points"])
+    for role in ROLE_ORDER:
+        assert role in words                                 # every role is explained
+    assert len(ONBOARDING["premise"]) <= 140

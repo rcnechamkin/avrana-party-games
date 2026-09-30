@@ -98,7 +98,9 @@ def test_session_a_completed_then_session_b_starts_with_nothing_of_a(party):
             await a[0].inbox.put(msg)
         await settle()
         assert b.session is room_a and b.session.phase == "game_end"
-        await asyncio.sleep(0.9)                         # results screen over -> released
+        await asyncio.sleep(0.9)                         # results are held for the party (ADR 0011)
+        assert b.session is room_a and b.party_room_sid == SID
+        await b.party_end(proto.end_message(KEY, "bluff", SID))   # the host's Party Home
         assert_fresh(b, room_a)
         assert b.party_room_sid is None and b.party_roster == {}
         seen = (len(a[0].sent), len(c[0].sent))
@@ -139,8 +141,9 @@ def test_session_a_completed_then_session_b_starts_with_nothing_of_a(party):
     run(scenario())
 
 
-def test_session_a_abandoned_then_session_b_starts_with_nothing_of_a(party):
+def test_session_a_abandoned_then_session_b_starts_with_nothing_of_a(party, monkeypatch):
     posts, _, _ = party
+    monkeypatch.setattr(bluff, "EMPTY_TABLE_ABANDON", 0.1)
 
     async def scenario():
         b = binding(party)
@@ -158,10 +161,15 @@ def test_session_a_abandoned_then_session_b_starts_with_nothing_of_a(party):
                 break
         room_a = b.session
         assert room_a.phase == "playing" and len(room_a.g["seats"]) == 2     # no test bots (AVR-129)
-        await c[0].close()                               # Bob's phone is gone
-        await c[1]
-        await settle()
-        await a[0].inbox.put({"t": "end_game"})          # Alice is the last one here: abandoned
+        # every phone is gone: the empty table times out by BLUFF's own rule (in a Party round no
+        # player can end the game themselves; avrana-party ADR 0011)
+        for ws, task in (a, c):
+            await ws.close()
+            await task
+        for _ in range(40):
+            await asyncio.sleep(0.05)
+            if posts:
+                break
         await reports(b)
         assert [report_of(m)["outcome"] for _, m, _ in posts] == ["abandoned"]
         assert_fresh(b, room_a)

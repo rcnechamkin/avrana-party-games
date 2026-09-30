@@ -170,3 +170,35 @@ def test_standalone_bluff_keeps_its_own_lobby():
         assert b.session.phase == "lobby"
         await shutdown(b, z)
     run(scenario())
+
+
+# ---- the console model (avrana-party ADR 0011): a Party round's results are the party's ----------
+
+def test_results_are_held_in_a_party_round_and_timed_in_standalone_play():
+    from games.bluff.game import BluffSession
+    party_round = BluffSession()
+    party_round.party_start([("tokA-party-01", "Ana"), ("tokB-party-01", "Ben")])
+    for s, held in ((party_round, True), (BluffSession(), False)):
+        s.g = {"winner": None}
+        s.end_game()
+        assert s.phase == "game_end"
+        assert (s.deadline is None) is held, "party results wait for the host; standalone ones time out"
+
+
+def test_a_party_round_cannot_be_ended_or_taken_over_by_a_player():
+    async def scenario():
+        b = binding()
+        await b.party_launch(launch(b, entries=ROSTER[:2]))
+        a = await connect(b, {"t": "hello", "ticket": ticket(ALICE)})
+        c = await connect(b, {"t": "hello", "ticket": ticket(BOB)})
+        await until(lambda: b.session.phase == "playing", limit=5)
+        b.session.g["paused"] = {"remaining": 5, "since": 0}          # an "empty" table, long ago
+        watcher = await connect(b, {"t": "hello", "ticket": ticket(CAROL, role="spectator")})
+        for ws in (a[0], watcher[0]):
+            await ws.inbox.put({"t": "end_game"})
+        await settle()
+        assert b.session.phase == "playing"
+        refused = [m for m in a[0].sent if m.get("kind") == "invalid"]
+        assert refused and refused[-1]["msg"] == "Only the Party Host can end this game."
+        await shutdown(b, a, c, watcher)
+    run(scenario())

@@ -244,7 +244,8 @@ class GameBinding:
             running = self.party_room_sid == sid
             event(self.slug, "party_end", running=running)
             if running:
-                await self._party_release("ended")
+                # a finished round keeps its own outcome (the host moved on from its results)
+                await self._party_release(self._party_outcome or "ended")
         return sid
 
     def _fresh_room(self):

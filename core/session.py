@@ -385,9 +385,11 @@ class GameSession:
 
     def end_game(self):
         """Games call this when they're done (after building their final
-        results into their own state). Enters the shared game_end phase."""
+        results into their own state). Enters the shared game_end phase. In a Party round the
+        results stay on screen until the Party Host moves the party on (Play again or Party Home,
+        avrana-party ADR 0011): no timer sends the room back to a lobby of its own."""
         self.phase = "game_end"
-        self._bump(time.time() + GAME_END_SECONDS)
+        self._bump(None if self.party_round else time.time() + GAME_END_SECONDS)
         return [self.fx("game_end")]
 
     def to_lobby(self):

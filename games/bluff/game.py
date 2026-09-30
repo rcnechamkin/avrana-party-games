@@ -389,6 +389,9 @@ class BluffSession(GameSession):
     def game_action(self, token, msg):
         if self.phase != "playing" or self.g is None:
             return [self.fx("invalid", to=token, msg="No game in progress")]
+        if msg.get("t") == "end_game" and self.party_round:
+            # a Party round is the party's: only the Party Host ends it (avrana-party ADR 0011)
+            return [self.fx("invalid", to=token, msg="Only the Party Host can end this game.")]
         if msg.get("t") == "end_game" and self.g["paused"] and token not in self.g["seats"]:
             return self._takeover(token)
         if token not in self.g["seats"]:
