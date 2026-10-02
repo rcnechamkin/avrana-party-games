@@ -32,3 +32,10 @@ dev.pid
 *.tmp
 /test-results/
 /playwright-report/
+
+# Derived context, private Linear exports, and machine-specific Graphify state
+/.graphify-context/
+/graphify-out/
+/graphify-public/
+/.claude/*
+!/.claude/settings.json

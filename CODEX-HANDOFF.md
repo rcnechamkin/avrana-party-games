@@ -1,5 +1,8 @@
 # Agent entry point — Avrana Party Games
 
+Read [AGENTS](AGENTS.md) for shared invariants and derived Graphify guidance, and
+[CONTRIBUTING](CONTRIBUTING.md) for the contributor workflow. This handoff adds no authority.
+
 Start from current GitHub `main` and the current issue in
 [Linear](https://linear.app/avranakern) for scope, sequencing, blockers, acceptance and ownership.
 The former PR #1 providerization handoff is a historical sprint record in Git history; its next

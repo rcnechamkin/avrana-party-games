@@ -28,6 +28,30 @@ jobs:
             requirements-dev.txt
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
+      - name: Checkout immutable shared context toolkit
+        uses: actions/checkout@v4
+        with:
+          repository: rcnechamkin/avrana-party
+          ref: '4a3a74f74eb3add5da5de263025d5eb84190ff91'
+          path: .graphify-context/toolkit
+          persist-credentials: false
+      - name: Derived context fixtures and configuration (no credentials)
+        run: |
+          python -m unittest discover -s .graphify-context/toolkit/tests/context -v
+          python ops/graphify_context.py check-config
+          python ops/graphify_context.py check-semantic
+      - name: Checkout current canonical Party docs independently of tooling
+        uses: actions/checkout@v4
+        with:
+          repository: rcnechamkin/avrana-party
+          ref: main
+          path: .graphify-context/party-docs
+          persist-credentials: false
+      - name: Deterministic Graphify AST smoke check (no model backend)
+        run: |
+          python -m pip install graphifyy==0.9.74
+          python ops/graphify_context.py --party-docs .graphify-context/party-docs refresh --architecture
+          python ops/graphify_context.py status --architecture
       - name: Public-repository privacy gate
         run: python tests/test_no_private_data.py
       - name: Provider snapshot drift

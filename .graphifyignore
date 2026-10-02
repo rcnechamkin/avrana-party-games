@@ -1,0 +1,8 @@
+.graphify-context/
+graphify-out/
+graphify-public/
+context/graphify/
+node_modules/
+data/
+games/wordrush/data/
+games/wordclash/data/
