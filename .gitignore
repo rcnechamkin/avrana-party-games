@@ -33,7 +33,8 @@ dev.pid
 /test-results/
 /playwright-report/
 
-# EXPO internal development documentation (publisher PDFs, reference snapshots): never commit.
+# EXPO source material kept locally by maintainers (publisher PDFs, reference snapshots, early
+# drafts): never commit. The canonical design record is games/expo/docs/ (AVR-215).
 /games/The Crew II/
 
 # git bundles
