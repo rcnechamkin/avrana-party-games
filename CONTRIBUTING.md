@@ -20,5 +20,7 @@ Install `requirements-dev.txt` and the npm lockfile, then run the privacy gate, 
 snapshot check, `python ops/check_docs.py`, pytest and the static checks listed in AGENTS. With a
 sibling Party checkout (or `AVRANA_PARTY_REPO`), also run the cross-repository tests; CI requires
 them. Every Markdown file needs an entry in [docs/manifest.json](docs/manifest.json).
+The shared Graphify fixture tests live in Party; Games' CI checks out their immutable pinned
+commit. Run `python ops/graphify_context.py check-config` locally after bootstrapping that toolkit.
 Private read-only Linear snapshots, caches and machine-specific outputs must remain ignored.
 Never hand-edit generated semantic graphs/receipts; refresh and review them together.

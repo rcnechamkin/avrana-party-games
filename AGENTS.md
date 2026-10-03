@@ -1,8 +1,11 @@
 # Avrana Party Games: agent and contributor entry point
 
 This repository holds the browser game servers (LAN Games titles and BLUFF) that run under
-[Avrana Party](https://github.com/rcnechamkin/avrana-party). It routes you to the authoritative
-material; it does not repeat it. The development loop for both repositories is Party's
+[Avrana Party](https://github.com/rcnechamkin/avrana-party). It is the deployed game runtime
+today and is retiring as one: Party
+[ADR 0014](https://github.com/rcnechamkin/avrana-party/blob/main/docs/adr/0014-native-games-isolated-lan-games-retired.md)
+keeps it as donor and reference code and moves native games to isolated processes (accepted,
+not implemented). This file routes you to the authoritative material; it does not repeat it. The development loop for both repositories is Party's
 [WORKFLOW](https://github.com/rcnechamkin/avrana-party/blob/main/docs/WORKFLOW.md).
 `CLAUDE.md` and `CODEX-HANDOFF.md` add environment notes only.
 
@@ -13,8 +16,9 @@ Highest first; each source answers its own question.
 | Question | Source of truth |
 |---|---|
 | What is implemented | code and tests on GitHub `main` here (games) and in Party (platform) |
-| Platform architecture, contracts, decisions | Party's canonical docs and [ADRs](https://github.com/rcnechamkin/avrana-party/tree/main/docs/adr) (0005–0011 for provider launch, sessions, navigation, Play/Watch, the console model) |
-| How to add or change a game | [ADDING_A_GAME](ADDING_A_GAME.md) (upstream guide) and [provider/README](provider/README.md) (Avrana rules, which win where they differ) |
+| Platform architecture, contracts, decisions | Party's canonical docs and [ADRs](https://github.com/rcnechamkin/avrana-party/tree/main/docs/adr) (0005–0011 for provider launch, sessions, navigation, Play/Watch, the console model as implemented; 0012–0014 for accepted direction that is not implemented: Limited Mode, separate Party and game origins, isolated native games) |
+| How to maintain or change an existing game here | [ADDING_A_GAME](ADDING_A_GAME.md) (upstream guide) and [provider/README](provider/README.md) (Avrana rules, which win where they differ) |
+| How to build a new Avrana-native game | not as a module here: ADR 0014 and Party's [add-a-game runbook](https://github.com/rcnechamkin/avrana-party/blob/main/docs/runbooks/add-a-game.md). The native path is not built yet; take scope from the Linear issue |
 | What should change now, acceptance, ownership | the AVR issue in [Linear](https://linear.app/avranakern) |
 | What is running on the Pi | Party's `/party/api/status` and deployment manifest; Party's SYSTEM summarizes |
 | Party ↔ Games interface | [`provider/avrana-contract.json`](provider/avrana-contract.json) (what this server requires) and Party's [PARTY-GAMES-CONTRACT](https://github.com/rcnechamkin/avrana-party/blob/main/docs/design/PARTY-GAMES-CONTRACT.md) |
@@ -45,8 +49,12 @@ Never, unless the task explicitly authorizes it in writing:
 - deploy, restart or edit anything on the Pi (no `sudo`, no production checkout changes);
 - change the vendored protocol (`core/party_protocol.py`, `tests/vectors/`) by hand: re-vendor
   from Party and update `provider/avrana-contract.json` together, on paired branches;
-- add a parallel identity, roster, chat, library or navigation store: Party owns them; games never
-  receive device identity;
+- add a parallel identity, roster, chat, library, navigation or durable results/history store:
+  Party owns them; games never receive device identity, and a game reports results rather than
+  keeping the platform's record;
+- start a new Avrana-native title as a LAN Games module, or design new work around standalone
+  LAN Games play, `wc-token` admission or a browser origin shared with Party, unless the Linear
+  issue says so explicitly (ADRs 0013/0014);
 - regenerate `provider/catalog.json` without copying the reviewed export to Party's
   `contracts/catalogs/lan-games.json` in the paired PR;
 - commit secrets, `venue.json`, runtime data, ROMs, private Linear exports, machine paths or

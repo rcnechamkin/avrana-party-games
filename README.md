@@ -6,6 +6,10 @@ repository is a fork of **LAN Games** by **BEACNpool** (upstream retired
 September 2026), which remains its foundation. Upstream's README follows
 unchanged below.
 
+This server is the deployed game runtime today and is retiring as one: Party
+[ADR 0014](https://github.com/rcnechamkin/avrana-party/blob/main/docs/adr/0014-native-games-isolated-lan-games-retired.md) keeps it as donor and reference code and moves native games to
+isolated processes (accepted, not yet implemented).
+
 - **Licence:** MIT (`LICENSE`, unchanged from upstream). See [`NOTICE.md`](NOTICE.md)
   for attribution and third-party components.
 - **Development:** [Contributing](CONTRIBUTING.md), [agent invariants](AGENTS.md), and

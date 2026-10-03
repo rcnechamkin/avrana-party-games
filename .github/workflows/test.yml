@@ -28,6 +28,30 @@ jobs:
             requirements-dev.txt
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
+      - name: Checkout immutable shared context toolkit
+        uses: actions/checkout@v4
+        with:
+          repository: rcnechamkin/avrana-party
+          ref: '9cbce3a0ba95664bbd4152025a4b7d62a55947a6'
+          path: .graphify-context/toolkit
+          persist-credentials: false
+      - name: Derived context fixtures and configuration (no credentials)
+        run: |
+          python -m unittest discover -s .graphify-context/toolkit/tests/context -v
+          python ops/graphify_context.py check-config
+      - name: Checkout current canonical Party docs independently of tooling
+        uses: actions/checkout@v4
+        with:
+          repository: rcnechamkin/avrana-party
+          ref: main
+          path: .graphify-context/party-docs
+          persist-credentials: false
+      - name: Deterministic Graphify AST smoke check (no model backend)
+        run: |
+          python -m pip install graphifyy==0.9.74
+          python ops/graphify_context.py --party-docs .graphify-context/party-docs refresh --architecture
+          python ops/graphify_context.py --party-docs .graphify-context/party-docs status --architecture
+          python ops/graphify_context.py --party-docs .graphify-context/party-docs check-semantic
       - name: Public-repository privacy gate
         run: python tests/test_no_private_data.py
       - name: Provider snapshot drift
@@ -55,15 +79,24 @@ jobs:
         env:
           BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
+          # A failure to list Party's branches must fail this job: falling back to main would
+          # report compatibility that was never checked against the paired branch.
+          heads=$(git ls-remote --heads https://github.com/rcnechamkin/avrana-party.git \
+            | awk '{print $2}' | sed 's#refs/heads/##')
+          [ -n "$heads" ] || { echo "::error::could not list avrana-party branches"; exit 1; }
           avr=$(echo "$BRANCH" | grep -oiE 'avr-[0-9]+' | head -1 | tr 'A-Z' 'a-z' || true)
-          ref=main
+          ref=main; why='no AVR id in this branch name'
           if [ -n "$avr" ]; then
-            match=$(git ls-remote --heads https://github.com/rcnechamkin/avrana-party.git \
-              | awk '{print $2}' | sed 's#refs/heads/##' | grep -iE "(^|[/-])${avr}([-/]|$)" | head -1 || true)
-            [ -n "$match" ] && ref=$match
+            why="no Party branch carries $avr"
+            if echo "$heads" | grep -qxF "$BRANCH"; then
+              ref=$BRANCH; why='same branch name'
+            else
+              match=$(echo "$heads" | grep -iE "(^|[/-])${avr}([-/]|$)" | sort | head -1 || true)
+              if [ -n "$match" ]; then ref=$match; why="first branch carrying $avr"; fi
+            fi
           fi
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
-          echo "Party ref for this run: $ref (AVR id: ${avr:-none})" >> "$GITHUB_STEP_SUMMARY"
+          echo "Party ref for this run: $ref ($why)" | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@v4
         with:
           repository: rcnechamkin/avrana-party
