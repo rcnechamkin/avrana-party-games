@@ -423,8 +423,9 @@ const Hub = (() => {
      party player's role, seat or identity on its own.
 
      Before every connect the page asks the party for a ticket for this game
-     (POST /party/api/session/ticket; the party cookie, Path=/party/, authenticates it). The
-     ticket travels only in the WebSocket hello, never in a URL. partyTicket() answers:
+     (POST /party/api/session/ticket {game}; the party cookie, Path=/party/, authenticates it; a
+     party that plays another game answers 409 no_game, AVR-128). The ticket travels only in the
+     WebSocket hello, never in a URL. partyTicket() answers:
        ticket     a ticket for this game (and its session id): play; the game seats the roster
        transient  the request reached nothing, timed out (TICKET_WAIT) or the party failed (5xx):
                   retry with the usual backoff and never send a ticketless hello, or a seated
@@ -440,7 +441,7 @@ const Hub = (() => {
      A page that never held a ticket keeps today's hello on `no`/`absent`: the game server decides
      its role (a watcher while the room belongs to a party session). No automatic navigation
      (ADR 0006). */
-  const TICKET_WAIT = 5000, PARTY_POLL = 5000, MAX_TICKET_TRIES = 20;
+  const TICKET_WAIT = 5000, PARTY_POLL = 5000, MAX_TICKET_TRIES = 20, SETUP_POLL = 2000;
   const partySessionKey = "avrana-party-session:" + gameSlug;
   let partySessionMemo = "";
   const partyMemory = {
@@ -463,7 +464,7 @@ const Hub = (() => {
       try {
         res = await fetch("/party/api/session/ticket", {
           method: "POST", credentials: "same-origin", cache: "no-store",
-          headers: { "Content-Type": "application/json" }, body: "{}",
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify({ game: gameSlug }),
           signal: ctl ? ctl.signal : undefined,
         });
       } catch (error) {
@@ -479,7 +480,9 @@ const Hub = (() => {
         return { kind: "no" };
       }
       if ((res.status === 403 || res.status === 409) && body && typeof body.error === "string") {
-        return { kind: "no" };
+        // AVR-129: the party is setting up this game's round (Play or Watch, the host's start):
+        // wait for it, never join a room on our own
+        return { kind: body.error === "setup" ? "setup" : "no" };
       }
       return { kind: "absent" };
     })();
@@ -491,7 +494,9 @@ const Hub = (() => {
   }
 
   /* connect(gamePath, handlers, opts) -> conn
-     handlers: onState(st), onFx(fx), onWelcome(msg)
+     handlers: onState(st), onFx(fx), onWelcome(msg), onSetup(on): the party is setting up this
+       game's round (AVR-129): true while the page waits for the Party Host's start (no socket),
+       false once the round's ticket arrives
      opts.watch: connect as a read-only spectator (the big-screen / TV view) —
        no token, no join; the server pushes the masked spectator state.
      conn: send(obj), now() (server-synced ms), alive */
@@ -511,6 +516,7 @@ const Hub = (() => {
     let rejects = 0, gaveUp = false, timer = null, fetching = false;
     let ticketTries = 0, waitingForNetwork = false;
     let endedSession = null, endedNote = null;   // the party session this page saw end
+    let inSetup = false;                         // waiting for the party's round to start
     function schedule(wait) {
       clearTimeout(timer);
       timer = setTimeout(() => { timer = null; open(); }, wait);
@@ -531,6 +537,20 @@ const Hub = (() => {
         if (conn.closedByUs) return;
         if (r.kind === "transient") { ticketFailed(); return; }
         ticketTries = 0;
+        if (r.kind === "setup") {
+          if (!inSetup) {
+            inSetup = true;
+            banner.hidden = true;
+            hideEnded();
+            if (handlers.onSetup) handlers.onSetup(true);
+          }
+          schedule(SETUP_POLL);             // the host's start arrives as a ticket
+          return;
+        }
+        if (inSetup) {
+          inSetup = false;
+          if (handlers.onSetup) handlers.onSetup(false);
+        }
         const fresh = r.kind === "ticket" && !(endedSession && r.session === endedSession);
         if (fresh) {
           if (r.session) partyMemory.set(r.session);
@@ -633,6 +653,41 @@ const Hub = (() => {
       // the last table (an old hand, a turn timer) must not stay on screen under the note
       const room = document.getElementById("avrana-game-room");
       if (room) room.style.display = "none";
+      const P = window.AvranaParty;
+      if (!endedNote && P && P.active) {
+        // In a Party (avrana-party ADR 0011) only the Party Host moves the party on: Play again
+        // or Party Home. Everyone else waits here; nobody walks back on their own.
+        const panel = document.createElement("section");
+        panel.id = "party-ended";
+        panel.className = "party-round-over";
+        panel.setAttribute("role", "status");
+        const draw = () => {
+          const title = document.createElement("h2");
+          title.textContent = "Round over";
+          const kids = [title];
+          if (P.isHost()) {
+            const actions = document.createElement("div");
+            actions.className = "actions";
+            const again = document.createElement("button");
+            again.type = "button"; again.className = "primary"; again.textContent = "Play again";
+            again.onclick = () => P.playAgain();
+            const home = document.createElement("button");
+            home.type = "button"; home.textContent = "Back to Party Home";
+            home.onclick = () => P.goHome();
+            actions.append(again, home);
+            kids.push(actions);
+          } else {
+            const wait = document.createElement("p");
+            wait.textContent = "Waiting for " + (P.hostName() || "the host") + " to choose what’s next.";
+            kids.push(wait);
+          }
+          panel.replaceChildren(...kids);
+        };
+        draw();
+        P.onChange(draw);
+        document.body.appendChild(panel);
+        endedNote = panel;
+      }
       if (!endedNote) {
         const note = document.createElement("span");
         note.id = "party-ended";

@@ -37,8 +37,19 @@ let picking = null;          // action awaiting a target tap
 let sheet = null;            // "claim" when the claim menu is open
 let keepSel = [], keepKey = "";
 let drawerOpen = false, celebrated = false;
+// How to play (briefing.js): shown once before a new player's first Ready; ? reopens it any time.
+const brief = window.BluffBriefing || null;
+let briefOffered = false, briefHinted = false;
 
+// In a Party (avrana-party ADR 0011) the round's setup is the Party's own full-screen scene on
+// Party Home; this page only runs the round and its results. If it is ever opened during a setup,
+// it shows nothing of the table until the round starts (the Party takes the phone to the setup).
+let SETUP = false;
+// The Party underneath (party-follow.js): the host's controls live in this table's own chrome.
+const party = () => (window.AvranaParty && window.AvranaParty.active ? window.AvranaParty : null);
+document.addEventListener("avrana-party", () => { if (ST) render(); });
 const conn = Hub.connect("/games/bluff/ws", {
+  onSetup: (on) => { SETUP = on; $("app").hidden = on; if (!on && ST) render(); },
   onFx: (fx) => {
     if (fx.kind === "toast") Hub.toast((fx.icon ? fx.icon + " " : "") + fx.msg);
     if (fx.kind === "invalid") Hub.toast(fx.msg, "err");
@@ -57,6 +68,17 @@ const gsend = (m) => send(Object.assign({ step: g() && g().pending.step }, m));
 $("home").onclick = () => { location.href = window.AvranaIntegration?.home || "/"; };
 $("history").onclick = () => { drawerOpen = true; render(); };
 $("drawer-close").onclick = () => { drawerOpen = false; render(); };
+$("rules").onclick = () => brief && brief.open("reference");
+// The Party Host ends a Party round for everyone from the table itself (no Party bar on top).
+$("party-end").onclick = () => confirmAction({ title: "End the game for everyone?",
+  body: "Everyone goes back to Party Home. This round can't be resumed.", yes: "End game" },
+() => party() && party().end());
+if (!brief) $("rules").hidden = true;
+// The briefing's "I'm ready" is this player's Ready, while there is a lobby to be ready in.
+function readyAfterBriefing() {
+  if (ST && (ST.phase === "lobby" || ST.phase === "countdown") && ST.you && !ST.you.ready)
+    send({ t: "ready", ready: true });
+}
 
 // Opponent seats as [x, y] % of the opponents' zone (#opponents: header row down to
 // your own avatar row), each seat anchored at its top-centre, listed clockwise
@@ -116,7 +138,7 @@ function cardFace(r, extra) {
 
 // ic: a Lucide name for table controls (play, x, check, ...) or "art:<name>" for BLUFF's
 // own game art (roles, coins, the coup, a claim, a challenge).
-const LUCIDE = new Set(["play", "x", "check", "hand", "log-out", "circle-stop"]);
+const LUCIDE = new Set(["play", "x", "check", "hand", "log-out", "circle-stop", "circle-help", "house"]);
 function actBtn(ic, label, onclick, cls, disabled) {
   const b = el("button", "act " + (cls || ""));
   const slot = el("span", "ic");
@@ -154,7 +176,11 @@ setInterval(() => {
 
 function render() {
   const st = ST;
+  if (SETUP) return;
+  const P = party();
+  $("party-end").hidden = !(P && st.party_round && st.phase === "playing" && P.isHost());
   const inLobby = st.phase === "lobby" || st.phase === "countdown";
+  briefing(st, inLobby);
   $("drawer").hidden = !drawerOpen;
   $("piles").classList.toggle("hide", inLobby);
   if (inLobby) { picking = null; sheet = null; celebrated = false; return renderLobby(st); }
@@ -166,6 +192,25 @@ function render() {
   renderBar();
   renderDrawer();
   if (g().winner && !celebrated) { celebrated = true; if (g().me && g().winner === g().me.pid) Hub.confettiBurst(140); }
+}
+
+// First play: open the briefing once per page load for a seated lobby player who has never
+// acknowledged it (a reload before acknowledging shows it again). A game already running is
+// never covered by it (a reconnect, a watcher): a toast points at ? instead. While the rules
+// are open, a line says when the table is waiting on this player.
+function briefing(st, inLobby) {
+  if (!brief) return;
+  const me = !inLobby && st.game && st.game.me;
+  brief.status(me && !me.left && (me.prompt || (me.actions || []).length)
+    ? (me.prompt ? "Your call is waiting: close to answer." : "It's your turn: close to play.") : "");
+  if (brief.acknowledged()) return;
+  if (inLobby && st.you && !st.you.ready && !briefOffered) {
+    briefOffered = true;
+    brief.open("first", readyAfterBriefing);
+  } else if (!inLobby && !briefHinted && !brief.isOpen()) {
+    briefHinted = true;
+    Hub.toast("New to BLUFF? Tap ? for how to play");
+  }
 }
 
 function orderedOpponents() {
@@ -195,7 +240,9 @@ function renderOpponents() {
     const pres = { reconnecting: "reconnecting…", away: "away", left: "left" }[s.presence];
     if (pres && s.alive) seat.appendChild(el("div", "presence " + s.presence, pres));
     const info = el("div", "info"), cards = el("div", "cards");
-    for (let k = 0; k < s.influence; k++) cards.appendChild(el("div", "back mini"));
+    // a Party spectator's view shows every hand (AVR-129); players only ever get backs
+    if (s.cards) for (const r of s.cards) cards.appendChild(cardFace(r, "mini"));
+    else for (let k = 0; k < s.influence; k++) cards.appendChild(el("div", "back mini"));
     for (const r of s.revealed) cards.appendChild(cardFace(r, "mini dead"));
     info.appendChild(cards);
     info.appendChild(coinsEl(s.coins, "chip coins-chip"));
@@ -302,7 +349,16 @@ function renderBar() {
   bar.classList.toggle("call", !!(me && me.prompt));
   $("sheet").hidden = true;
   const msg = (t) => bar.appendChild(el("div", "bar-msg", t));
-  if (p.stage === "over") { msg("Back to the lobby in a moment…"); return; }
+  if (p.stage === "over") {
+    const P = party();
+    if (!(ST.party_round && P)) { msg("Back to the lobby in a moment…"); return; }
+    // A Party round's results stay until the Party Host moves everyone on (ADR 0011).
+    if (P.isHost()) {
+      bar.appendChild(actBtn("play", "Play again", () => P.playAgain(), "primary"));
+      bar.appendChild(actBtn("house", "Party Home", () => P.goHome()));
+    } else msg(`Waiting for ${P.hostName() || "the host"} to choose what's next`);
+    return;
+  }
   if (!me) {
     if (g().paused) {                      // an empty table: a newcomer may start fresh
       const wait = Math.ceil(((g().takeover_at || 0) - conn.now()) / 1000);
@@ -314,7 +370,7 @@ function renderBar() {
       else bar.appendChild(actBtn("play", "Start a new game", () => send({ t: "end_game" }), "primary"));
       return;
     }
-    msg("Watching");
+    msg(ST.spectator ? "Watching this round: you see every hand" : "Watching");
     return;
   }
   if (me.left) { msg("You left this game: watching"); return; }
@@ -424,7 +480,8 @@ function renderDrawer() {
       yes: "Leave game",
     }, () => send({ t: "leave_game" }))));
   }
-  if (me && !g().winner) {
+  // In a Party round only the Party Host ends the game (their End beside ?; ADR 0011)
+  if (me && !g().winner && !ST.party_round) {
     box.appendChild(actBtn("circle-stop", "End game", () => confirmAction({
       title: "End the game?",
       body: "Everyone goes back to the lobby. This only works when nobody else is still playing.",
@@ -486,6 +543,14 @@ function renderLobby(st) {
   play.classList.add("lobby");
   $("center").classList.remove("row");
   play.appendChild(el("div", "lobby-title", "BLUFF"));
+  if (st.party_round) {                   // AVR-129: the Party chose the table; no ready/start here
+    const here = st.players.filter((p) => p.connected).length;
+    $("caption").textContent = here < st.players.length
+      ? `Starting: ${here} of ${st.players.length} players here` : "Starting…";
+    $("deck-n").textContent = "";
+    $("bar").textContent = "";
+    return;
+  }
   const bots = (st.settings && st.settings.bots) || 0;
   const step = el("div", "stepper");
   const minus = el("button"), plus = el("button");
@@ -505,6 +570,10 @@ function renderLobby(st) {
     bar.appendChild(actBtn("play", "START GAME", () => send({ t: "start" }), "primary"));
     bar.appendChild(actBtn("x", "Not ready", () => send({ t: "ready", ready: false })));
   } else {
-    bar.appendChild(actBtn(me && me.ready ? "check" : "hand", me && me.ready ? "Ready" : "I'M READY", () => send({ t: "ready", ready: !(me && me.ready) }), "primary"));
+    bar.appendChild(actBtn(me && me.ready ? "check" : "hand", me && me.ready ? "Ready" : "I'M READY", () => {
+      // nobody enters play without the briefing's acknowledgement
+      if (!(me && me.ready) && brief && !brief.acknowledged()) return brief.open("first", readyAfterBriefing);
+      send({ t: "ready", ready: !(me && me.ready) });
+    }, "primary"));
   }
 }

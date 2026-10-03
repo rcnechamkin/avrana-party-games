@@ -80,10 +80,67 @@ LANGAMES_PORT=8200 .venv/bin/python tests/sim_bluff.py --serve --server-seed 19 
 Phone-size screenshots were taken with headless Playwright/Chromium (2–6 players; 390×844,
 360×740, 390×664). Chromium is **not** iOS Safari; see "real-device checks" below.
 
+## How to play: first-play briefing and rules (AVR-90)
+
+`web/briefing.js` is one dialog with two modes:
+- **First play:** six short cards, 231 words (about a minute): goal, a turn, claims, challenges,
+  blocks, controls. It opens once per page load for a seated lobby player who has never
+  acknowledged it. The last button, "I'm ready", is also that player's Ready. Escape can't skip it;
+  "Not now" closes it, but the lobby's Ready opens it again until it is acknowledged.
+- **Reference:** the `?` button beside Back to games reopens the same cards any time. Escape or
+  Close; the game underneath is untouched. While it is open, a line says when the table is
+  waiting on you.
+
+Decisions:
+- The acknowledgement is per browser (`localStorage` `bluff-briefed` = version). Private mode
+  falls back to memory for that page. Nothing is sent to the server, and the dialog never touches
+  the connection, so reconnect and seat restore (AVR-23) are unaffected.
+- A player arriving while a game is already running (reconnect, watcher, a late Party member)
+  is never covered by it; a toast points at `?` instead.
+- In a Party (avrana-party ADR 0011, the console model) a round's setup is **Party Home's own
+  full-screen scene**, not this page: its premise and concise rules come from
+  `web/onboarding.json` (numbers as `{facts}`, pinned to game.py by `tests/test_bluff_briefing.py`),
+  and a first-timer's Play opens those rules first ("Got it, I'll play"), acknowledging the same
+  `bluff-briefed` key as this briefing.
+
+## Party rounds (AVR-129; avrana-party ADR 0010)
+
+- **The pregame is the Party's.** Every member who is here chooses Play or Watch. Only the Party
+  Host can start, and only once everyone has chosen and 2–6 chose Play. BLUFF's own ready/start
+  lobby is skipped: the launch roster's players are seated at once (`core/session.py`
+  `party_start`), and BLUFF deals after a 3-2-1 once every seat's phone is here. After 15 s a
+  missing seat starts away, so the usual grace and autopilot apply. BLUFF's ready, start and
+  settings (test bots) are refused in a Party round. Standalone BLUFF keeps its own lobby.
+- **Spectators see every hand, on purpose.** A Party spectator (a spectator ticket) gets
+  `game_state_spectator()`: the public table plus every seat's cards, and the exchange draw while
+  one is open. Players still get only their own cards. A TV or a browser-token watcher gets only
+  the public view, because players can see that screen. Tests: `tests/test_bluff_party_pregame.py`.
+- **Roles change only between rounds.** During a round a Party member cannot switch between Play
+  and Watch; members who arrive late watch until the next setup.
+- **The round is the Party Host's** (ADR 0011). BLUFF draws the host's controls in its own chrome
+  (`window.AvranaParty`): an End button beside `?` (confirmed in the table's dialog), and on the
+  results screen Play again / Party Home, while everyone else sees who they wait for. The results
+  are held until the host moves on (no timer). In a Party round nobody else can end the game:
+  `end_game` and the empty-table takeover are refused; a player's own forfeit stays. The Party
+  bar (Back to Party) is hidden for everyone in a Party; standalone BLUFF keeps its lobby, its
+  timers and its Back link.
+- All words live in `CARDS`. The numbers and block rules come from `FACTS`/`BLOCKS`, which
+  `tests/test_bluff_briefing.py` pins to `game.py`: change a rule and the test tells you to
+  change the briefing. Bump `VERSION` to make everyone read it again.
+- Human check for AVR-27: `games/bluff/PLAYTEST-BRIEFING.md`.
+
 ## Known limitations
 
 - **One table per server** (one BLUFF room). The game lives in memory, so a server restart
   loses it.
+- **Party sessions never share state (AVR-25).** Each Avrana party launch replaces the room with
+  a fresh one: no hands, seats, coins, turn, pending step, log, bots or player mappings carry
+  over. A connection acts only on the room it joined, so a message read just before a new launch
+  is dropped, not dispatched. Old tickets and game tokens never reach a newer session.
+  **After a server restart mid-session:** the new process holds no party session. Phones
+  presenting the lost session's ticket are told it is invalid and never seated. No `ended` is
+  reported for it. The Party Host's End for everyone still closes it on the Party side (this server
+  refuses that end; Party Core closes the session anyway, or after 15 s with no answer), and the next launch starts clean. Tests: `tests/test_bluff_session_isolation.py`.
 - **Framework-level issues (not fixed; they'd need `core/`):** oversized WebSocket frames are
   dropped only after being received; every message pushes full state to every socket
   (amplification); one device can fill all 6 *lobby* seats with invented tokens.

@@ -28,6 +28,14 @@ class ExpoSession(GameSession):
             except (ValueError, KeyError, TypeError, IndexError, AttributeError, OSError):
                 self.recovery_error = 'The saved table could not be restored. Check the private snapshot before starting a new table.'
 
+    def party_start(self, seats):
+        # A Party round (core/session.py) owns this room: the Party's roster is the table. A
+        # standalone snapshot restored by __init__ must never leak into it, and Party tables are
+        # not written to the standalone snapshot (their tokens die with the Party session).
+        self.engine, self.recovery_error, self.store = None, None, None
+        self.players, self.participants = {}, []
+        return super().party_start(seats)
+
     def validate_settings(self, patch):
         clean = {}
         if type(patch.get('mission')) is int:
@@ -126,8 +134,10 @@ class ExpoSession(GameSession):
         viewer = self.players.get(viewer_token)
         return self.engine.view(viewer.pid if viewer and viewer_token in self.participants else None)
 
-    def state_for(self, viewer_token=None):
-        st = super().state_for(viewer_token)
+    def state_for(self, viewer_token=None, spectator=False):
+        # Party spectators (core/session.py) get game_state_spectator(): EXPO keeps the default,
+        # the public view, so no hand ever reaches a spectator.
+        st = super().state_for(viewer_token, spectator)
         st['missions'] = catalog(max(2, len(self._connected_ready())), self.settings['timed'])
         st['recovery_error'] = self.recovery_error
         return st

@@ -8,6 +8,7 @@ capability advertised only when this server can really verify tickets. Completio
 from __future__ import annotations
 
 import asyncio
+import time
 import hashlib
 import json
 import logging
@@ -164,6 +165,16 @@ async def shutdown(b, *pairs):
             task.cancel()
 
 
+def seated_here(b):
+    """Tokens of the room's players whose phones are connected. A party launch seats its roster's
+    players at once (AVR-129) but nobody is *here* until a phone arrives with a ticket."""
+    return {t for t, p in b.session.players.items() if p.connected}
+
+
+def roster_tokens(*participants, sid=SID):
+    return {proto.game_token(KEY, sid, pt) for pt in participants}
+
+
 def run(coro):
     return asyncio.run(coro)
 
@@ -176,7 +187,9 @@ def test_launch_starts_the_party_session_with_that_roster():
         got = await b.party_launch(launch(b))
         assert b.party.sid == SID
         assert [r["name"] for r in got] == ["Alice", "Bob"]
-        assert b.session.phase == "lobby" and b.session.players == {}
+        # AVR-129: the party ran the pregame; its players are seated, waiting for their phones
+        assert b.session.phase == "countdown" and b.session.party_round
+        assert set(b.session.players) == roster_tokens(ALICE, BOB) and seated_here(b) == set()
     run(scenario())
 
 
@@ -191,10 +204,13 @@ def test_launch_resets_a_room_that_was_in_use_and_drops_its_sockets():
         assert b.session.phase not in ("lobby", "countdown")
         await b.party_launch(launch(b))
         await settle()
-        assert b.session is not old and b.session.phase == "lobby"
-        assert b.session.players == {} and b.session.g is None
+        assert b.session is not old and b.session.phase == "countdown"
+        assert set(b.session.players) == roster_tokens(ALICE, BOB) and b.session.g is None
         assert a[0].closed and b.player_sockets == {}
-        assert b._timer_task is None or b._timer_task.done() or b.session.deadline is None
+        # the only timer left is the new round's own arrival wait (AVR-129), never the old game's
+        from core.session import PARTY_ARRIVAL_SECONDS
+        assert b.session.deadline is not None
+        assert b.session.deadline - time.time() <= PARTY_ARRIVAL_SECONDS + 0.5
         await shutdown(b, a)
     run(scenario())
 
@@ -243,7 +259,7 @@ def test_a_valid_ticket_admits_the_participant_under_the_party_name():
         assert w is not None and not w.get("watch") and w.get("pid")
         assert "token" not in w                           # the game token never leaves the server
         token = proto.game_token(KEY, SID, ALICE)
-        assert list(b.session.players) == [token]
+        assert seated_here(b) == {token}
         assert b.session.players[token].name == "Alice"   # the roster name, not the hello's
         assert a[0].last_state()["you"]["name"] == "Alice"
         await shutdown(b, a)
@@ -303,7 +319,7 @@ def test_a_refused_ticket_is_told_and_closed_and_never_seated(bad, caplog):
         await task
         assert ws.closed and ws.welcome() is None
         assert any(m.get("type") == "fx" and m.get("kind") == "invalid" for m in ws.sent)
-        assert b.session.players == {} and b.player_sockets == {}
+        assert seated_here(b) == set() and b.player_sockets == {}
         assert t not in caplog.text
     caplog.set_level(logging.INFO)
     run(scenario())
@@ -314,8 +330,10 @@ def test_a_spectator_ticket_watches():
         b = binding()
         await b.party_launch(launch(b))
         s = await connect(b, {"t": "hello", "ticket": ticket(CAROL, role="spectator")})
-        assert s[0].welcome() == {"type": "welcome", "watch": True}
-        assert b.session.players == {} and s[0] in b.watch_sockets
+        # AVR-129: a Party spectator (the omniscient view), not an anonymous watcher
+        assert s[0].welcome() == {"type": "welcome", "watch": True, "spectator": True}
+        assert seated_here(b) == set() and s[0] in b.spectator_sockets
+        assert s[0] not in b.watch_sockets and s[0].last_state()["spectator"] is True
         await shutdown(b, s)
     run(scenario())
 
@@ -326,7 +344,7 @@ def test_a_player_ticket_for_someone_not_on_the_roster_only_watches():
         await b.party_launch(launch(b))
         s = await connect(b, {"t": "hello", "ticket": ticket(CAROL)})
         assert s[0].welcome() == {"type": "welcome", "watch": True}
-        assert b.session.players == {}
+        assert seated_here(b) == set() and s[0] in b.watch_sockets  # public view, not a spectator's
         await shutdown(b, s)
     run(scenario())
 
@@ -342,7 +360,8 @@ def test_a_browser_minted_token_only_watches_during_a_party_session():
         await x[0].inbox.put({"t": "ready", "ready": True})
         await x[0].inbox.put({"t": "start"})
         await settle()
-        assert b.session.players == {} and b.session.phase == "lobby"
+        assert seated_here(b) == set() and b.session.phase == "countdown"
+        assert "tok-browser-0001" not in b.session.players
         await shutdown(b, x)
     run(scenario())
 
@@ -354,7 +373,7 @@ def test_a_browser_cannot_claim_a_participant_by_sending_its_game_token():
         token = proto.game_token(KEY, SID, ALICE)
         x = await connect(b, {"t": "hello", "token": token})
         assert x[0].welcome() == {"type": "welcome", "watch": True}
-        assert b.session.players == {}
+        assert seated_here(b) == set()
         await shutdown(b, x)
     run(scenario())
 
@@ -373,7 +392,8 @@ def test_a_browser_hello_that_raced_a_launch_is_not_seated_in_the_party_session(
         await starting
         await settle()
         assert b.party.sid == SID
-        assert b.session.players == {} and b.player_sockets == {}
+        assert seated_here(b) == set() and b.player_sockets == {}
+        assert "tok-browser-0001" not in b.session.players
         assert x[0].welcome() is None or x[0].welcome().get("watch")
         await shutdown(b, x)
     run(scenario())
@@ -399,7 +419,7 @@ def test_a_new_launch_invalidates_the_previous_sessions_tickets():
         await b.party_launch(launch(b, sid=SID2))
         ws, task = await connect(b, {"t": "hello", "ticket": old})
         await task
-        assert ws.closed and b.session.players == {}
+        assert ws.closed and seated_here(b) == set()
     run(scenario())
 
 

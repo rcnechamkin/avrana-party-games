@@ -1,35 +1,29 @@
-# Provider integration sprint continuation
+# Agent entry point — Avrana Party Games
 
-Goal: browser games run beneath the canonical Avrana shell. No merge/deploy.
-Repository: avrana-party-games; branch fix/avrana-provider-integration.
-Starting main: 2cf4831064de709feeb31865c5022a3f048e49ef.
-Companion platform branch: fix/lan-games-providerization, base 459d4cd.
-Completed: local isolated clone; concrete audit in platform
- docs/design/LAN-GAMES-PROVIDER.md; deterministic exporter begun.
-Decision: avrana.lan-launch/v1 advertised by /api/games; URL avrana=1 is
-non-secret, reload-safe context. Same-origin fixed /party/ return. Preserve
-wc-* identity and lg-* library backing stores; one chat transport; no roster.
-Checkpoint: metadata exporter/catalog/contract docs committed at febd546. Integration changes and tests committed at ce13795; final navigation checks/doc status pending. No production changes.
-Tests: donor Python 1200 passed; provider worker Node 3 passed; metadata drift check passed. Cross-repo Chromium checks passed 10 including all-title geometry and standalone alias coverage. Prior platform baseline CI passed.
-Canonical remote established privately: https://github.com/rcnechamkin/avrana-party-games. Existing main 2cf4831 published; no experimental refs. Historical branding/paths retained privately; no credential/private-key scan matches.
-Next: push reviewed feature branch, open donor PR and verify Linux CI including rsync release-safety. Platform depends on advertised version. No merge/deploy. Preserve no merge/deploy.
-Dependency: donor first, standalone backward compatible; platform activation
-requires version advertisement. Party Home and abandoned Diplomacy untouched.
+Read [AGENTS](AGENTS.md) for shared invariants and derived Graphify guidance, and
+[CONTRIBUTING](CONTRIBUTING.md) for the contributor workflow. This handoff adds no authority.
 
-## Closing checkpoint
+Start from current GitHub `main` and the current issue in
+[Linear](https://linear.app/avranakern) for scope, sequencing, blockers, acceptance and ownership.
+The former PR #1 providerization handoff is a historical sprint record in Git history; its next
+actions and branch/review instructions are no longer authoritative.
 
-Implementation complete, review only. Donor PR:
-https://github.com/rcnechamkin/avrana-party-games/pull/1
-Platform PR (second): https://github.com/rcnechamkin/avrana-party/pull/7
-Linux CI run 36261284527 SUCCESS: 1200 Python, privacy, metadata drift, syntax,
-worker3 and release-safety. Platform run 36261333271 SUCCESS including real nginx.
-Final combined browser suite12 passed. Final standalone unknown/future ID
-preservation test2 passed: normalize only known registry titles, never rewrite an
-unknown canonical ID when editing other favorites. Final checkpoint reruns CI;
-current PR head checks are authoritative before review/merge.
-Current uncommitted state: this closing checkpoint; after commit/push tree clean.
-Unresolved code failures: none. Real phone/Pi/game-control/TV acceptance pending
-owner release; historical origin separation, token auth and session roster remain
-known architectural debt. No Party Home, experiment, networking or production edits.
-Exact next action: owner review donor first, platform second, check CI, then plan
-separate approved deployment/hardware checks. Do not merge/deploy autonomously.
+The [Party repository](https://github.com/rcnechamkin/avrana-party) owns canonical platform
+architecture and contracts. Read its [CLAUDE.md](https://github.com/rcnechamkin/avrana-party/blob/main/CLAUDE.md),
+[SYSTEM](https://github.com/rcnechamkin/avrana-party/blob/main/docs/SYSTEM.md), relevant
+[ADRs](https://github.com/rcnechamkin/avrana-party/tree/main/docs/adr) (especially 0006–0011) and
+[design docs](https://github.com/rcnechamkin/avrana-party/tree/main/docs/design).
+
+Party PR #34 and Games PR #13 are merged source for ADR 0011. Merged source may be ahead of
+production: SYSTEM and dated Party findings own deployed revisions, and AVR-212 owns console-model
+deployment and Tier 3 phone verification. Older deployment-status notes in Games docs are dated
+sprint evidence; consult SYSTEM before treating them as current runtime status.
+
+Use [README](README.md), [provider docs](provider/README.md), [BLUFF docs](games/bluff/README.md)
+and the existing `tests/` and CI workflows for Games implementation and test commands. Party's
+[TESTING](https://github.com/rcnechamkin/avrana-party/blob/main/docs/TESTING.md) documents the
+cross-repository harness and evidence tiers. Automated browsers do not prove physical phones.
+
+Work on an issue-scoped branch and open a PR. Never edit production game checkouts or runtime
+data; deployment and service restarts require the owner's approval. Do not use or push
+`abandoned/classic-diplomacy`.

@@ -97,7 +97,7 @@ test("integrated: the ticket goes only in the hello, never the URL, with no brow
   assert.equal(init.method, "POST");
   assert.equal(init.credentials, "same-origin");
   assert.equal(init.cache, "no-store");
-  assert.equal(init.body, "{}");
+  assert.equal(init.body, '{"game":"bluff"}');            // names its game (AVR-128)
   assert.equal(t.sockets.length, 1);
   assert.ok(!t.sockets[0].url.includes("aps0"), "ticket must never be in the URL");
   t.sockets[0].accept();
@@ -375,6 +375,40 @@ test("party_ended hides the table too", async () => {
   t.sockets[0].accept(); t.sockets[0].welcome();
   t.sockets[0].onmessage({ data: JSON.stringify({ type: "fx", kind: "party_ended", outcome: "ended" }) });
   assert.ok(!t.roomShown());
+});
+
+// ---- AVR-129: the party's pregame ---------------------------------------------------------------
+const SETUP = { status: 409, body: { error: "setup", message: "The round is being set up." } };
+
+test("setup: the page waits for the host's start, never joins a room on its own, then plays", async () => {
+  let started = false;
+  const t = load({ answer: () => (started ? ticketFor(S1) : SETUP) });
+  const setup = [];
+  t.Hub.connect("/games/bluff/ws", { onState() {}, onSetup: (on) => setup.push(on) });
+  await flush();
+  assert.equal(t.sockets.length, 0, "no socket while the round is set up (no standalone hello)");
+  assert.deepEqual(setup, [true]);
+  await t.run(4500);
+  assert.equal(t.sockets.length, 0);
+  assert.ok(t.calls.length >= 3, "it keeps asking the party");
+  assert.deepEqual(setup, [true], "told once, not on every poll");
+  started = true;                                   // the Party Host started the round
+  await t.run(2500);
+  assert.deepEqual(setup, [true, false]);
+  assert.equal(t.sockets.length, 1);
+  t.sockets[0].accept();
+  assert.equal(t.sockets[0].sent[0].ticket, "aps0.T.S");
+  assert.equal(JSON.parse(t.calls[0].init.body).game, "bluff");
+});
+
+test("setup after an earlier round: the next setup is not the ended screen", async () => {
+  const t = load({ answer: () => SETUP, tab: { "avrana-party-session:bluff": S1 } });
+  const setup = [];
+  t.Hub.connect("/games/bluff/ws", { onState() {}, onSetup: (on) => setup.push(on) });
+  await flush();
+  assert.deepEqual(setup, [true]);
+  assert.ok(!t.ended());
+  assert.equal(t.sockets.length, 0);
 });
 
 let passed = 0;

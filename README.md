@@ -8,6 +8,8 @@ unchanged below.
 
 - **Licence:** MIT (`LICENSE`, unchanged from upstream). See [`NOTICE.md`](NOTICE.md)
   for attribution and third-party components.
+- **Development:** [Contributing](CONTRIBUTING.md), [agent invariants](AGENTS.md), and
+  [derived Graphify context](docs/GRAPHIFY.md).
 - **Run a second instance** alongside an existing one: `LANGAMES_PORT=8196 python server.py`.
 
 ---

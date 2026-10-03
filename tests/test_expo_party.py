@@ -127,6 +127,24 @@ def test_a_spectator_ticket_watches_the_table_without_a_hand():
     run(scenario())
 
 
+def test_a_party_round_never_inherits_or_writes_a_standalone_snapshot(tmp_path):
+    # core/net.py builds a fresh session object for every launch; with EXPO_SNAPSHOT_PATH set that
+    # object restores the standalone table. party_start() must drop it and stop persisting.
+    path = tmp_path / "expo.json"
+    saved, _ = session()
+    saved.store = __import__("games.expo.storage", fromlist=["SnapshotStore"]).SnapshotStore(path)
+    saved._save()
+    before = path.read_bytes()
+    room = ExpoSession(random.Random(2), snapshot_path=path)
+    assert room.engine is not None                     # the standalone table came back
+    room.party_start([(ALICE_TOKEN, "Alice"), (BOB_TOKEN, "Bob")])
+    assert room.engine is None and room.store is None and room.recovery_error is None
+    assert list(room.players) == [ALICE_TOKEN, BOB_TOKEN] and room.party_round
+    room.tick(room.gen)                                # arrival deadline: the round starts
+    assert room.phase == "allocation" and set(room.engine.s["humans"]) == {p.pid for p in room.players.values()}
+    assert path.read_bytes() == before                 # the standalone save is untouched
+
+
 # ---- outcome vocabulary (take_outcome(); reported to the party as `ended`) --------------------
 
 def command(e, actor, t, **kwargs):
@@ -134,7 +152,7 @@ def command(e, actor, t, **kwargs):
             "request": str(e.s["revision"]) + "-" + actor, **kwargs}
 
 
-def session(n=3):
+def session(n=3):  # a standalone table
     s = ExpoSession(random.Random(4))
     tokens = [f"human-{i}" for i in range(n)]
     for t in tokens:

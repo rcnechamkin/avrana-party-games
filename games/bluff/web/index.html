@@ -9,11 +9,13 @@
 <link rel="stylesheet" href="table.css">
 </head>
 <body>
-<div data-avrana-viewport id="app">
+<div data-avrana-viewport data-avrana-party-shell id="app">
   <div id="felt"><div id="felt-mark" data-art="cards_fan" aria-hidden="true"></div></div>
 
   <button data-avrana-global id="home" class="round-btn" aria-label="Back to games"><span data-icon="house"></span></button>
+  <button id="rules" class="round-btn" aria-label="How to play" aria-haspopup="dialog"><span data-icon="circle-help"></span></button>
   <button id="history" class="round-btn" aria-label="What happened"><span data-icon="scroll-text"></span></button>
+  <button id="party-end" class="round-btn" aria-label="End game for everyone" hidden><span data-icon="circle-stop"></span></button>
   <div id="timer" class="corner-box red" hidden></div>
 
   <div id="opponents"></div>
@@ -52,11 +54,15 @@
       </div>
     </form>
   </dialog>
+
+  <!-- How to play: the first-play briefing and the rules sheet (briefing.js fills it) -->
+  <dialog id="briefing" aria-labelledby="briefing-title"></dialog>
 </div>
 <canvas id="confetti"></canvas>
 <script src="/shared/hubnet.js?v=avrana1"></script>
 <script src="icons.js"></script>
 <script src="art.js"></script>
+<script src="briefing.js"></script>
 <script src="client.js"></script>
 </body>
 </html>

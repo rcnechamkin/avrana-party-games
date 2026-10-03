@@ -1,0 +1,33 @@
+{
+  "schema": "avrana.onboarding/v0",
+  "game": "bluff",
+  "title": "BLUFF",
+  "premise": "Everyone holds secret roles. Claim any power you like, call out the liars, and be the last one with a card.",
+  "ack": { "key": "bluff-briefed", "version": "1" },
+  "facts": {"handSize": 2, "startCoins": 2, "income": 1, "aid": 2, "coupCost": 7, "mustCoupAt": 10, "tax": 3, "strikeCost": 3, "steal": 2, "responseSeconds": 20},
+  "blocks": {"aid": ["Banker"], "strike": ["Guardian"], "steal": ["Smuggler", "Broker"]},
+  "rules": [
+    { "title": "Win by being the last one standing",
+      "points": ["You start with {handSize} secret role cards and {startCoins} coins.",
+                 "Lose all your cards and you're out."] },
+    { "title": "On your turn, do one thing",
+      "points": ["Income: take {income} coin.",
+                 "Foreign Aid: take {aid} coins. Anyone can block it.",
+                 "Coup: pay {coupCost} and a player loses a card. You must at {mustCoupAt}+ coins.",
+                 "Or claim a role and use its power."] },
+    { "title": "Claim any role, even one you don't have",
+      "points": ["Banker: take {tax} coins.",
+                 "Agent: pay {strikeCost}, and a player loses a card.",
+                 "Smuggler: steal {steal} coins.",
+                 "Broker: swap cards with the deck.",
+                 "Guardian: blocks an Agent's strike."] },
+    { "title": "Don't believe it? Challenge",
+      "points": ["Caught bluffing: they lose a card and the move fails.",
+                 "Telling the truth: you lose a card, they draw a fresh one.",
+                 "A block is a claim too, so it can be challenged."] },
+    { "title": "On your phone",
+      "points": ["Your moves are in the bottom bar. Tap a glowing player to aim one.",
+                 "A gold banner means answer now: you have {responseSeconds} seconds.",
+                 "The ? button shows these rules any time."] }
+  ]
+}

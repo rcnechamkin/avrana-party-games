@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "repository": "rcnechamkin/avrana-party-games",
+  "toolkit_revision": "9cbce3a0ba95664bbd4152025a4b7d62a55947a6",
+  "graphify_version": "0.9.74",
+  "extraction": "local-ast",
+  "linear_team_id": "ed238b1d-b7ff-4f8b-b871-33b285a30fe1",
+  "linear_project_ids": ["59f36e2a-3b03-448c-9d2c-624078364def", "ab4faaab-53ba-4e91-993f-3d563dc818fc"],
+  "linear_max_age_seconds": 21600,
+  "max_file_bytes": 2097152,
+  "extensions": [".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".sh", ".json", ".md"],
+  "exclude": [".git/*", ".github/*", ".claude/*", ".agents/*", ".graphify-context/*", "graphify-out/*", "graphify-public/*", "context/graphify/*", "node_modules/*", "data/*", "games/wordrush/data/*", "games/wordclash/data/*", "package-lock.json", "test-results/*", "playwright-report/*", "CODEX-HANDOFF.md"]
+}
