@@ -37,6 +37,12 @@ a fresh ticket. The policy for handling steps is AVR-79, not this file.
 
 Tickets are single-use at the game side (SpentTickets, used by GameSide.admit): the second
 presentation of the same ticket string is Invalid('replay'). Reconnects fetch a fresh ticket.
+
+Results: `ended` may carry one optional `result` object, the game's structured result for that
+session. Its format is versioned on its own (`avrana.game-result/v1`, avrana.party.result,
+ADR 0015) and is not part of this protocol's version: this file only carries it, signed, bound to
+the session and replay-guarded like the rest of the message. A receiver that does not know the
+field ignores it.
 """
 import base64
 import binascii
@@ -209,13 +215,22 @@ def end_message(key, game, sid, now=None):
     return seal(key, payload)
 
 
-def ended_message(key, game, sid, outcome, now=None):
-    """Game -> party: this session is over. v0 carries no winner, score or result."""
+def ended_message(key, game, sid, outcome, now=None, result=None):
+    """Game -> party: this session is over. `result`, when given, is the game's structured result
+    (a dict in a separately versioned format; see the module docstring). It is carried as is:
+    the party decides whether to accept it."""
     if outcome not in OUTCOMES:
         raise ValueError('bad outcome')
     payload = _base('ended', game, 'party', sid, now, MESSAGE_TTL)
     payload.update({'outcome': outcome, 'nonce': secrets.token_hex(12)})
-    return seal(key, payload)
+    if result is not None:
+        if not isinstance(result, dict):
+            raise ValueError('bad result')
+        payload['result'] = result
+    message = seal(key, payload)
+    if len(message) > MAX_TOKEN:
+        raise ValueError('result too large')
+    return message
 
 
 class ReplayGuard:
@@ -291,6 +306,7 @@ class GameSide:
         token, role = side.admit(ticket)      # at hello: stable per participant, None if refused
         side.on_end(msg)                      # party ended it: back to a non-running state
         report = side.ended('completed')      # then POST it to the party's ended route
+        report = side.ended('completed', result=…)   # the same, with a structured result
     """
 
     def __init__(self, key, game):
@@ -323,10 +339,10 @@ class GameSide:
         self.spent.spend(ticket, exp, now)
         return game_token(self.key, t['sid'], t['participant']), t['role']
 
-    def ended(self, outcome, now=None):
+    def ended(self, outcome, now=None, result=None):
         """The report for the party; the session stops being admissible here at once."""
         if self.sid is None:
             raise Invalid('session')
-        msg = ended_message(self.key, self.game, self.sid, outcome, now)
+        msg = ended_message(self.key, self.game, self.sid, outcome, now, result)
         self.sid, self.roster = None, []
         return msg

@@ -97,6 +97,16 @@ cross-repo job compares it with Party's contracts/party-games.v0.json (Party too
   1 MiB unread in the transport buffer is aborted (`slow_socket_dropped` in the event log) and
   reaped like any disconnect. Anonymous watchers are capped at `core.net.MAX_WATCHERS` (32) per
   room. Party semantics are unchanged: the seat is held and a fresh ticket readmits it.
+- Results (avrana-party ADR 0015): a completed party game may report a structured result,
+  `avrana.game-result/v1`, inside its signed `ended` report. The format and its rules are
+  `core/party_result.py`, vendored unchanged from Party like the protocol file; the shared cases
+  are `tests/vectors/game-result.v1.json`. A game opts in by defining
+  `GameSession.game_result(ref)` (see `core/session.py`); `core/net.py` turns its seat tokens
+  into the launch roster's participant ids and builds the envelope. People are named only by
+  participant id; `game.build` is a digest of the game's own sources. A result the party would
+  refuse is left out and logged, and the session still ends. Reporters are listed under
+  `result.reported_by` in `provider/avrana-contract.json` (today: BLUFF). No browser message
+  can produce or alter a result.
 - hubnet.js, in an integrated (?avrana=1) player page: before every connect, POST
   /party/api/session/ticket (party cookie; the ticket never goes in a URL; 5 s per attempt) and
   send the ticket in the hello. A request that reaches nothing, times out or gets a 5xx is

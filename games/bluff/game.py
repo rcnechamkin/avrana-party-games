@@ -540,6 +540,29 @@ class BluffSession(GameSession):
         self._outcome = "completed" if self.g["winner"] is not None else "abandoned"
         return super().end_game()
 
+    def game_result(self, ref):
+        """BLUFF's result for a party session: one winner, everyone else lost. The game facts
+        are public ones only (no card, no hand): how long it ran, who forfeited, how much
+        influence the winner had left."""
+        g = self.g
+        if not g or g["winner"] is None:
+            return None
+        winner = g["winner"]
+        return {
+            "mode": "competitive",
+            "standings": [{"token": t, "standing": "won" if t == winner else "lost"}
+                          for t in g["seats"]],
+            "data_schema": "bluff.result/v1",
+            "data": {
+                "steps": g["step"],
+                "seats": len(g["seats"]),
+                "bots": sum(1 for t in g["seats"] if self._is_bot(t)),
+                "winner": "bot" if self._is_bot(winner) else "player",
+                "winner_influence": len(g["hand"][winner]),
+                "forfeited": [ref(t) for t in g["seats"] if t in g["left"] and ref(t)],
+            },
+        }
+
     # ------------------------------------------------------------------ timers
 
     def game_tick(self):

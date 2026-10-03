@@ -12,6 +12,7 @@ import time
 import hashlib
 import json
 import logging
+import os
 import random
 from pathlib import Path
 
@@ -40,7 +41,7 @@ CAROL = "participant-" + "c" * 32
 # party-session.v0.json at f25d256. Update both hashes only together with a re-vendor, and the
 # digests in provider/avrana-contract.json with them (Party's tools/contract_check.py compares).
 VENDORED = {
-    "core/party_protocol.py": "50777e8ef31840218bf4e89aba0c35a9d3d692656a9126d1206a701c8ff39a5b",
+    "core/party_protocol.py": "9507191cb17f9a69647e4a14a684d2f6ccb5380ed6c698cbba51872d89e13ccb",
     "tests/vectors/party-session.v0.json":
         "b6c7f347aa39d8d54c7df2f37a9d5fd62a41f6312dbd1377be4fee208e579245",
 }
@@ -56,7 +57,7 @@ def test_vendored_protocol_files_are_unchanged(path):
 def test_vendored_protocol_matches_a_sibling_party_checkout(path):
     source = {"core/party_protocol.py": "avrana/party/protocol.py",
               "tests/vectors/party-session.v0.json": "contracts/vectors/party-session.v0.json"}
-    sibling = ROOT.parent / "avrana-party" / source[path]
+    sibling = Path(os.environ.get("AVRANA_PARTY_REPO") or ROOT.parent / "avrana-party") / source[path]
     if not sibling.exists():
         pytest.skip("no sibling avrana-party checkout")
     norm = lambda p: p.read_bytes().replace(b"\r\n", b"\n")

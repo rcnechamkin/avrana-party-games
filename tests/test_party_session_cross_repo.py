@@ -176,6 +176,12 @@ def test_a_completed_bluff_game_is_reported_to_and_accepted_by_the_real_party(st
     alice.send(json.dumps({"t": "act", "action": "income"}))
     assert wait_for(lambda: s.state == "ended")
     assert s.outcome == "completed"
+    # ADR 0015: BLUFF's structured result, built here, was accepted by the real Party Core
+    assert s.result_refused is None and s.result["mode"] == "competitive"
+    members = {m.name: m.id for m in stack.svc.core.party.members.values()}
+    assert {e["member"]: e["standing"] for e in s.result["standings"]} == {
+        members["Alice"]: "won", members["Bob"]: "lost"}
+    assert s.result["game"]["id"] == "bluff" and s.result["data_schema"] == "bluff.result/v1"
     # ADR 0011: the party holds the results screen; the game keeps its room until the host goes
     # home, which the party relays as `end` and the game answers with `party_ended` to its phones.
     assert stack.svc.core.location()["at"] == "results"
@@ -212,6 +218,7 @@ def test_an_abandoned_bluff_game_is_reported_as_abandoned(stack, monkeypatch):
     bob.close()
     assert wait_for(lambda: s.state == "ended")
     assert s.outcome == "abandoned"
+    assert s.result is None and s.result_refused is None            # nothing was reported
 
 
 def test_the_hosts_end_for_everyone_resets_the_real_game_and_is_confirmed(stack):

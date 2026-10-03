@@ -176,9 +176,26 @@ class GameSession:
         own end), "abandoned" (it stopped by the game's own rules before that), or None. A game
         sets self._outcome where its rules decide; core.net reads this after every mutation and
         reports it to an Avrana party session (core/party_session.py). Games that never set it
-        never report. It carries no winner, score or result (party session v0)."""
+        never report. The outcome itself carries no winner or score: that is game_result()."""
         out, self._outcome = getattr(self, "_outcome", None), None
         return out
+
+    def game_result(self, ref):
+        """The structured result of the game that just completed, for an Avrana party session
+        (avrana.game-result/v1, core/party_result.py), or None for none. core.net asks once, when
+        take_outcome() said "completed", and turns it into the signed report. Return:
+
+            {"mode": "competitive" | "cooperative",
+             "standings": [{"token": <player token>, "standing": "won" | "lost" | "draw"
+                            [, "rank": n]}, ...],        # every seated party player
+             "data_schema": "<game>.result/v1",          # optional, with "data"
+             "data": {...},                              # small, public facts only; yours
+             "content": "<ruleset or content id>"}       # optional
+
+        `ref(token)` is that player's party participant id, or None for anyone the party did
+        not seat (a bot): use it for any person named inside "data". Never put a token, a
+        hidden card or anything private in a result."""
+        return None
 
     # ---- shared machinery ------------------------------------------------
 
