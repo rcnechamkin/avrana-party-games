@@ -212,7 +212,7 @@ recipient (AVR-251), and routine progression decisions should stop requiring eve
   assertion, active}` is recorded. The card stays in the hand. The declaration is never revised.
   Playing the card later clears the exposure and does not return the token.
 - **Visibility**: the card and who showed it are public. The declaration is public except in
-  `currents`, where it is withheld (today from the author too, E-D4).
+  `currents`, where only its author's own view carries it.
 - **Knowable before**: yes; `me.communication_options` lists exactly the legal card and
   declaration pairs.
 - **Client**: a sonar panel with a card selector and a meaning selector built from those options;

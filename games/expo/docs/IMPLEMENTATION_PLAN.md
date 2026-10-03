@@ -37,7 +37,7 @@ engine depends on the module host.
 |---|---|---|
 | 1 | Source reconciliation and content audit | Done for the supplied sources by this reconciliation. Eight missions and five tasks remain blocked on material nobody has supplied (AVR-244). Four policies await confirmation (AVR-243) |
 | 2 | Pure engine | Built. One defect affects play (E-D2); E-D1 was fixed on 2026-10-04 (AVR-239) |
-| 3 | Task and mission evaluators | Built for 91 tasks and 24 numbered missions plus the continuation. One timing defect (E-D3) |
+| 3 | Task and mission evaluators | Built for 91 tasks and 24 numbered missions plus the continuation. The window-task timing defect (E-D3) was fixed on 2026-10-04 (AVR-241) |
 | 4 | Session adapter and reliability | Built. Persistence shortfalls E-D5 to E-D7 |
 | 5 | Phone client | Built and playable; draft presentation specs not implemented (E-X1). No dedicated TV view |
 | 6 | Integration | Registered, catalogued, Party contract and grant merged. Not deployed; no appliance key; no real-phone acceptance |
@@ -88,7 +88,7 @@ Coverage verdict: **full** (positive, illegal and boundary paths tested), **part
 | T14 | Owner eligibility (R06) | `test_collective_and_free_allocation_refuse_a_captain_comparison_task_for_the_captain` | normal, one, free, volunteer: also `test_pass_capacity_and_captain_comparison`, `test_timed_start_barrier_and_volunteer_eligibility_failure` | forced case (C20): unavoidable draw repaired, `test_defect_unavoidable_captain_comparison_draw_does_not_stall_selection`, `test_an_unavoidable_comparison_draw_replaces_the_most_recently_revealed_task`, `test_an_avoidable_comparison_draw_is_left_alone`; avoidable mistake is a counted failure, `test_defect_captain_left_with_a_comparison_task_ends_the_attempt_instead_of_stalling`, `test_a_comparison_task_left_for_the_captain_is_a_counted_failure_with_a_reason`; 3, 4, 5 seats and two players | restore refuses an ineligible owner (`Engine.check`) | missions 6, 10, 13, 16, 17 | partial: `captain_one` with an ineligible captain not tested |
 | T15 | Named-card tasks (R07) | `test_every_enabled_task_has_deterministic_success_fixture` | `test_a_named_card_captured_by_someone_else_fails_at_once` | cards won in different tricks | tasks and history are state | | full |
 | T16 | Exact and at-least counts | `test_exact_atleast_exclusions_and_final_semantics` | exceeding an exact count fails | reaching an exact count stays pending | | | partial: unreachable-count bound not tested per task |
-| T17 | Exclusions and "only" tricks | `test_exact_atleast_exclusions_and_final_semantics` | forbidden card, extra trick | window tasks: **defect E-D3**, `test_defect_none_of_the_first_three_tricks_completes_after_trick_three` | | | partial |
+| T17 | Exclusions and "only" tricks | `test_exact_atleast_exclusions_and_final_semantics` | forbidden card, extra trick | window tasks complete when the window closes: `test_defect_none_of_the_first_three_tricks_completes_after_trick_three`, `test_a_window_task_is_pending_inside_its_window_and_satisfied_when_it_closes`; nothing else completes early: `test_only_the_three_window_tasks_complete_early_for_a_seat_that_wins_nothing` | | early mission success and timed mission 16: `test_closing_the_window_on_the_last_open_task_wins_the_mission_at_once`, `test_a_timed_mission_completed_by_a_window_task_cannot_time_out_afterwards`, `test_a_timed_mission_still_times_out_while_the_window_is_open` | full for the window tasks; other exclusions judged at the end by design |
 | T18 | Runs | `test_exact_streak_fails_once_the_wins_are_split_and_at_least_streak_allows_more` | split wins, too many wins | at-least allows more (R p17) | | mission 32 uses both | full |
 | T19 | First, last, final-trick tasks | `test_every_enabled_task_has_deterministic_success_fixture` | `test_exact_atleast_exclusions_and_final_semantics` (card used early) | last = planned trick | | | partial: planned 10 and 8 not exercised for "last" |
 | T20 | Trick comparisons | `test_every_enabled_task_has_deterministic_success_fixture` | same (failure fixture) | ties | | | partial: ties and "equal to captain" boundaries |
@@ -128,7 +128,7 @@ In order. Each item has its issue; none is started by this document.
 2. ~~Selection stall (AVR-239, E-D1)~~: done 2026-10-04.
 3. **Ending a table while a player is away** (AVR-240, E-D2), together with the rule for routine
    progression decisions (AVR-252).
-4. **Task completion timing and currents visibility** (AVR-241, E-D3, E-D4). No decision needed.
+4. ~~Task completion timing and currents visibility (AVR-241, E-D3, E-D4)~~: done 2026-10-04.
 5. **Test gaps** (AVR-247). Before any content is enabled.
 6. **Persistence hardening** (AVR-242, E-D5 to E-D7). Only matters where the snapshot file is used.
 7. **Blocked content** (AVR-244). Each mission or task is enabled only with source evidence or an
