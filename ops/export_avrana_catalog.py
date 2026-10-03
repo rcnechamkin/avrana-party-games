@@ -15,6 +15,11 @@ from pathlib import Path
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
+# Avrana-native games keep their bare slug as the catalog id (donor titles get `lan-<slug>`):
+# the Party session protocol and the client's ticket check compare the Party game id with this
+# server's slug, so for a game that joins Party sessions (core/party_session.GAMES) they must match.
+FIRST_PARTY = ('bluff', 'expo')
+
 REGISTRY = ROOT / 'games/registry.py'
 INTEGRATION = 'avrana.lan-launch/v1'
 
@@ -48,7 +53,7 @@ def export(commit=None):
             if not (ROOT / 'games' / slug / 'web/index.html').is_file():
                 raise ValueError(f'{slug}: launch page missing')
             rows.append({
-                'id': 'bluff' if slug == 'bluff' else 'lan-' + slug,
+                'id': slug if slug in FIRST_PARTY else 'lan-' + slug,
                 'slug': slug, 'title': fields['title'], 'icon': fields['icon'],
                 'summary': fields['tagline'], 'description': fields['blurb'],
                 'min_p': fields['min_p'], 'max_p': fields['max_p'],

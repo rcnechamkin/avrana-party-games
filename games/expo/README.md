@@ -1,6 +1,6 @@
 # EXPO (working title)
 
-Playable Avrana Games module at `/games/expo/`, registered as **EXPO** (slug `expo`, Party contract `lan-expo`). EXPO is an internal working name for a cooperative trick-taking card game; its public identity will be decided later. The six design specifications it was built from are internal development documentation kept outside version control (gitignored under `games/`), not part of this public repository.
+Playable Avrana Games module at `/games/expo/`, registered as **EXPO** (slug `expo`, Party contract id `expo`). EXPO is an internal working name for a cooperative trick-taking card game; its public identity will be decided later. The six design specifications it was built from are internal development documentation kept outside version control (gitignored under `games/`), not part of this public repository.
 
 ## Implemented
 

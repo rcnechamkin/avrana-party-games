@@ -14,8 +14,8 @@ def test_export_is_deterministic_and_snapshot_has_no_drift():
     assert export('0' * 40) == export('0' * 40)
     assert len(snapshot['games']) == 31
     assert len({g['id'] for g in snapshot['games']}) == 31
-    assert next(g for g in snapshot['games'] if g['id'] == 'lan-expo')['launch'] == '/games/expo/'
-    assert 'lan-bluff' not in {g['id'] for g in snapshot['games']}
+    assert next(g for g in snapshot['games'] if g['id'] == 'expo')['launch'] == '/games/expo/'
+    assert {'lan-bluff', 'lan-expo'}.isdisjoint({g['id'] for g in snapshot['games']})
 
 
 def test_every_exported_title_has_a_real_direct_route_and_explicit_context():
