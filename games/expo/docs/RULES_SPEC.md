@@ -32,6 +32,11 @@ Neither R nor L is in this repository: the repository is public and they are the
 copyrighted material. They are identified by hash in [VTT_REFERENCE](VTT_REFERENCE.md#pins), cited
 by page and described in our own words. Rule text below is paraphrase, not quotation.
 
+**Fidelity first** (owner, 2026-10-04): in this phase EXPO follows the supplied official rules
+and mission design as closely as it can. Where official material gives an answer, that answer is
+the rule. Where a digital table needs a policy the material does not state, the smallest
+conservative behaviour that preserves the original game's intent is chosen and labelled POLICY.
+
 Base rules (R01 to R10) are immutable: no mission changes them unless a source says so explicitly.
 Mission-specific behaviour is specified separately in [MISSION_MODEL](MISSION_MODEL.md).
 
@@ -104,8 +109,9 @@ Sources: R p5 to p7, p24; modes R p19 to p20.
 - MUST: the declaration is never changed or withdrawn, even when later plays make it untrue.
 - MUST: when the shown card is played, its reminder is removed. The token stays spent.
 - MUST: any player may communicate at a trick boundary, not only the leader.
-- AMBIGUITY C10: R does not say whether a player's only card of a color may be declared highest or
-  lowest instead of only. POLICY P03 accepts all three truthful declarations.
+- DECIDED C10 (owner, 2026-10-04): a player's only card of a color may be declared "only" and
+  nothing else. R does not say so outright; R p7 treats "highest" and "only" as different states
+  of a holding. The code still accepts all three declarations for a single card until AVR-248.
 - Communication modes are mission modifiers, specified in
   [MISSION_MODEL](MISSION_MODEL.md#communication-modes): normal, currents, rapture of the deep,
   unfamiliar terrain, none.
@@ -186,7 +192,8 @@ Sources: R p14 to p15.
   the crew may pass again or decline; it stays active either way.
 - MUST: the recorded number of attempts for the mission rises by one, once.
 - POLICY P07: choices are sealed until everyone has chosen, then exchanged at once.
-- BLOCKED C11: distress with two players and Tonoja.
+- DEFERRED C11 (owner, 2026-10-04): distress stays disabled for two players. R sets out the
+  distress token in the two-player setup but does not say how Tonoja gives or receives a card.
 
 ## R10 Two players with Tonoja
 
@@ -206,7 +213,10 @@ Sources: R p21 to p22.
 - POLICY P08: Tonoja follows suit from its face-up cards only. A covered card of the led suit does
   not oblige it.
 - Consequence: 13 complete tricks; Tonoja ends with one card.
-- BLOCKED C11: Tonoja with distress, shared sonar and volunteer missions.
+- DECIDED C11 (owner, 2026-10-04): Tonoja is the third crew member for crew-count mechanics.
+  Mission 8 counts Tonoja. Shared sonar uses one token for two players (three seats minus two);
+  until AVR-250 the shared-sonar and terrain missions are still refused for two players. Distress
+  and volunteer missions stay unavailable for two players.
 
 ## What the game cannot enforce
 

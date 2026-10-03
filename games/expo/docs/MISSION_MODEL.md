@@ -44,6 +44,9 @@ card rules. Tasks are evaluated from the history of resolved tricks only.
 
 In every mode the captain-comparison restriction of R06 applies to whoever would own the task.
 
+Decided 2026-10-04 and not built yet (AVR-251): in `captain_one` the captain's choice to keep the
+tasks needs nobody's approval, and an offer needs only the recipient's consent.
+
 POLICY P09: `one`, `captain_one` and `free` assignments take effect when every seated human
 confirms the proposal. In `free`, tasks are proposed and confirmed one at a time.
 
@@ -79,7 +82,7 @@ it starts; if time runs out before the mission is completed it fails. Playing wi
 allowed and then brings a communication restriction or a higher difficulty, as the mission states.
 Missions 14, 15, 16 need one volunteer; mission 26 needs two.
 
-AMBIGUITY C13: R starts the timer "after assigning the tasks". A digital table also has predictions
+CONFIRMED C13 (owner, 2026-10-04): R starts the timer "after assigning the tasks". A digital table also has predictions
 and the distress decision before play. POLICY P10 starts the clock when the crew unanimously
 begins. Only mission 16 is enabled.
 
@@ -87,7 +90,8 @@ begins. Only mission 16 is enabled.
 
 `status` is `enabled` or `blocked Cnn`. Two-player availability is narrower, see below.
 Missions 33 to 50 are the continuation (L epilogue): target = mission number minus 15, `free`
-allocation, `normal` communication, no objective (POLICY P11 caps it at 50).
+allocation, `normal` communication, no objective (POLICY P11 caps it at 50; confirmed 2026-10-04
+as an Avrana product limit, not a source rule).
 
 <!-- mission-table:start -->
 | Mission | Target | Allocation | Communication | Objective | Status | Source |
@@ -144,7 +148,11 @@ Notes on the table:
 With two humans and Tonoja the following are refused (BLOCKED C11): every `terrain` and `rapture`
 mission (11, 21 to 25, 27), the `volunteer` mission (16), and distress in any mission. Missions
 1, 2, 5 to 10, 13, 17, 18, 28 to 32 and the continuation are offered. Mission 8 counts Tonoja in
-the balance (Q6, AVR-243).
+the balance (confirmed, Q6).
+
+Decided 2026-10-04 and not built yet (AVR-250): shared sonar is allowed for two players with one
+token, which will open missions 11, 21 to 25 and 27. Distress and the volunteer mission stay
+refused for two players.
 
 ## Task definition
 
@@ -247,5 +255,8 @@ selected.
 96 task definitions, ids and difficulties identical to the reference; 91 enabled, 5 blocked. The
 full list with family and status is in
 [VTT_REFERENCE](VTT_REFERENCE.md#task-catalog). No complete readable set of the publisher's task
-cards was supplied, so the catalog is reference-derived: R corroborates the families and many
-individual cards, but not every card face (C18).
+cards was supplied, so the catalog is reference-derived: R corroborates the families and some
+individual cards, but not every card face (C18). The owner decided on 2026-10-04 to keep it enabled
+where no higher source contradicts it and to record provenance per task: the catalog's Evidence
+column marks each task `corroborated`, `reference` or `quarantined`. `5with7` is to be enabled
+(AVR-249), which will make 92 enabled.

@@ -28,8 +28,9 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 - Seven defects were recorded (E-D1 to E-D7). E-D1, the selection stall, was fixed on 2026-10-04
   (AVR-239). Of the six that remain, one affects play and needs an owner decision on the remedy:
   a table cannot be ended while someone is away (AVR-240).
-- Twenty-three digital policies are in force. Four are contested by the conflict register and need
-  confirmation (AVR-243).
+- Twenty-three digital policies are in force. The owner decided the open ones on 2026-10-04
+  (AVR-243, questions Q1 to Q8 below). Four decisions change behaviour and are not implemented
+  yet: AVR-248, AVR-249, AVR-250, AVR-251. One more needs a further decision: AVR-252.
 - Eight missions and five tasks stay blocked on source material (AVR-244).
 - The earlier specification was wrong or stale in eleven places (E-S1 to E-S11).
 
@@ -121,15 +122,15 @@ a source's wording makes the choice non-obvious and the owner has not confirmed 
 |---|---|---|---|---|
 | P01 | First card of the deal goes to a randomly drawn seat | R only says deal equally | `test_deals_conserve_and_captain` | uncontested |
 | P02 | Hand counts and trick counts per seat are public | observable at a table | `test_privacy_differential_and_snapshot_json_replay` | uncontested |
-| P03 | A single card of a color may be declared highest, only or lowest | C10 | `test_communication_conditions_resource_and_immutable_meaning` | **contested, Q1** |
-| P04 | Used pile, automatic replenishment when the target is unreachable, at most 200 reshuffled scans | C09; R p8 is a suggestion | `test_explicit_feasibility_and_used_deck_replenishment` | **contested, Q3** |
+| P03 | A single card of a color may be declared highest, only or lowest | C10 | `test_communication_conditions_resource_and_immutable_meaning` | **decided 2026-10-04 (Q1): to be replaced.** A single card may be declared only "only". The engine still accepts all three until AVR-248 |
+| P04 | Used pile, automatic replenishment when the target is unreachable, at most 200 reshuffled scans | C09; R p8 is a suggestion | `test_explicit_feasibility_and_used_deck_replenishment` | confirmed 2026-10-04 (Q3) |
 | P05 | A prediction is an integer 0 to planned tricks and cannot be changed | R p18 says only to note it; V allowed edits | `test_prediction_zero_is_locked_and_secret_is_private`, `test_blocked_content_and_types` | uncontested |
 | P06 | An attempt is counted at the crew's begin; setup corrections are free; an avoidable selection failure is counted | R p13 gives the principle, not the bookkeeping | `test_a_deal_exception_is_redealt_before_the_attempt_is_counted`, `test_timed_start_barrier_and_volunteer_eligibility_failure` | uncontested |
 | P07 | Distress choices are sealed and exchanged at once | R says pass a card; simultaneity avoids leaking | `test_distress_sealed_exchange_and_persistence` | uncontested |
 | P08 | The dummy follows suit from its face-up cards only | R p22 says only face-up cards may be played | `test_tonoja_only_ever_offers_face_up_cards_and_follows_suit_from_them` | uncontested |
-| P09 | Begin, distress, collective assignment, retry, next and end need every seated human's confirmation | R says "decide together" | `test_distress_sealed_exchange_and_persistence`, `test_ending_the_table_is_abandoned` | Q8 |
-| P10 | The real-time clock starts at the unanimous begin, after predictions and the distress decision | C13 | `test_timed_start_barrier_and_volunteer_eligibility_failure` | **contested, Q2** |
-| P11 | The continuation stops at mission 50 (difficulty 35) | L sets no limit | `test_difficulty_generation_and_no_pass_in_second_circuit` | Q7 |
+| P09 | Begin, distress, collective assignment, retry, next and end need every seated human's confirmation | R says "decide together" | `test_distress_sealed_exchange_and_persistence`, `test_ending_the_table_is_abandoned` | decided 2026-10-04 (Q8): unanimity stays for strategic decisions; missions 10 and 13 follow the source instead (AVR-251); routine progression should become less fragile (AVR-252) |
+| P10 | The real-time clock starts at the unanimous begin, after predictions and the distress decision | C13 | `test_timed_start_barrier_and_volunteer_eligibility_failure` | confirmed 2026-10-04 (Q2): Begin is the crew starting the timer |
+| P11 | The continuation stops at mission 50 (difficulty 35) | L sets no limit | `test_difficulty_generation_and_no_pass_in_second_circuit` | confirmed 2026-10-04 (Q7) as an Avrana product limit, not a source rule |
 | P12 | A seat is held for the whole table; every command pauses while a seated player is away; no autoplay, no bots | no source | `test_session_reconnect_all_away_and_again_cannot_erase`, `test_a_dropped_crew_member_returns_by_fresh_ticket_to_the_same_seat_and_hand` | Q10 (see E-D2) |
 | P13 | A real-time deadline keeps running while a player is away | fairness; no source | `test_a_timed_mission_expires_while_a_player_is_away` | uncontested |
 | P14 | An unknown credential during a table watches the public view; watchers are bounded; Party spectators get the public view | platform convention | `test_five_human_table_accepts_public_watcher_without_seating`, `test_nobody_else_sees_or_takes_an_empty_seat`, `test_a_spectator_ticket_watches_the_table_without_a_hand` | uncontested |
@@ -141,7 +142,7 @@ a source's wording makes the choice non-obvious and the owner has not confirmed 
 | P20 | A secret prediction is revealed to everyone at the mission result | R is silent | `test_prediction_zero_is_locked_and_secret_is_private` (privacy before the result only) | uncontested |
 | P21 | Ending the table is `abandoned` unless a mission result already stood, in which case the outcome reported to Party is `completed` | Party protocol vocabulary | `test_ending_the_table_is_abandoned`, `test_ending_the_table_after_a_decided_mission_is_completed` | uncontested |
 | P22 | The dummy's seat is a lobby setting, default after both players | R p22: the players decide where it sits | `test_deals_conserve_and_captain` | uncontested standalone; unavailable in Party (Q11) |
-| P23 | Mission 8 is offered to two players and counts the dummy in the balance | C11 | none specific | **contested, Q6** |
+| P23 | Mission 8 is offered to two players and counts the dummy in the balance | C11 | none specific | confirmed 2026-10-04 (Q6): the dummy is the third crew member for crew-count mechanics |
 
 ## Stale or incorrect earlier specification
 
@@ -169,8 +170,8 @@ they were wrong or have been overtaken; the committed documents carry the correc
 | E-X1 | Presentation and causality events from the two draft presentation specifications (who triggered a failure, "impossible" state, synchronized events, cinematic client). The drafts are not in the repository | DEFERRED, AVR-246 (Q12) |
 | E-X2 | Showing cards won toward an unfinished task (R p16, optional) | DEFERRED |
 | E-X3 | Missions 3, 4, 12, 14, 15, 19, 20, 26 and their special rules (lead restriction, hardest-to-captain, two volunteers, other timers) | not implemented; blocked on sources, AVR-244 |
-| E-X4 | Tasks `moreRedThanGreen`, `moreYellowThanBlue`, `4with8`, `5with7`, `6with6` | definitions stored, disabled |
-| E-X5 | Two players with distress, shared sonar or volunteers | refused, C11 |
+| E-X4 | Tasks `moreRedThanGreen`, `moreYellowThanBlue`, `4with8`, `5with7`, `6with6` | definitions stored, disabled. `5with7` is to be enabled (Q5, AVR-249); the other four stay quarantined |
+| E-X5 | Two players with distress, shared sonar or volunteers | all refused today. Decided 2026-10-04 (Q6): shared sonar is to be allowed with one token (AVR-250); distress and volunteer missions stay deferred |
 | E-X6 | A TV presentation, bots, solo play | not planned in this scope |
 | E-X7 | Campaign history across tables | Party owns durable history; EXPO keeps none |
 | E-P1 | In a Party round the starting mission, timed mode and the dummy's seat cannot be chosen | AVR-245 (Q11); `test_a_party_round_locks_settings_so_the_table_opens_on_mission_one` |
@@ -179,6 +180,31 @@ they were wrong or have been overtaken; the committed documents carry the correc
 
 Each is a question that the sources do not answer. Nothing below was decided by the implementation
 team; where the code already behaves one way, that is stated as "Now".
+
+### Governing principle for this phase: fidelity first
+
+Set by the owner on 2026-10-04. Use as much of the supplied official rules and mission design as
+possible. The goal of this phase is to prove that the authoritative engine, rule enforcement,
+mission system and player-state handling work against a known ruleset. Where official material
+gives an answer, follow it. Where a digital implementation needs a policy the material does not
+state, choose the smallest conservative behaviour that preserves the original game's intent, and
+label it as an Avrana digital policy. Changing rules, missions, tasks or presentation into
+something more distinctly Avrana is a later phase, not this one.
+
+### Decisions of 2026-10-04 (AVR-243)
+
+| Q | Decision | Class | Behaviour change | Issue |
+|---|---|---|---|---|
+| Q1 | A single card of a color may be communicated only as "only" | source-leaning interpretation | yes | AVR-248 |
+| Q2 | Keep: mission 16's clock starts at the crew's unanimous Begin | Avrana policy, confirmed | no | |
+| Q3 | Keep automatic task-deck replenishment, no crew confirmation | Avrana policy, confirmed | no | |
+| Q4 | Keep the reference-derived catalog enabled where no higher source contradicts it; document provenance | reference-derived, accepted | no | AVR-244 for stronger evidence |
+| Q5 | Enable `5with7`; keep `4with8` and `6with6` quarantined | source-backed (text layer) | yes | AVR-249 |
+| Q6 | Mission 8 stays for two players with the dummy counted; shared sonar uses one token for two players; distress and volunteer missions stay unavailable for two | source-leaning for the first two; deferred for the rest | yes, shared sonar only | AVR-250 |
+| Q7 | Keep the cap at mission 50, difficulty 35 | Avrana product limit | no | |
+| Q8 | Follow source-specific authority: in missions 10 and 13 the captain decides and only the recipient consents. Keep unanimity for strategic decisions; routine progression should not be frozen by one player | source-backed for 10 and 13; Avrana policy otherwise | yes, missions 10 and 13 | AVR-251; AVR-252 for progression |
+
+Until the listed issues are implemented, the code behaves as each question's "Now" line says.
 
 **Q1 (C10, AVR-243). May a player's only card of a color be declared highest or lowest?**
 Evidence: R p6 lists three conditions and requires one to be met; a single card meets all three
@@ -192,15 +218,25 @@ only that the card must satisfy one of the criteria.
 Now: all three accepted. If restricted to "only": the token carries less ambiguity, and the client
 must stop offering two options. If kept: a player can deliberately under-inform.
 
+**Decision (owner, 2026-10-04):** a player holding exactly one card of a color may communicate it
+only as "only", never as "highest" or "lowest". Reason given: it matches prior real-world play and
+gives the communication states distinct meanings. Not implemented yet: AVR-248.
+
 **Q2 (C13, AVR-243). When does the real-time clock start?**
 Evidence: R p20: start the timer after assigning the tasks; no play or communication before it
 starts. Now: at the unanimous begin, after predictions and the distress decision. Alternatives:
 start when the last task is assigned (predictions and the distress exchange then spend clock time,
 closer to the letter); or disable timed play until decided (the earlier register's position).
 
+**Decision (owner, 2026-10-04):** keep the current behaviour. Begin is the digital equivalent of
+the crew deliberately starting the timer after task assignment. C13 and P10 are confirmed.
+
 **Q3 (C09, AVR-243). Is automatic task-deck replenishment acceptable?**
 Evidence: R p8 suggests keeping used tasks out until the deck runs low. Now: automatic when the
 target is unreachable. Alternative: ask the crew. No effect on rules outcomes.
+
+**Decision (owner, 2026-10-04):** keep automatic replenishment; do not add a crew confirmation.
+C09 and P04 are confirmed.
 
 **Q4 (C18, AVR-243). Keep tasks enabled that rest on the reference alone?**
 Evidence: R p18 shows the "sum less than" card with 8/12/16 and says totals can be equal to,
@@ -211,18 +247,24 @@ quarantine until a card face is supplied (AVR-244).
 Framing corrected 2026-10-04: this question first named only `sumAbove`, `black1` and `black2`.
 That understates the position. R describes task *families* and pictures a few cards; it does not
 list the 96 cards. For almost every enabled task the exact card, and every number on it, comes
-from V. Tasks whose specific content R or L also shows: the named-card and final-trick examples
-(p16), win with a 2, win a 5 with a 7, win the pink 7 with a submarine (p17), no 1s, first and
-only-first tricks, exact tricks, tricks in a row (p17), fewer tricks than anyone, the captain
-comparisons, sum below 8/12/16, all values above 5, both predictions, equal colors in a trick and
-overall (p18), all of a color, one of each, odd, even, never-lead (p19), and mission 32's four
-tasks (L). Everything else, including `sumAbove`, `value22or23` (22 or 23 at every player count in
+from V. Tasks whose wording R or L also shows are marked `corroborated` in the task catalog
+([VTT_REFERENCE](VTT_REFERENCE.md#task-catalog)): 22 of the 96. For several more, R shows the
+family and part of the card (a 7 won with a submarine, a 2 in the final trick, "none of the first
+... tricks", the never-lead cards) but the PDF's text layer does not give the color or the number,
+so they stay `reference`. Everything else, including `sumAbove`, `value22or23` (22 or 23 at every player count in
 V, although R says values may vary), `allLess7`, `exactly2trickInARow`, `neverTwoTricksInARow`
 and `moreThanHalfTricks`, is V-only in its particulars. One point in favour of `black1` and
 `black2`: V's redeal footnotes for them (same hand holds 1 and 4, or 1, 2 and 3) are impossible
 deals only under the "win that submarine and no other" reading, so V is at least self-consistent.
 Singling out three tasks for quarantine would be arbitrary; the real choice is whether a
 V-derived catalog is acceptable until card faces are supplied.
+
+**Decision (owner, 2026-10-04):** keep the reference-derived catalog enabled where no
+higher-authority source contradicts it. Do not disable large parts of it merely because the
+supplied official material does not contain every card face. Document provenance in three classes:
+officially corroborated, reference-derived, and quarantined or conflicted. That classification is
+now the Evidence column of the task catalog. AVR-244 remains the path for replacing
+reference-derived assumptions with publisher evidence.
 
 **Q5 (C18, AVR-243). Enable `5with7`?**
 Evidence: R p17's card reads "a 5 with a 7"; V's values are 5 then 7; the stored definition is
@@ -233,6 +275,10 @@ itself was not viewed, so whether the 5 and the 7 are drawn in particular colors
 the stored definition accepts any colors, as V's does. V uses the same "won card, then winning
 card" order for `4with8` (win an 8 with a 4, difficulty 3/4/5) and `6with6`, so R confirming the
 order for one card is indirect support for the other two, not proof.
+
+**Decision (owner, 2026-10-04):** enable `5with7`; the rulebook text is sufficient at the current
+fidelity stage. Keep `4with8` and `6with6` quarantined until better evidence exists. Not
+implemented yet: AVR-249.
 
 **Q6 (C11, AVR-243). Two players: which shared mechanics include the dummy?**
 Evidence: R p22: treat the dummy as a third crew member and decide where it sits; for task cards
@@ -247,8 +293,22 @@ missions refused; mission 8 offered with the dummy counted.
 Consequences: allowing distress needs a rule for the dummy's passed card (who chooses, from which
 cards); a three-seat shared pool has one token.
 
+**Decision (owner, 2026-10-04):** the dummy counts as the third crew member for crew-count
+mechanics.
+- Mission 8 stays available for two players with the dummy counted. Confirmed; already built.
+- Shared sonar uses one token in a two-player game (three seats minus two). This opens the
+  shared-sonar mission and the terrain missions to two players. Not implemented yet: AVR-250.
+- Distress stays disabled for two players. The rules set out the token but do not define how the
+  dummy gives or receives the exchanged card; that mechanic is not to be invented now.
+- Volunteer missions stay unavailable for two players unless stronger source material defines how
+  the dummy takes part.
+
 **Q7 (AVR-243). Continuation cap.** L sets no limit. Now: 50. Raising it only needs the deck to
 reach the total, which is checked.
+
+**Decision (owner, 2026-10-04):** keep the finite cap at mission 50, difficulty 35. It is an
+explicit Avrana product limit, not a claim that the source imposes it. An endless or escalating
+mode may be explored later as a separate feature and is not to be built now. P11 is confirmed.
 
 **Q8 (AVR-243). Unanimity.** Now: every seated human must confirm each of six decisions. A
 majority rule would let a table move on without a slow player.
@@ -259,6 +319,30 @@ can choose"; begin, next mission and end have no source and are digital. **Missi
 different**: L says the captain assumes all tasks or passes them to a willing crew member. That
 is the captain's decision plus the recipient's consent. Today any other player can block either
 choice, including the captain simply keeping the tasks, which the source does not allow for.
+
+**Decision (owner, 2026-10-04):** follow source-specific authority where the supplied material
+defines it. In missions 10 and 13 the captain may keep the tasks without approval from unrelated
+players; passing them on requires the willing recipient; unrelated players have no veto. Not
+implemented yet: AVR-251. For Avrana's own crew decisions, keep unanimity where the crew genuinely
+decides together, and do not use it merely for routine progression or administrative actions where
+one disconnected, inactive or stubborn player could freeze the table.
+
+Classification of today's crew decisions (all are unanimous in the code today):
+
+| Decision | Class | Basis | Follow-up |
+|---|---|---|---|
+| Activate distress and choose its direction | strategic, unanimous | R p14 to p15: decide together | none |
+| Mission 6: which seat takes every task | strategic, unanimous | L M6: decide together | none |
+| Free selection: each assignment | strategic, unanimous | R p21: discuss and allocate | none |
+| Missions 10 and 13 | source-specific | L: the captain decides, a willing recipient consents | AVR-251 |
+| Begin in the timed mission | strategic, unanimous | it starts the clock (Q2) | none |
+| Begin in an untimed mission | progression | no source; it also declines distress for the attempt, so a less fragile rule must still let a player ask for distress first | AVR-252 |
+| Retry, with the same or new tasks | progression | R p11: you can choose | AVR-252 |
+| Next mission | progression | no source | AVR-252 |
+| End table | administrative | no source | AVR-240 |
+
+The rule that should replace unanimity for the progression rows is not chosen. No command is
+accepted while a seated player is away, so it cannot be settled apart from AVR-240.
 
 **Q9 (C20, AVR-239). The captain is the only seat left for a captain-comparison task.
 DECIDED by the owner, 2026-10-04, and implemented.**

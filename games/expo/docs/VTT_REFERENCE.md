@@ -84,16 +84,16 @@ Owner questions (Q numbers) are set out in full in
 | C06 | Missions 20 to 22 | L M20's story adds the "never two more 1s" rule; its caption says only 10 and terrain. L M21 and M22 carry the same story text. V puts the 1s rule on mission 21 only, target 0 | mission 20 disabled; 21 has the rule and target 0; 22 has target 11 | Open for 20; 21 and 22 follow their L captions (AVR-244) |
 | C07 | Mission 26 timed target | L M26: 10 timed, 12 untimed. V: 12 | mission disabled | Open (AVR-244) |
 | C08 | Mission 19, hardest task to the captain | L M19 says the most difficult task. V adds "leftmost" on ties | mission disabled | Open (Q14, AVR-244) |
-| C09 | Reusing the task deck | R p8 only suggests reshuffling used tasks when the deck runs low. V reshuffles recursively | bounded scans, automatic replenishment | Policy P04 in force, not confirmed (Q3, AVR-243) |
-| C10 | Declaring a single card | R p6 lists highest, only, lowest and requires one to be true; it does not forbid highest or lowest for a single card. R p7's example that a "highest" card may later become the "only" card treats the two as different states, which leans toward "only" for a single card | all three accepted | Policy P03 in force, not confirmed (Q1, AVR-243) |
-| C11 | Two players: distress, shared sonar, volunteers | R p21 to p22 treat the dummy as a third crew member and give it no sonar token. The two-player setup does lay out the distress token, so distress is expected to be usable, but how the dummy passes and receives a card is not stated. The shared pool and volunteering are not mentioned. V's two-player snapshot handles none of them | those are refused for two players; mission 8 is offered with the dummy counted | Open (Q6, AVR-243) |
+| C09 | Reusing the task deck | R p8 only suggests reshuffling used tasks when the deck runs low. V reshuffles recursively | bounded scans, automatic replenishment | **Confirmed** by the owner 2026-10-04 (Q3): policy P04 stands |
+| C10 | Declaring a single card | R p6 lists highest, only, lowest and requires one to be true; it does not forbid highest or lowest for a single card. R p7's example that a "highest" card may later become the "only" card treats the two as different states, which leans toward "only" for a single card | all three accepted | **Decided** by the owner 2026-10-04 (Q1): a single card may be declared only "only". The code still accepts all three until AVR-248 |
+| C11 | Two players: distress, shared sonar, volunteers | R p21 to p22 treat the dummy as a third crew member and give it no sonar token. The two-player setup does lay out the distress token, so distress is expected to be usable, but how the dummy passes and receives a card is not stated. The shared pool and volunteering are not mentioned. V's two-player snapshot handles none of them | those are refused for two players; mission 8 is offered with the dummy counted | **Decided** by the owner 2026-10-04 (Q6): the dummy is the third crew member for crew-count mechanics. Mission 8 confirmed. Shared sonar gets one token for two players (AVR-250, not yet built). Distress and volunteer missions stay deferred for two players: no mechanism is to be invented |
 | C12 | Mission 12 | L M12: no trick may be opened with pink or a submarine. Nothing says whether such a lead is illegal or legal and losing, nor what happens to a leader holding only those | mission disabled | Open (Q15, AVR-244) |
-| C13 | When the real-time clock starts | R p20: after the tasks are assigned; no play or communication before it starts | clock starts at the unanimous begin; mission 16 timed is enabled | Policy P10 in force, not confirmed; the earlier register said timed modes stay blocked (Q2, AVR-243) |
+| C13 | When the real-time clock starts | R p20: after the tasks are assigned; no play or communication before it starts | clock starts at the unanimous begin; mission 16 timed is enabled | **Confirmed** by the owner 2026-10-04 (Q2): Begin is the crew starting the timer. The earlier register said timed modes stay blocked; that is superseded |
 | C14 | Which unavoidable situations are free | R p13 sidebar: exchange tasks or redeal when a failure could not have been avoided. R p14 names two cases. No full list exists | the two named cases and the captain-comparison case (C20) are handled | Partly applied: no general list exists, each case needs its own evidence |
 | C15 | "N tasks" in L | R p8: the number is a total difficulty | treated as difficulty | Applied |
 | C16 | Color names | V: red, black, rocket. R: pink, submarine | player-facing names follow R; task ids keep V's words | Applied |
 | C17 | Provenance of V and L | V had no recorded upstream; L is a third-party transcription | V is pinned and byte-verified. L unchanged | **V half resolved** 2026-10-03; L half open (AVR-244) |
-| C18 | Task faces not independently verified | No readable set of the 96 cards was supplied. R shows examples only | 91 enabled from V's data; `4with8`, `5with7`, `6with6` disabled | Open. New evidence: R p17 pictures "win a 5 with a 7", which matches `5with7` as stored; L M32 confirms `exactly3trickInARow` and `2tricksInARow`; R p18 confirms only the lower sum thresholds 8/12/16 (Q4, Q5, AVR-243, AVR-244) |
+| C18 | Task faces not independently verified | No readable set of the 96 cards was supplied. R shows examples only | 91 enabled from V's data; `4with8`, `5with7`, `6with6` disabled | Open. New evidence: R p17 pictures "win a 5 with a 7", which matches `5with7` as stored; L M32 confirms `exactly3trickInARow` and `2tricksInARow`; R p18 confirms only the lower sum thresholds 8/12/16. **Decided** by the owner 2026-10-04: the reference-derived catalog stays enabled where no higher source contradicts it, with provenance recorded per task (Q4); `5with7` is to be enabled (Q5, AVR-249); `4with8` and `6with6` stay quarantined. Stronger evidence: AVR-244 |
 | C19 | Platform lifecycle | The shared session abandons an all-away table, lets "again" skip results, and has no durable store | game-specific overrides; opt-in snapshot file | Applied, with defect E-D2 (AVR-240) |
 | C20 | Captain forced onto a captain-comparison task (new 2026-10-03) | R p18: the captain may never choose one. R p9: with as many tasks as seats, nobody may pass. R p13 to p14: unavoidable impossible combinations are repaired by replacing the most recently revealed task; avoidable ones are failed attempts. L and V are silent | an unavoidable draw is repaired before selection by exchanging the most recently revealed comparison task for one of equal difficulty, with no attempt counted; a comparison task the crew leaves for the captain ends the attempt as a counted failure; the captain never passes the task onward | **Resolved 2026-10-04** by owner decision (Q9) and implemented (AVR-239). Before that: selection stalled and only End table remained (defect E-D1) |
 
@@ -101,106 +101,119 @@ Content that is blocked must never be advertised as part of a complete campaign.
 
 ## Task catalog
 
-All 96 reference ids, difficulty for 3 / 4 / 5 crew seats, the EXPO evaluator family and status.
-This table is checked against `content/tasks.json` by `tests/test_expo_docs.py`.
+All 96 reference ids, difficulty for 3 / 4 / 5 crew seats, the EXPO evaluator family, status and
+evidence. The first four columns are checked against `content/tasks.json` by
+`tests/test_expo_docs.py`.
+
+Evidence (owner decision Q4, 2026-10-04) says where the task's wording comes from:
+
+- `corroborated`: the rulebook or the logbook transcription also shows this card's wording. The
+  check was made against the PDFs' text layer, not the card pictures, so colors drawn on a card
+  are not confirmed by it.
+- `reference`: only the pinned reference gives this card's particulars. The rulebook describes
+  its family. Enabled because no higher source contradicts it.
+- `quarantined`: disabled because of a recorded conflict or missing evidence.
+
+Every difficulty value comes from the reference; the rulebook explains the three-number scheme
+and shows no table of values.
 
 <!-- task-catalog:start -->
-| Task id | Difficulty 3 / 4 / 5 | Family | Status |
-|---|---|---|---|
-| `green6` | 1 / 1 / 1 | `capture` | enabled |
-| `yellow1` | 1 / 1 / 1 | `capture` | enabled |
-| `red3` | 1 / 1 / 1 | `capture` | enabled |
-| `blue4` | 1 / 1 / 1 | `capture` | enabled |
-| `black3` | 1 / 1 / 1 | `capture` | enabled |
-| `black1` | 3 / 3 / 3 | `count` | enabled |
-| `black2` | 3 / 3 / 3 | `count` | enabled |
-| `green2lastTrick` | 3 / 4 / 5 | `capture_final` | enabled |
-| `2x9` | 2 / 3 / 3 | `count` | enabled |
-| `3x6` | 3 / 4 / 4 | `count` | enabled |
-| `4x3` | 3 / 4 / 5 | `count` | enabled |
-| `4x9` | 4 / 5 / 6 | `count` | enabled |
-| `3orMore5` | 3 / 4 / 5 | `count` | enabled |
-| `2orMore7` | 2 / 2 / 2 | `count` | enabled |
-| `3orMore9` | 3 / 4 / 5 | `count` | enabled |
-| `yellow9+blue7` | 2 / 3 / 3 | `capture` | enabled |
-| `blue6+yellow7` | 2 / 2 / 3 | `capture` | enabled |
-| `red8+blue5` | 2 / 2 / 3 | `capture` | enabled |
-| `green5+blue8` | 2 / 2 / 3 | `capture` | enabled |
-| `red9+yellow8` | 2 / 2 / 3 | `capture` | enabled |
-| `red5+yellow6` | 2 / 2 / 3 | `capture` | enabled |
-| `red1+green7` | 2 / 2 / 2 | `capture` | enabled |
-| `blue2+blue1+blue3` | 2 / 3 / 3 | `capture` | enabled |
-| `yellow4+green3+yellow5` | 3 / 4 / 4 | `capture` | enabled |
-| `1red` | 3 / 3 / 4 | `count` | enabled |
-| `2blue` | 3 / 4 / 4 | `count` | enabled |
-| `2green` | 3 / 4 / 4 | `count` | enabled |
-| `1black` | 3 / 3 / 3 | `count` | enabled |
-| `2black` | 3 / 3 / 4 | `count` | enabled |
-| `3black` | 3 / 4 / 4 | `count` | enabled |
-| `5orMoreRed` | 2 / 3 / 3 | `count` | enabled |
-| `7orMoreYellow` | 3 / 3 / 3 | `count` | enabled |
-| `1red+1green` | 4 / 4 / 4 | `count` | enabled |
-| `equalRedYellow` | 4 / 4 / 4 | `equal` | enabled |
-| `moreRedThanGreen` | 1 / 1 / 1 | `greater` | blocked C05 |
-| `moreYellowThanBlue` | 1 / 1 / 1 | `greater` | blocked C05 |
-| `eachColor` | 2 / 3 / 4 | `each_color` | enabled |
-| `allOneColor` | 3 / 4 / 5 | `all_color` | enabled |
-| `equalRedBlueInTrick` | 2 / 3 / 3 | `equal_trick` | enabled |
-| `equalGreenYellowInTrick` | 2 / 3 / 3 | `equal_trick` | enabled |
-| `red7WithBlack` | 3 / 3 / 3 | `win_with` | enabled |
-| `green9WithBlack` | 3 / 3 / 3 | `win_with` | enabled |
-| `4with8` | 3 / 4 / 5 | `win_with` | blocked C18 |
-| `5with7` | 1 / 2 / 2 | `win_with` | blocked C18 |
-| `6with6` | 2 / 3 / 4 | `win_with` | blocked C18 |
-| `trickWith2` | 3 / 4 / 5 | `win_with` | enabled |
-| `trickWith3` | 3 / 4 / 5 | `win_with` | enabled |
-| `trickWith5` | 2 / 3 / 4 | `win_with` | enabled |
-| `trickWith6` | 2 / 3 / 3 | `win_with` | enabled |
-| `0tricks` | 4 / 3 / 3 | `tricks` | enabled |
-| `exactly1trick` | 3 / 2 / 2 | `tricks` | enabled |
-| `exactly2trick` | 2 / 2 / 2 | `tricks` | enabled |
-| `exactly4trick` | 2 / 3 / 5 | `tricks` | enabled |
-| `exactlyXtrick` | 3 / 2 / 2 | `tricks` | enabled |
-| `exactlyXtrickSecret` | 4 / 3 / 3 | `tricks` | enabled |
-| `exactly2trickInARow` | 3 / 3 / 3 | `exact_streak` | enabled |
-| `exactly3trickInARow` | 3 / 3 / 4 | `exact_streak` | enabled |
-| `firstTrick` | 1 / 1 / 1 | `indices` | enabled |
-| `firstTwoTrick` | 1 / 1 / 2 | `indices` | enabled |
-| `firstThreeTrick` | 2 / 3 / 4 | `indices` | enabled |
-| `lastTrick` | 2 / 3 / 3 | `indices` | enabled |
-| `firstAndLastTrick` | 3 / 4 / 4 | `indices` | enabled |
-| `onlyFirstTrick` | 4 / 3 / 3 | `indices` | enabled |
-| `onlyLastTrick` | 4 / 4 / 4 | `indices` | enabled |
-| `2tricksInARow` | 1 / 1 / 1 | `streak` | enabled |
-| `3tricksInARow` | 2 / 3 / 4 | `streak` | enabled |
-| `moreThanHalfTricks` | 3 / 4 / 5 | `majority` | enabled |
-| `moreTricksThanOthers` | 2 / 3 / 3 | `compare` | enabled |
-| `lessTricksThanOthers` | 2 / 2 / 3 | `compare` | enabled |
-| `lessTricksThanCaptain` | 2 / 2 / 2 | `compare` | enabled |
-| `equalTricksThanCaptain` | 4 / 3 / 3 | `compare` | enabled |
-| `moreTricksThanCaptain` | 2 / 2 / 3 | `compare` | enabled |
-| `onlyOddTrick` | 2 / 4 / 5 | `parity` | enabled |
-| `onlyEvenTrick` | 2 / 5 / 6 | `parity` | enabled |
-| `no1` | 2 / 2 / 2 | `forbidden` | enabled |
-| `no5` | 1 / 2 / 2 | `forbidden` | enabled |
-| `no9` | 1 / 1 / 1 | `forbidden` | enabled |
-| `no89` | 3 / 3 / 2 | `forbidden` | enabled |
-| `no123` | 3 / 3 / 3 | `forbidden` | enabled |
-| `noRed` | 2 / 2 / 2 | `forbidden` | enabled |
-| `noYellow` | 2 / 2 / 2 | `forbidden` | enabled |
-| `noGreen` | 2 / 2 / 2 | `forbidden` | enabled |
-| `noRedBlue` | 3 / 3 / 3 | `forbidden` | enabled |
-| `noYellowGreen` | 3 / 3 / 3 | `forbidden` | enabled |
-| `noBlack` | 1 / 1 / 1 | `forbidden` | enabled |
-| `noLeadRedGreen` | 2 / 1 / 1 | `no_lead` | enabled |
-| `noLeadRedYellowBlue` | 4 / 3 / 3 | `no_lead` | enabled |
-| `noneFirst3Tricks` | 1 / 2 / 2 | `indices` | enabled |
-| `noneFirst4Tricks` | 1 / 2 / 3 | `indices` | enabled |
-| `noneFirst5Tricks` | 2 / 3 / 3 | `indices` | enabled |
-| `neverTwoTricksInARow` | 3 / 2 / 2 | `never_streak` | enabled |
-| `allLess7` | 2 / 3 / 3 | `value` | enabled |
-| `allGreater5` | 2 / 3 / 4 | `value` | enabled |
-| `value22or23` | 3 / 3 / 4 | `value` | enabled |
-| `sumBelow` | 3 / 3 / 4 | `value` | enabled |
-| `sumAbove` | 3 / 3 / 4 | `value` | enabled |
+| Task id | Difficulty 3 / 4 / 5 | Family | Status | Evidence |
+|---|---|---|---|---|
+| `green6` | 1 / 1 / 1 | `capture` | enabled | reference |
+| `yellow1` | 1 / 1 / 1 | `capture` | enabled | reference |
+| `red3` | 1 / 1 / 1 | `capture` | enabled | reference |
+| `blue4` | 1 / 1 / 1 | `capture` | enabled | reference |
+| `black3` | 1 / 1 / 1 | `capture` | enabled | reference |
+| `black1` | 3 / 3 / 3 | `count` | enabled | reference |
+| `black2` | 3 / 3 / 3 | `count` | enabled | reference |
+| `green2lastTrick` | 3 / 4 / 5 | `capture_final` | enabled | reference |
+| `2x9` | 2 / 3 / 3 | `count` | enabled | reference |
+| `3x6` | 3 / 4 / 4 | `count` | enabled | reference |
+| `4x3` | 3 / 4 / 5 | `count` | enabled | reference |
+| `4x9` | 4 / 5 / 6 | `count` | enabled | reference |
+| `3orMore5` | 3 / 4 / 5 | `count` | enabled | reference |
+| `2orMore7` | 2 / 2 / 2 | `count` | enabled | reference |
+| `3orMore9` | 3 / 4 / 5 | `count` | enabled | reference |
+| `yellow9+blue7` | 2 / 3 / 3 | `capture` | enabled | reference |
+| `blue6+yellow7` | 2 / 2 / 3 | `capture` | enabled | reference |
+| `red8+blue5` | 2 / 2 / 3 | `capture` | enabled | reference |
+| `green5+blue8` | 2 / 2 / 3 | `capture` | enabled | reference |
+| `red9+yellow8` | 2 / 2 / 3 | `capture` | enabled | reference |
+| `red5+yellow6` | 2 / 2 / 3 | `capture` | enabled | reference |
+| `red1+green7` | 2 / 2 / 2 | `capture` | enabled | reference |
+| `blue2+blue1+blue3` | 2 / 3 / 3 | `capture` | enabled | reference |
+| `yellow4+green3+yellow5` | 3 / 4 / 4 | `capture` | enabled | reference |
+| `1red` | 3 / 3 / 4 | `count` | enabled | reference |
+| `2blue` | 3 / 4 / 4 | `count` | enabled | reference |
+| `2green` | 3 / 4 / 4 | `count` | enabled | reference |
+| `1black` | 3 / 3 / 3 | `count` | enabled | reference |
+| `2black` | 3 / 3 / 4 | `count` | enabled | reference |
+| `3black` | 3 / 4 / 4 | `count` | enabled | reference |
+| `5orMoreRed` | 2 / 3 / 3 | `count` | enabled | reference |
+| `7orMoreYellow` | 3 / 3 / 3 | `count` | enabled | reference |
+| `1red+1green` | 4 / 4 / 4 | `count` | enabled | reference |
+| `equalRedYellow` | 4 / 4 / 4 | `equal` | enabled | corroborated (R p18) |
+| `moreRedThanGreen` | 1 / 1 / 1 | `greater` | blocked C05 | quarantined |
+| `moreYellowThanBlue` | 1 / 1 / 1 | `greater` | blocked C05 | quarantined |
+| `eachColor` | 2 / 3 / 4 | `each_color` | enabled | corroborated (R p19) |
+| `allOneColor` | 3 / 4 / 5 | `all_color` | enabled | corroborated (R p19) |
+| `equalRedBlueInTrick` | 2 / 3 / 3 | `equal_trick` | enabled | corroborated (R p18) |
+| `equalGreenYellowInTrick` | 2 / 3 / 3 | `equal_trick` | enabled | reference |
+| `red7WithBlack` | 3 / 3 / 3 | `win_with` | enabled | reference |
+| `green9WithBlack` | 3 / 3 / 3 | `win_with` | enabled | reference |
+| `4with8` | 3 / 4 / 5 | `win_with` | blocked C18 | quarantined |
+| `5with7` | 1 / 2 / 2 | `win_with` | blocked C18 | corroborated (R p17) |
+| `6with6` | 2 / 3 / 4 | `win_with` | blocked C18 | quarantined |
+| `trickWith2` | 3 / 4 / 5 | `win_with` | enabled | corroborated (R p13, p17) |
+| `trickWith3` | 3 / 4 / 5 | `win_with` | enabled | reference |
+| `trickWith5` | 2 / 3 / 4 | `win_with` | enabled | reference |
+| `trickWith6` | 2 / 3 / 3 | `win_with` | enabled | reference |
+| `0tricks` | 4 / 3 / 3 | `tricks` | enabled | corroborated (L M32) |
+| `exactly1trick` | 3 / 2 / 2 | `tricks` | enabled | reference |
+| `exactly2trick` | 2 / 2 / 2 | `tricks` | enabled | reference |
+| `exactly4trick` | 2 / 3 / 5 | `tricks` | enabled | reference |
+| `exactlyXtrick` | 3 / 2 / 2 | `tricks` | enabled | corroborated (R p18) |
+| `exactlyXtrickSecret` | 4 / 3 / 3 | `tricks` | enabled | corroborated (R p18) |
+| `exactly2trickInARow` | 3 / 3 / 3 | `exact_streak` | enabled | reference |
+| `exactly3trickInARow` | 3 / 3 / 4 | `exact_streak` | enabled | corroborated (L M32) |
+| `firstTrick` | 1 / 1 / 1 | `indices` | enabled | corroborated (R p14) |
+| `firstTwoTrick` | 1 / 1 / 2 | `indices` | enabled | corroborated (R p10, p14) |
+| `firstThreeTrick` | 2 / 3 / 4 | `indices` | enabled | reference |
+| `lastTrick` | 2 / 3 / 3 | `indices` | enabled | reference |
+| `firstAndLastTrick` | 3 / 4 / 4 | `indices` | enabled | corroborated (L M32) |
+| `onlyFirstTrick` | 4 / 3 / 3 | `indices` | enabled | corroborated (R p17) |
+| `onlyLastTrick` | 4 / 4 / 4 | `indices` | enabled | reference |
+| `2tricksInARow` | 1 / 1 / 1 | `streak` | enabled | corroborated (L M32) |
+| `3tricksInARow` | 2 / 3 / 4 | `streak` | enabled | reference |
+| `moreThanHalfTricks` | 3 / 4 / 5 | `majority` | enabled | reference |
+| `moreTricksThanOthers` | 2 / 3 / 3 | `compare` | enabled | reference |
+| `lessTricksThanOthers` | 2 / 2 / 3 | `compare` | enabled | corroborated (R p18) |
+| `lessTricksThanCaptain` | 2 / 2 / 2 | `compare` | enabled | reference |
+| `equalTricksThanCaptain` | 4 / 3 / 3 | `compare` | enabled | reference |
+| `moreTricksThanCaptain` | 2 / 2 / 3 | `compare` | enabled | corroborated (R p18) |
+| `onlyOddTrick` | 2 / 4 / 5 | `parity` | enabled | corroborated (R p19) |
+| `onlyEvenTrick` | 2 / 5 / 6 | `parity` | enabled | corroborated (R p19) |
+| `no1` | 2 / 2 / 2 | `forbidden` | enabled | corroborated (R p10, p17) |
+| `no5` | 1 / 2 / 2 | `forbidden` | enabled | reference |
+| `no9` | 1 / 1 / 1 | `forbidden` | enabled | reference |
+| `no89` | 3 / 3 / 2 | `forbidden` | enabled | reference |
+| `no123` | 3 / 3 / 3 | `forbidden` | enabled | reference |
+| `noRed` | 2 / 2 / 2 | `forbidden` | enabled | reference |
+| `noYellow` | 2 / 2 / 2 | `forbidden` | enabled | reference |
+| `noGreen` | 2 / 2 / 2 | `forbidden` | enabled | reference |
+| `noRedBlue` | 3 / 3 / 3 | `forbidden` | enabled | reference |
+| `noYellowGreen` | 3 / 3 / 3 | `forbidden` | enabled | reference |
+| `noBlack` | 1 / 1 / 1 | `forbidden` | enabled | reference |
+| `noLeadRedGreen` | 2 / 1 / 1 | `no_lead` | enabled | reference |
+| `noLeadRedYellowBlue` | 4 / 3 / 3 | `no_lead` | enabled | reference |
+| `noneFirst3Tricks` | 1 / 2 / 2 | `indices` | enabled | reference |
+| `noneFirst4Tricks` | 1 / 2 / 3 | `indices` | enabled | reference |
+| `noneFirst5Tricks` | 2 / 3 / 3 | `indices` | enabled | reference |
+| `neverTwoTricksInARow` | 3 / 2 / 2 | `never_streak` | enabled | reference |
+| `allLess7` | 2 / 3 / 3 | `value` | enabled | reference |
+| `allGreater5` | 2 / 3 / 4 | `value` | enabled | corroborated (R p18) |
+| `value22or23` | 3 / 3 / 4 | `value` | enabled | reference |
+| `sumBelow` | 3 / 3 / 4 | `value` | enabled | corroborated (R p18) |
+| `sumAbove` | 3 / 3 / 4 | `value` | enabled | reference |
 <!-- task-catalog:end -->

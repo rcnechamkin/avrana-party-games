@@ -136,6 +136,8 @@ See [Crew decisions](#crew-decisions). Used by allocation modes `one`, `captain_
 
 A crew decision is proposed by one seated human and takes effect when **every** seated human has
 confirmed it (P09). One may be pending at a time; while it is, no other command is accepted.
+Decided 2026-10-04 and not built yet: missions 10 and 13 will need only the captain and the
+recipient (AVR-251), and routine progression decisions should stop requiring everyone (AVR-252).
 
 ### `propose {proposal: {kind, ...}}`
 
@@ -202,7 +204,8 @@ confirmed it (P09). One may be pending at a time; while it is, no other command 
     attempt; in `rapture` the shared pool is not empty;
   - the card is a color card in the sender's hand and not already shown;
   - `assertion` is `highest`, `only` or `lowest` and is true of that card among the sender's cards
-    of that color now (P03 for a single card).
+    of that color now. For a single card all three are accepted today (P03); the owner decided
+    on 2026-10-04 that only `only` should be, which is AVR-248.
 - **Illegal**: one code for all, `communication`: "Communication requires an available sonar
   token, a trick boundary, and your highest, lowest or only color card."
 - **Mutation**: the token is spent (personal or one from the pool); the exposure `{seat, card,
