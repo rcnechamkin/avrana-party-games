@@ -310,15 +310,37 @@ def test_a_party_round_locks_settings_so_the_table_opens_on_mission_one():
     assert s.engine.s['mission']['id'] == 1 and s.engine.s['timed'] is False
 
 
-# ---- pinned defects (games/expo/docs/RECONCILIATION.md) ----------------------------------------
+# ---- C20 / AVR-239: the captain and captain comparison tasks (was defect E-D1) -------------------
+# Owner decision 2026-10-04: an unavoidable draw is repaired before selection by replacing the most
+# recently revealed comparison task with another of equal difficulty, and no attempt is counted
+# (rulebook p14); a comparison task the crew leaves for the captain is an avoidable mistake and
+# ends the attempt as a counted failure (rulebook p13). The captain never passes a task onward.
 
-@pytest.mark.xfail(reason='E-D1 / AVR-239: captain forced onto captain-comparison tasks stalls selection', **DEFECT)
+COMPARISON = ['lessTricksThanCaptain', 'equalTricksThanCaptain', 'moreTricksThanCaptain']
+
+
+def drawn(humans, mission_id, first, seed=1):
+    """A table whose task deck is in a known order, prepared through the real draw and repair."""
+    e = Engine(list(humans), random.Random(seed))
+    e.s['deck'] = list(first) + [k for k, d in TASKS.items() if d['enabled'] and k not in first]
+    e.s['used'] = []
+    e.prepare(mission_id)
+    return e
+
+
+def crew_difficulty(e, tasks):
+    return sum(TASKS[k]['difficulty'][str(len(e.s['seats']))] for k in tasks)
+
+
+def comparison(tasks):
+    return [k for k in tasks if TASKS[k]['params'].get('other') == 'captain']
+
+
 def test_defect_unavoidable_captain_comparison_draw_does_not_stall_selection():
-    e = Engine(['p0', 'p1', 'p2'], random.Random(1), 11)             # target 8 = 2 + 4 + 2 at three seats
-    pool = ['lessTricksThanCaptain', 'equalTricksThanCaptain', 'moreTricksThanCaptain']
-    e.s.update(pool=list(pool), selected=list(pool), initial_count=3, assignments={}, progress={}, pick_index=0)
+    e = drawn(['p0', 'p1', 'p2'], 11, COMPARISON)                     # target 8 = 2 + 4 + 2 at three seats
+    pool = list(e.s['pool'])
     cap = e.s['captain']
-    assert e.selector() == cap
+    assert e.selector() == cap and e.s['phase'] == 'allocation'
     progressed = False
     for t, extra in [('pass_task', {})] + [('choose_task', {'task': k}) for k in pool]:
         try:
@@ -327,10 +349,69 @@ def test_defect_unavoidable_captain_comparison_draw_does_not_stall_selection():
             break
         except Invalid:
             pass
-    assert progressed or e.s['phase'] != 'allocation', 'the captain can neither pick nor pass'
+    assert progressed, 'the captain can neither pick nor pass'
+    assert e.s['phase'] == 'allocation' and e.s['result'] is None
 
 
-@pytest.mark.xfail(reason='E-D1 / AVR-239: avoidable variant leaves no action but End table', **DEFECT)
+@pytest.mark.parametrize('humans,mission_id,first', [
+    (['p0', 'p1', 'p2'], 11, COMPARISON),                             # three tasks, three seats
+    (['p0', 'p1', 'p2'], 18, COMPARISON + ['green6']),                # four tasks: the captain picks twice
+    (['p0', 'p1'], 18, COMPARISON + ['green6']),                      # two humans and Tonoja are three seats
+])
+def test_an_unavoidable_comparison_draw_replaces_the_most_recently_revealed_task(humans, mission_id, first):
+    e = drawn(humans, mission_id, first)
+    pool = e.s['pool']
+    # Only the last comparison task in reveal order was exchanged, in place.
+    assert pool[:2] == COMPARISON[:2] and pool[3:] == first[3:]
+    replacement = pool[2]
+    assert replacement not in COMPARISON and comparison(pool) == COMPARISON[:2]
+    crew = str(len(e.s['seats']))
+    assert TASKS[replacement]['difficulty'][crew] == TASKS['moreTricksThanCaptain']['difficulty'][crew]
+    assert crew_difficulty(e, pool) == e.s['mission']['target']        # the challenge is unchanged
+    # Deck bookkeeping: the exchanged task is back in the deck; nothing is duplicated or lost.
+    assert 'moreTricksThanCaptain' in e.s['deck'] and replacement not in e.s['deck']
+    everything = e.s['deck'] + e.s['used'] + pool
+    assert len(everything) == len(set(everything)) == sum(d['enabled'] for d in TASKS.values())
+    # A setup correction, not an attempt.
+    assert e.s['attempts'] == 0 and not e.s['counted'] and e.s['result'] is None and e.s['selected'] == pool
+    e.check()
+    # The captain can now always be given an ordinary task.
+    assert any(e.eligible(k, e.s['captain']) for k in pool)
+
+
+def test_the_comparison_repair_is_deterministic_and_survives_a_snapshot():
+    a = drawn(['p0', 'p1', 'p2'], 11, COMPARISON, seed=7)
+    b = drawn(['p0', 'p1', 'p2'], 11, COMPARISON, seed=7)
+    assert a.snapshot() == b.snapshot()
+    restored = Engine.restore(json.loads(json.dumps(a.snapshot())))
+    assert restored.s['pool'] == a.s['pool'] and restored.s['deck'] == a.s['deck']
+    e = drawn(['p0', 'p1', 'p2'], 11, COMPARISON, seed=7)
+    e._finish('failed', 'fixture')
+    kept = list(e.s['selected'])
+    decide(e, 'p0', 'retry', keep=True)                               # kept tasks need no second repair
+    assert e.s['pool'] == kept
+
+
+@pytest.mark.parametrize('humans,mission_id,first,reason', [
+    (['p0', 'p1', 'p2'], 22, COMPARISON + ['green6', 'yellow1', 'red3'], 'six tasks: three ordinary ones cover the two captain picks'),
+    (['p0', 'p1', 'p2', 'p3'], 9, COMPARISON, 'fewer tasks than seats: the captain may pass'),
+    (['p0', 'p1', 'p2', 'p3'], 11, COMPARISON + ['green6'], 'four seats, four tasks: one ordinary task for the captain'),
+    (['p0', 'p1', 'p2', 'p3', 'p4'], 11, COMPARISON, 'fewer tasks than seats'),
+])
+def test_an_avoidable_comparison_draw_is_left_alone(humans, mission_id, first, reason):
+    e = drawn(humans, mission_id, first)
+    assert e.s['pool'] == first, reason
+    assert crew_difficulty(e, first) == e.s['mission']['target']
+
+
+def test_the_comparison_repair_applies_only_to_clockwise_selection_that_includes_the_captain():
+    e = Engine(['p0', 'p1', 'p2'], random.Random(1))
+    for allocation in ('skip_captain', 'free', 'one', 'captain_one', 'volunteer'):
+        assert e._captain_conflict(list(COMPARISON), {'allocation': allocation}) is None
+    assert e._captain_conflict(list(COMPARISON), {'allocation': 'normal'}) == 'moreTricksThanCaptain'
+    assert e._captain_conflict(['blue4'] + COMPARISON[:2], {'allocation': 'normal'}) is None
+
+
 def test_defect_captain_left_with_a_comparison_task_ends_the_attempt_instead_of_stalling():
     e = Engine(['p0', 'p1', 'p2', 'p3'], random.Random(2), 1)
     pool = ['green6', 'yellow1', 'red3', 'blue4', 'lessTricksThanCaptain']
@@ -342,6 +423,72 @@ def test_defect_captain_left_with_a_comparison_task_ends_the_attempt_instead_of_
         act(e, e.s['captain'], 'choose_task', task=pool[4])
     assert e.s['phase'] != 'allocation', 'selection is stuck with one unassignable task'
 
+
+def misplayed(humans=('p0', 'p1', 'p2', 'p3'), seed=2):
+    """The crew takes every ordinary task and leaves a comparison task for the captain."""
+    e = Engine(list(humans), random.Random(seed), 1)
+    ordinary = ['green6', 'yellow1', 'red3', 'blue4', 'black3']
+    pool = ordinary[:len(e.s['seats'])] + ['lessTricksThanCaptain']
+    e.s.update(pool=list(pool), selected=list(pool), initial_count=len(pool), assignments={}, progress={}, pick_index=0)
+    assert e._captain_conflict(pool, e.s['mission']) is None           # the crew could have avoided it
+    for k in pool[:-1]:
+        assert e.s['result'] is None
+        act(e, e.controller(e.selector()), 'choose_task', task=k)
+    return e, pool
+
+
+@pytest.mark.parametrize('humans', [('p0', 'p1', 'p2'), ('p0', 'p1', 'p2', 'p3'), ('p0', 'p1', 'p2', 'p3', 'p4'), ('p0', 'p1')])
+def test_a_comparison_task_left_for_the_captain_is_a_counted_failure_with_a_reason(humans):
+    e, pool = misplayed(humans)
+    assert e.s['phase'] == 'mission_result'
+    assert e.s['result']['status'] == 'failed' and 'captain' in e.s['result']['reason'].lower()
+    assert e.s['attempts'] == 1 and e.s['counted']                    # counted once
+    assert e.s['pool'] == ['lessTricksThanCaptain']                   # nobody was given it
+    assert 'lessTricksThanCaptain' not in e.s['assignments']
+    assert e.s['history'] == [] and e.s['trick'] == []                # no card was played
+    e.check()
+    viewer = e.s['humans'][0]
+    assert e.view(viewer)['result'] == e.view(None)['result'] == e.s['result']
+    before = e.snapshot()
+    for t, extra in (('pass_task', {}), ('choose_task', {'task': 'lessTricksThanCaptain'})):
+        with pytest.raises(Invalid):
+            act(e, e.s['captain'], t, **extra)                        # no passing the task onward
+    assert e.snapshot() == before
+
+
+def test_the_crew_can_retry_after_the_counted_failure_and_assign_the_task_correctly():
+    e, pool = misplayed()
+    decide(e, e.s['humans'][0], 'retry', keep=True)
+    assert e.s['phase'] == 'allocation' and e.s['pool'] == pool
+    assert e.s['attempts'] == 1 and not e.s['counted'] and e.s['result'] is None
+    cap = e.s['captain']
+    while e.s['pool']:
+        seat = e.selector()
+        if seat != cap and 'lessTricksThanCaptain' in e.s['pool']:
+            k = 'lessTricksThanCaptain'                               # another seat takes it this time
+        else:
+            k = next(k for k in e.s['pool'] if e.eligible(k, seat))
+        act(e, e.controller(seat), 'choose_task', task=k)
+    assert e.s['result'] is None and e.s['assignments']['lessTricksThanCaptain'] != cap
+    decide(e, e.s['humans'][0], 'begin')
+    assert e.s['attempts'] == 2 and e.s['phase'] == 'before_trick'
+
+
+def test_selection_never_fails_while_the_next_seat_can_take_or_pass():
+    # Ordinary selection, and a pass that is still allowed, never trip the counted failure.
+    for seed in range(25):
+        for n in (3, 4, 5):
+            e = allocated(Engine([f'p{i}' for i in range(n)], random.Random(seed), 7))
+            assert e.s['result'] is None and e.s['attempts'] == 0
+    e = Engine(['a', 'b', 'c'], random.Random(4))
+    e.s['pool'] = ['moreTricksThanCaptain']
+    e.s['selected'] = ['moreTricksThanCaptain']
+    e.s['initial_count'] = 1
+    act(e, e.s['captain'], 'pass_task')                               # fewer tasks than seats: a legal pass
+    assert e.s['result'] is None and e.s['phase'] == 'allocation'
+
+
+# ---- pinned defects (games/expo/docs/RECONCILIATION.md) ----------------------------------------
 
 @pytest.mark.xfail(reason='E-D2 / AVR-240: no decision, including End table, is accepted while a seat is away', **DEFECT)
 def test_defect_a_table_can_be_ended_while_a_seated_player_is_away():

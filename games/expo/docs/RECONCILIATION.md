@@ -25,9 +25,9 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 - The card rules, deal, captain, trick resolution, communication truth and timing, selection and
   pass rule, task evaluators, mission targets and modifiers of the 24 enabled missions match R
   and L.
-- Seven defects are recorded (E-D1 to E-D7). Two affect play and need an owner decision on the
-  remedy: selection can stall (AVR-239) and a table cannot be ended while someone is away
-  (AVR-240).
+- Seven defects were recorded (E-D1 to E-D7). E-D1, the selection stall, was fixed on 2026-10-04
+  (AVR-239). Of the six that remain, one affects play and needs an owner decision on the remedy:
+  a table cannot be ended while someone is away (AVR-240).
 - Twenty-three digital policies are in force. Four are contested by the conflict register and need
   confirmation (AVR-243).
 - Eight missions and five tasks stay blocked on source material (AVR-244).
@@ -53,7 +53,7 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 | E-M12 | Draw tasks to the exact total, skipping cards that would exceed it (R p8) | `_generate` | `test_difficulty_generation_and_no_pass_in_second_circuit` | MATCH (order of skipping not tested, AVR-247) |
 | E-M13 | Captain first, clockwise, one task per turn (R p9) | `allocation_ring`, `selector` | `test_difficulty_generation_and_no_pass_in_second_circuit`, `test_skip_captain_and_terrain_draws_are_frozen_on_restore` | MATCH |
 | E-M14 | Pass only when fewer tasks than seats at the start, and all tasks placed in one circuit (R p9) | `pass_task` | `test_pass_capacity_and_captain_comparison`, `test_difficulty_generation_and_no_pass_in_second_circuit` | MATCH |
-| E-M15 | Captain may not take a captain-comparison task (R p18), in every allocation mode | `eligible`, `_assign`, `_proposal` | `test_pass_capacity_and_captain_comparison`, `test_collective_and_free_allocation_refuse_a_captain_comparison_task_for_the_captain` | MATCH (but see E-D1) |
+| E-M15 | Captain may not take a captain-comparison task (R p18), in every allocation mode | `eligible`, `_assign`, `_proposal` | `test_pass_capacity_and_captain_comparison`, `test_collective_and_free_allocation_refuse_a_captain_comparison_task_for_the_captain` | MATCH |
 | E-M16 | Mission succeeds when all tasks are complete, fails as soon as one cannot be (R p10 to p11) | `_outcome` | `test_full_seeded_games_only_use_legal_actions`, `test_every_enabled_task_has_deterministic_success_fixture` | MATCH, with E-D3 |
 | E-M17 | Impossible forced pair is repaired by an equal-difficulty replacement; not when one seat could hold both (R p14) | `_repair_tasks` | `test_explicit_feasibility_and_used_deck_replenishment` | MATCH |
 | E-M18 | Named submarine alignments are redealt free (R p14, p17; V footnotes) | `_deal_exception`, `prepare` | `test_named_submarine_alignments_are_deal_exceptions`, `test_a_deal_exception_is_redealt_before_the_attempt_is_counted` | MATCH |
@@ -99,7 +99,7 @@ updated.
 
 | Entry | Defect | Evidence | Test | Issue |
 |---|---|---|---|---|
-| E-D1 | Selection stalls when the captain is the only seat left for a captain-comparison task. Unavoidable for three seats on mission 11 when the draw is the three comparison tasks (2 + 4 + 2 = 8); avoidable whenever one is left for the captain's later pick. Only End table remains | R p18, p9, p13 to p14 (C20) | `test_defect_unavoidable_captain_comparison_draw_does_not_stall_selection`, `test_defect_captain_left_with_a_comparison_task_ends_the_attempt_instead_of_stalling` | AVR-239 (remedy: Q9) |
+| E-D1 | **Fixed 2026-10-04.** Was: selection stalled when the captain was the only seat left for a captain-comparison task, and only End table remained. Now: a draw that forces one onto the captain is repaired before selection opens (the most recently revealed comparison task is exchanged for another of equal difficulty, no attempt counted); a comparison task that the crew leaves for the captain ends the attempt as a counted failure with a stated reason | R p18, p9, p13 to p14 (C20); owner decision Q9 | `test_defect_unavoidable_captain_comparison_draw_does_not_stall_selection`, `test_defect_captain_left_with_a_comparison_task_ends_the_attempt_instead_of_stalling`, `test_an_unavoidable_comparison_draw_replaces_the_most_recently_revealed_task`, `test_a_comparison_task_left_for_the_captain_is_a_counted_failure_with_a_reason`, `test_an_avoidable_comparison_draw_is_left_alone`, `test_the_comparison_repair_applies_only_to_clockwise_selection_that_includes_the_captain`, `test_the_comparison_repair_is_deterministic_and_survives_a_snapshot`, `test_the_crew_can_retry_after_the_counted_failure_and_assign_the_task_correctly`, `test_selection_never_fails_while_the_next_seat_can_take_or_pass` | AVR-239 |
 | E-D2 | No command is accepted while a seat is away, including the End table decision; a standalone table with a missing player is stranded until restart | state contract; no source | `test_defect_a_table_can_be_ended_while_a_seated_player_is_away` | AVR-240 (policy: Q10) |
 | E-D3 | `noneFirst3Tricks`, `noneFirst4Tricks`, `noneFirst5Tricks` stay pending after their window. Success is delayed to the last trick; in timed mission 16 that can become a timeout | R p10: complete when met and unable to fail | `test_defect_none_of_the_first_three_tricks_completes_after_trick_three` | AVR-241 |
 | E-D4 | In currents the declaration is withheld from its author too; after a reload they cannot see what they declared | action contract | `test_defect_currents_shows_the_communicator_their_own_assertion` | AVR-241 |
@@ -133,7 +133,7 @@ a source's wording makes the choice non-obvious and the owner has not confirmed 
 | P12 | A seat is held for the whole table; every command pauses while a seated player is away; no autoplay, no bots | no source | `test_session_reconnect_all_away_and_again_cannot_erase`, `test_a_dropped_crew_member_returns_by_fresh_ticket_to_the_same_seat_and_hand` | Q10 (see E-D2) |
 | P13 | A real-time deadline keeps running while a player is away | fairness; no source | `test_a_timed_mission_expires_while_a_player_is_away` | uncontested |
 | P14 | An unknown credential during a table watches the public view; watchers are bounded; Party spectators get the public view | platform convention | `test_five_human_table_accepts_public_watcher_without_seating`, `test_nobody_else_sees_or_takes_an_empty_seat`, `test_a_spectator_ticket_watches_the_table_without_a_hand` | uncontested |
-| P15 | A volunteer who may not own one of the tasks ends the attempt as a counted failure | R p13: avoidable | `test_timed_start_barrier_and_volunteer_eligibility_failure` | uncontested; compare Q9 |
+| P15 | A volunteer who may not own one of the tasks ends the attempt as a counted failure | R p13: avoidable | `test_timed_start_barrier_and_volunteer_eligibility_failure` | uncontested; the same rule now covers the captain (Q9) |
 | P16 | The equal-difficulty replacement is drawn at random from the deck and the replaced task returns to it | R p14 says "a different task" | `test_explicit_feasibility_and_used_deck_replenishment` | uncontested |
 | P17 | Deal exceptions are checked against every hand, the dummy's included, before selection | R p14: "no matter who takes the task" | `test_named_submarine_alignments_are_deal_exceptions` | uncontested |
 | P18 | Commands carry attempt, revision and a request id; identical repeats are no-ops; stale commands are refused | digital necessity | `test_rejected_actions_are_transactional_and_duplicates_idempotent`, `test_hostile_payloads_do_not_mutate` | uncontested |
@@ -221,13 +221,23 @@ reach the total, which is checked.
 **Q8 (AVR-243). Unanimity.** R says decide together. Now: every seated human must confirm. A
 majority rule would let a table move on without a slow player.
 
-**Q9 (C20, AVR-239). The captain is the only seat left for a captain-comparison task.**
+**Q9 (C20, AVR-239). The captain is the only seat left for a captain-comparison task.
+DECIDED by the owner, 2026-10-04, and implemented.**
 Evidence: R p18 forbids the pick; R p9 forbids the pass when tasks are not fewer than seats; R p14
 repairs an impossible forced combination by replacing the most recently revealed task with one of
-equal difficulty; R p13 calls an avoidable failure a failed attempt. Now: no legal action; only
-End table. Proposed: replace before selection in the unavoidable case (no attempt counted); count
-a failed attempt in the avoidable case. Alternative for the avoidable case: let the captain pass
-and offer the task onward, which no source supports.
+equal difficulty; R p13 calls an avoidable failure a failed attempt.
+Decision: (1) an unavoidable allocation is repaired before selection proceeds by replacing the
+most recently revealed incompatible task with another of equal difficulty, and no attempt is
+counted; (2) an avoidable allocation mistake ends the attempt as a counted failure with a clear
+reason; (3) the captain does not pass the task onward (no source supports it).
+What "unavoidable" means in the code: in `normal` allocation the captain takes every Nth task (N
+seats) and may not pass once there are at least N tasks. With T tasks of which c are captain
+comparisons, the captain must take ceil(T / N) tasks, so the draw is unavoidable exactly when
+T >= N and T - c < ceil(T / N). With the three comparison tasks that exist this happens only at
+three seats (three humans, or two humans and the dummy), with three or four tasks drawn. That is
+wider than first recorded: besides mission 11 (target 8) it reaches any clockwise mission whose
+target is 8 plus one more task at three seats, such as missions 18, 22 and 24. In `skip_captain`
+the captain takes nothing, and the other allocation modes have no forced order.
 
 **Q10 (AVR-240). Who may end a table while a player is away, and when?**
 No source. Now: nobody. Options: the present players at once; the present players after a grace
@@ -284,6 +294,26 @@ Not verified by anyone: play on real phones, the appliance, a Party-launched rou
 (covered only by the binding-level tests in `tests/test_expo_party.py`), and the publisher's own
 logbook or task cards.
 
-Remaining ambiguities: conflicts C02, C03, C05 to C13, C18 and C20 in
+Remaining ambiguities at that head: conflicts C02, C03, C05 to C13, C18 and C20 in
 [VTT_REFERENCE](VTT_REFERENCE.md#conflict-register), and owner questions Q1 to Q15 above.
 <!-- report:end -->
+
+### AVR-239, 2026-10-04
+
+The first engine change made under these documents. Scope: `games/expo/engine.py` only
+(`_captain_conflict`, `_repair_tasks`, `_selection_blocked`); no content, client or adapter
+change; snapshot format and content hash unchanged. Conflict C20 is closed and E-D1 fixed.
+
+| Check | Result |
+|---|---|
+| `pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_docs.py` | 215 passed, 3 expected failures (E-D2, E-D3, E-D4) |
+| `pytest` (whole repository, with a sibling Party checkout present) | 1,593 passed, 1 skipped, 3 expected failures, 0 failed |
+| The new AVR-239 tests against the engine before the fix | 11 failed, as they should |
+| `ops/check_docs.py`, `tests/test_no_private_data.py`, catalog drift check, `ops/check_static.sh` | all passed |
+| `tests/playtest_expo.mjs`, headless Chrome, 2, 3, 4 and 5 humans | passed |
+| `ops/test_release_safety.sh` | not run locally (needs rsync; GitHub Actions runs it) |
+
+Not covered: the counted failure and the repaired draw were not exercised through a browser, only
+through the engine; the client shows them through the ordinary result panel and task list, which
+the playtest does cover for other failures. Real phones and the appliance remain unverified.
+
