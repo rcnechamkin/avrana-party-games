@@ -38,6 +38,22 @@ log = logging.getLogger("gamehub")
 
 WEB = Path(__file__).parent / "web"
 PORT = int(os.environ.get("LANGAMES_PORT", "8096"))   # override to run a second instance
+# Loopback by default: nginx is the only way in (avrana-party ADR 0014 decision 4, AVR-222).
+# LANGAMES_HOST=0.0.0.0 restores the old all-interfaces listener for a laptop dev server that
+# phones on the same network reach directly.
+HOST = os.environ.get("LANGAMES_HOST", "127.0.0.1")
+# The largest frame a client may send, enforced by the WebSocket server before the frame is
+# buffered. Every route reads at most 4096 bytes of a message (core/net.py, core/chat.py; WORDCLASH
+# 2048), but uvicorn's default of 16 MiB let one socket make the server hold 16 MiB first.
+WS_MAX_SIZE = 64 * 1024
+# AVRANA_STANDALONE_ADMISSION=0 retires standalone play: a hello without a Party ticket may only
+# watch, in every room. Default on, because the donor titles have no Party session yet.
+STANDALONE_ADMISSION = os.environ.get("AVRANA_STANDALONE_ADMISSION", "1") != "0"
+
+
+def serve_options():
+    """How this process listens: uvicorn.run(app, **serve_options())."""
+    return {"host": HOST, "port": PORT, "ws_max_size": WS_MAX_SIZE}
 
 app = FastAPI(title="GAMEHUB")
 bindings: dict[str, GameBinding] = {}
@@ -47,7 +63,7 @@ party_sides, party_url = party_session.configure(os.environ)
 for entry in REGISTRY:
     slug = entry["slug"]
     binding = GameBinding(slug, entry["session"](), party=party_sides.get(slug),
-                          party_url=party_url)
+                          party_url=party_url, standalone=STANDALONE_ADMISSION)
     bindings[slug] = binding
 
     def _make_ws(b: GameBinding):
@@ -319,4 +335,4 @@ app.mount("/chatmedia", StaticFiles(directory=chatmedia.CHAT_DIR), name="chatmed
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+    uvicorn.run(app, **serve_options())

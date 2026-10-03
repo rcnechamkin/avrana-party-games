@@ -11,6 +11,8 @@ unchanged below.
 - **Development:** [Contributing](CONTRIBUTING.md), [agent invariants](AGENTS.md), and
   [derived Graphify context](docs/GRAPHIFY.md).
 - **Run a second instance** alongside an existing one: `LANGAMES_PORT=8196 python server.py`.
+- **Listener:** the server binds `127.0.0.1` and refuses WebSocket frames over 64 KiB. A dev
+  server that phones reach directly needs `LANGAMES_HOST=0.0.0.0 python server.py`.
 
 ---
 

@@ -76,6 +76,13 @@ both hashes; re-vendor both files together, never edit them here.
   The game token is never sent to the browser. Spectator tickets, and player tickets for
   someone not on the roster, watch. A refused ticket gets an `invalid` fx and a close.
 - While a party session runs, a browser-minted wc-token (or any unticketed hello) only watches.
+- Standalone play is retiring (avrana-party ADR 0014, AVR-222). `AVRANA_STANDALONE_ADMISSION=0`
+  makes that rule permanent for every room: without a Party ticket a hello only watches,
+  whether or not a party session runs. The default stays on, because only BLUFF has a Party
+  session; turning it off leaves the donor titles watch-only. WORDCLASH (its own room engine),
+  chat and avatar photos still use wc-token and are not covered by the switch.
+- The server listens on loopback (`LANGAMES_HOST`, default `127.0.0.1`) and its WebSocket
+  server refuses frames over 64 KiB before buffering them (`server.WS_MAX_SIZE`).
 - hubnet.js, in an integrated (?avrana=1) player page: before every connect, POST
   /party/api/session/ticket (party cookie; the ticket never goes in a URL; 5 s per attempt) and
   send the ticket in the hello. A request that reaches nothing, times out or gets a 5xx is

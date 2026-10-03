@@ -51,9 +51,12 @@ LOGGED_VERBS = ("ready", "start", "again", "leave_table", "leave_game", "end_gam
 
 
 class GameBinding:
-    def __init__(self, slug, session, party=None, party_url=None):
+    def __init__(self, slug, session, party=None, party_url=None, standalone=True):
         self.slug = slug
         self.session = session
+        # False retires standalone play for this room (AVR-222; avrana-party ADR 0014): a hello
+        # without a Party ticket may only watch, so a browser-minted `wc-token` never takes a seat.
+        self.standalone = standalone
         self.party = party            # party_protocol.GameSide, or None: standalone only
         self.party_url = party_url    # where `ended` goes (party_session.party_url), or None
         self.party_roster: dict[str, dict] = {}   # game token -> roster entry (players only)
@@ -356,6 +359,9 @@ class GameBinding:
         else:
             watching = bool(hello.get("watch"))
             name = hello.get("name")
+            if not watching and not self.standalone:
+                event(self.slug, "standalone_refused")
+                watching = True                 # no Party ticket: the public view only
 
         if watching:
             watching = True
