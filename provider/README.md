@@ -92,6 +92,11 @@ cross-repo job compares it with Party's contracts/party-games.v0.json (Party too
   chat and avatar photos still use wc-token and are not covered by the switch.
 - The server listens on loopback (`LANGAMES_HOST`, default `127.0.0.1`) and its WebSocket
   server refuses frames over 64 KiB before buffering them (`server.WS_MAX_SIZE`).
+- Outbound, the application queues nothing and uvicorn's WebSocket protocol has no write flow
+  control, so the server runs `core.ws_limit.BoundedWebSocketProtocol`: a socket with more than
+  1 MiB unread in the transport buffer is aborted (`slow_socket_dropped` in the event log) and
+  reaped like any disconnect. Anonymous watchers are capped at `core.net.MAX_WATCHERS` (32) per
+  room. Party semantics are unchanged: the seat is held and a fresh ticket readmits it.
 - hubnet.js, in an integrated (?avrana=1) player page: before every connect, POST
   /party/api/session/ticket (party cookie; the ticket never goes in a URL; 5 s per attempt) and
   send the ticket in the hello. A request that reaches nothing, times out or gets a 5xx is
