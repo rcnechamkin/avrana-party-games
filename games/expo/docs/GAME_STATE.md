@@ -131,15 +131,15 @@ retry or go on. Only `closed` hands control back to the platform (`game_end`).
 | per-seat hand counts and trick counts | own communication options | resolved tricks before the latest |
 | tasks: text, difficulty, owner, status, eligible owners | own secret prediction, until the mission result | task deck order, used pile |
 | predictions that are public; whether one is committed | whether own distress choice is locked | sealed distress choices |
-| shown cards and, except in currents, their declarations | | random generator state |
+| shown cards and, except in currents, their declarations | own declaration in currents | random generator state |
 | shared tokens left, players whose token is spent | | request memory, platform tokens |
 | Tonoja's face-up cards | | |
 | distress flag, attempts, log, result, deadline, who is away | | |
 | the pending crew decision and who confirmed | | |
 
 Requirements met: no viewer receives another seat's legal cards; unseated viewers cannot act;
-identity is the authenticated connection, never a field in the message. Shortfall: in currents the
-declaration is withheld from its own author too (E-D4).
+identity is the authenticated connection, never a field in the message. In currents the
+declaration is sent to its author only.
 
 ## Commands, ordering and repeats
 

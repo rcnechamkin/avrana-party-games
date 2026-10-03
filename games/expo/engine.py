@@ -625,7 +625,9 @@ class Engine:
     def view(self, actor=None):
         s = self.s
         participant = actor in s['humans']
-        active = [{k: v for k, v in e.items() if k != 'assertion' or s['communication'] != 'currents'}
+        # Currents hides the declaration from the crew, never from the player who made it.
+        active = [{k: v for k, v in e.items()
+                   if k != 'assertion' or s['communication'] != 'currents' or (participant and e['seat'] == actor)}
                   for e in s['exposures'] if e['active']]
         task_views = []
         for k in s['selected']:

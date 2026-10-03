@@ -68,6 +68,10 @@ def evaluate(definition, owner, state, prediction=None):
         fail = any(i <= len(hist) and i not in mine for i in required) or bool(mine.intersection(forbidden))
         if p.get('only'):
             fail = fail or any(i not in required for i in mine)
+        elif forbidden and not required:
+            # "Win none of the first N tricks": once trick N is resolved without a win the
+            # task can no longer fail, so it is complete (rulebook p10). AVR-241.
+            monotonic = len(hist) >= max(forbidden)
         else:
             monotonic = not forbidden
     elif family in ('compare', 'majority'):

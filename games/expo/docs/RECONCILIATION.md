@@ -25,8 +25,9 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 - The card rules, deal, captain, trick resolution, communication truth and timing, selection and
   pass rule, task evaluators, mission targets and modifiers of the 24 enabled missions match R
   and L.
-- Seven defects were recorded (E-D1 to E-D7). E-D1, the selection stall, was fixed on 2026-10-04
-  (AVR-239). Of the six that remain, one affects play and needs an owner decision on the remedy:
+- Seven defects were recorded (E-D1 to E-D7). Three are fixed: E-D1, the selection stall
+  (AVR-239), and E-D3 and E-D4, late completion of the window tasks and currents visibility
+  (AVR-241). Of the four that remain, one affects play and needs an owner decision on the remedy:
   a table cannot be ended while someone is away (AVR-240).
 - Twenty-three digital policies are in force. The owner decided the open ones on 2026-10-04
   (AVR-243, questions Q1 to Q8 below). Four decisions change behaviour and are not implemented
@@ -55,7 +56,7 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 | E-M13 | Captain first, clockwise, one task per turn (R p9) | `allocation_ring`, `selector` | `test_difficulty_generation_and_no_pass_in_second_circuit`, `test_skip_captain_and_terrain_draws_are_frozen_on_restore` | MATCH |
 | E-M14 | Pass only when fewer tasks than seats at the start, and all tasks placed in one circuit (R p9) | `pass_task` | `test_pass_capacity_and_captain_comparison`, `test_difficulty_generation_and_no_pass_in_second_circuit` | MATCH |
 | E-M15 | Captain may not take a captain-comparison task (R p18), in every allocation mode | `eligible`, `_assign`, `_proposal` | `test_pass_capacity_and_captain_comparison`, `test_collective_and_free_allocation_refuse_a_captain_comparison_task_for_the_captain` | MATCH |
-| E-M16 | Mission succeeds when all tasks are complete, fails as soon as one cannot be (R p10 to p11) | `_outcome` | `test_full_seeded_games_only_use_legal_actions`, `test_every_enabled_task_has_deterministic_success_fixture` | MATCH, with E-D3 |
+| E-M16 | Mission succeeds when all tasks are complete, fails as soon as one cannot be (R p10 to p11) | `_outcome` | `test_full_seeded_games_only_use_legal_actions`, `test_every_enabled_task_has_deterministic_success_fixture` | MATCH. Early success when the last open task completes: `test_closing_the_window_on_the_last_open_task_wins_the_mission_at_once` |
 | E-M17 | Impossible forced pair is repaired by an equal-difficulty replacement; not when one seat could hold both (R p14) | `_repair_tasks` | `test_explicit_feasibility_and_used_deck_replenishment` | MATCH |
 | E-M18 | Named submarine alignments are redealt free (R p14, p17; V footnotes) | `_deal_exception`, `prepare` | `test_named_submarine_alignments_are_deal_exceptions`, `test_a_deal_exception_is_redealt_before_the_attempt_is_counted` | MATCH |
 | E-M19 | Retry redeals; tasks kept or redrawn (R p11) | `retry` decision, `prepare(keep)` | `test_explicit_feasibility_and_used_deck_replenishment`, `test_distress_surcharge_is_logged_once_and_a_new_mission_clears_it` | MATCH |
@@ -68,7 +69,7 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 | Entry | Rule (source) | Implementation | Tests | Class |
 |---|---|---|---|---|
 | E-M30 | Targets of missions 1, 2, 5 to 11, 13, 16 to 18, 21 to 25, 27 to 31 (L; R p8 for mission 5) | `content.TARGETS` | `test_difficulty_generation_and_no_pass_in_second_circuit`, `tests/test_expo_docs.py` | MATCH |
-| E-M31 | Currents: declaration hidden from the crew (R p19, L M9) | `view` strips `assertion` | `test_currents_masks_assertion_and_shared_pool_is_atomic` | MATCH, with E-D4 |
+| E-M31 | Currents: declaration hidden from the crew (R p19, L M9) | `view` strips `assertion` | `test_currents_masks_assertion_and_shared_pool_is_atomic`, `test_currents_hides_a_declaration_from_every_viewer_but_its_author` | MATCH |
 | E-M32 | Rapture: pool of seats minus two; several uses allowed (R p19 to p20, L M11) | `shared`, `communicate` | `test_currents_masks_assertion_and_shared_pool_is_atomic` | MATCH |
 | E-M33 | Terrain: color card before the deal, 1-3 / 4-6 / 7-9, submarine redrawn, per attempt (R p20) | `prepare` | `test_terrain_card_maps_to_the_communication_mode_and_returns_to_the_deck`, `test_skip_captain_and_terrain_draws_are_frozen_on_restore` | MATCH |
 | E-M34 | Mission 6: one seat takes all, chosen together (L M6) | allocation `one` | `test_collective_and_free_allocation_refuse_a_captain_comparison_task_for_the_captain` | MATCH |
@@ -102,8 +103,8 @@ updated.
 |---|---|---|---|---|
 | E-D1 | **Fixed 2026-10-04.** Was: selection stalled when the captain was the only seat left for a captain-comparison task, and only End table remained. Now: a draw that forces one onto the captain is repaired before selection opens (the most recently revealed comparison task is exchanged for another of equal difficulty, no attempt counted); a comparison task that the crew leaves for the captain ends the attempt as a counted failure with a stated reason | R p18, p9, p13 to p14 (C20); owner decision Q9 | `test_defect_unavoidable_captain_comparison_draw_does_not_stall_selection`, `test_defect_captain_left_with_a_comparison_task_ends_the_attempt_instead_of_stalling`, `test_an_unavoidable_comparison_draw_replaces_the_most_recently_revealed_task`, `test_a_comparison_task_left_for_the_captain_is_a_counted_failure_with_a_reason`, `test_an_avoidable_comparison_draw_is_left_alone`, `test_the_comparison_repair_applies_only_to_clockwise_selection_that_includes_the_captain`, `test_the_comparison_repair_is_deterministic_and_survives_a_snapshot`, `test_the_crew_can_retry_after_the_counted_failure_and_assign_the_task_correctly`, `test_selection_never_fails_while_the_next_seat_can_take_or_pass` | AVR-239 |
 | E-D2 | No command is accepted while a seat is away, including the End table decision; a standalone table with a missing player is stranded until restart | state contract; no source | `test_defect_a_table_can_be_ended_while_a_seated_player_is_away` | AVR-240 (policy: Q10) |
-| E-D3 | `noneFirst3Tricks`, `noneFirst4Tricks`, `noneFirst5Tricks` stay pending after their window. Success is delayed to the last trick; in timed mission 16 that can become a timeout | R p10: complete when met and unable to fail | `test_defect_none_of_the_first_three_tricks_completes_after_trick_three` | AVR-241 |
-| E-D4 | In currents the declaration is withheld from its author too; after a reload they cannot see what they declared | action contract | `test_defect_currents_shows_the_communicator_their_own_assertion` | AVR-241 |
+| E-D3 | **Fixed 2026-10-04.** Was: `noneFirst3Tricks`, `noneFirst4Tricks`, `noneFirst5Tricks` stayed pending after their window, so success waited for the last trick and in timed mission 16 could become a timeout. Now: each is satisfied when trick N resolves without a win by its owner, and the mission succeeds at once if it was the last open task. No other task family completes earlier than before | R p10: complete when met and unable to fail | `test_defect_none_of_the_first_three_tricks_completes_after_trick_three`, `test_a_window_task_is_pending_inside_its_window_and_satisfied_when_it_closes`, `test_only_the_three_window_tasks_complete_early_for_a_seat_that_wins_nothing`, `test_closing_the_window_on_the_last_open_task_wins_the_mission_at_once`, `test_a_window_task_does_not_finish_the_mission_while_another_task_is_open`, `test_a_timed_mission_completed_by_a_window_task_cannot_time_out_afterwards`, `test_a_timed_mission_still_times_out_while_the_window_is_open` | AVR-241 |
+| E-D4 | **Fixed 2026-10-04.** Was: in currents the declaration was withheld from its author too. Now: the author's own view carries it, including after a reload or restore; every other player, watcher and Party spectator still does not receive it | action contract; R p19 (the crew must deduce it, the author knows it) | `test_defect_currents_shows_the_communicator_their_own_assertion`, `test_currents_hides_a_declaration_from_every_viewer_but_its_author`, `test_normal_communication_still_shows_the_declaration_to_everyone`, `test_a_watcher_and_another_player_never_get_a_currents_declaration_through_the_session` | AVR-241 |
 | E-D5 | The content hash covers `tasks.json` only. A changed mission table does not invalidate a snapshot unless it is the mission in flight | state contract | none yet | AVR-242 |
 | E-D6 | Only accepted requests are remembered; a rejected request id can be reused with another payload | state contract (asked for both) | `test_a_rejected_request_is_not_remembered_and_an_accepted_one_is` pins today's behaviour | AVR-242 |
 | E-D7 | A timed snapshot is restored against the wall clock; a backward clock step grants time. The appliance has no real-time clock | state contract | none yet | AVR-242 |
@@ -111,7 +112,8 @@ updated.
 Not a defect, recorded so nobody "fixes" it by guessing: other reversible tasks could be proven
 safe early from public cards (a "win no pink" task after all nine pink cards are gone). The
 contract permits sound public bounds and forbids hidden-hand reasoning. Today those tasks wait for
-the last trick. DEFERRED, noted in AVR-241.
+the last trick. DEFERRED. AVR-241 deliberately did not generalise early completion beyond the
+three window tasks, and a test pins that.
 
 ## Digital policy audit
 
@@ -440,3 +442,21 @@ Not covered: the counted failure and the repaired draw were not exercised throug
 through the engine; the client shows them through the ordinary result panel and task list, which
 the playtest does cover for other failures. Real phones and the appliance remain unverified.
 
+### AVR-241, 2026-10-04
+
+Scope: one branch in `games/expo/tasks.py` (window tasks) and one condition in
+`Engine.view` in `games/expo/engine.py` (currents). No content, client, adapter, snapshot-format
+or content-hash change. E-D3 and E-D4 are fixed.
+
+| Check | Result |
+|---|---|
+| The two pinned tests against the engine before the fix | both failed (reported as expected failures) |
+| The new AVR-241 tests against the engine before the fix | 16 failed, as they should |
+| `pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_docs.py` | 234 passed, 1 expected failure (E-D2) |
+| `pytest` (whole repository, with a sibling Party checkout present) | 1,645 passed, 1 expected failure, 0 failed |
+| `ops/check_docs.py`, `tests/test_no_private_data.py`, catalog drift check, `ops/check_static.sh` | all passed |
+| `tests/playtest_expo.mjs`, headless Chrome, 2, 3, 4 and 5 humans | passed |
+| `ops/test_release_safety.sh` | not run locally (needs rsync; GitHub Actions runs it) |
+
+Not covered: neither fix was exercised through a browser. The client already shows whatever
+declaration and task status the server sends. Real phones and the appliance remain unverified.

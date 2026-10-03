@@ -42,12 +42,12 @@ missions.
 | | Defect | Issue |
 |---|---|---|
 | E-D2 | A table cannot be ended while a seated player is away; a standalone table can be stranded until the server restarts | AVR-240 |
-| E-D3 | "Win none of the first N tricks" tasks complete only at the last trick | AVR-241 |
-| E-D4 | In currents mode the communicator cannot see their own declaration | AVR-241 |
 | E-D5 to E-D7 | Snapshot hardening: content hash scope, request memory, timed restore and the clock | AVR-242 |
 
 Fixed: E-D1, the task-selection stall when the captain was the only seat left for a
-captain-comparison task (AVR-239, 2026-10-04).
+captain-comparison task (AVR-239, 2026-10-04). E-D3 and E-D4, late completion of the "win none of
+the first N tricks" tasks and the communicator not seeing their own declaration in currents
+(AVR-241, 2026-10-04).
 
 **Decided, not built yet.** The owner answered the open policy questions on 2026-10-04 under a
 "fidelity first" principle (AVR-243). Four answers change behaviour: a single card is communicated

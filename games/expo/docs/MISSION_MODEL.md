@@ -182,7 +182,7 @@ task can be satisfied before the end.
 | `count` at least (selector, k) | owner has won k or more | fewer than k remain winnable | yes | R p17 |
 | `forbidden` (selector) | at end, owner has won no matching card | owner wins one | no | R p17 |
 | `win_with` (instrument, target) | owner wins a trick with their own card matching the instrument, and (if a target is given) the trick contains a different card matching the target | a named target card is won any other way; no such trick by end | yes | R p17 |
-| `indices` (required, forbidden, only) | owner wins every required trick; with `only`, no others; with `forbidden`, none of those | a required trick is won by another seat; a forbidden one is won; with `only`, any other win | required only: yes | R p17 |
+| `indices` (required, forbidden, only) | owner wins every required trick; with `only`, no others; with `forbidden`, none of those | a required trick is won by another seat; a forbidden one is won; with `only`, any other win | required only: yes; a forbidden window: when the window closes | R p17 |
 | `tricks` (k or prediction) | at end, n equals k | n exceeds k; or n plus remaining tricks is below k | no | R p17 to p18 |
 | `streak` (k) | owner has won k consecutive tricks; more wins are fine | no such run by end | yes | R p17 |
 | `exact_streak` (k) | at end, n equals k and they were consecutive | n exceeds k; wins are split; k unreachable | no | L M32, V |
@@ -205,8 +205,12 @@ Rules that apply to every family:
 - Failure is decided before success on the same event.
 - Rank selectors on multi-color tasks match color cards only.
 - Sum thresholds depend on crew seats: below 8, 12, 16 (R p18) and above 23, 28, 31 (V only, C18).
-- A task whose condition is met and can no longer fail is complete (R p10). The current evaluators
-  recognise this only for the families marked "Early"; see E-D3 for where that is too late.
+- A task whose condition is met and can no longer fail is complete (R p10). The evaluators
+  recognise this for the families marked "Early" and for the three window tasks
+  (`noneFirst3Tricks`, `noneFirst4Tricks`, `noneFirst5Tricks`), which complete when trick N is
+  resolved without a win by their owner. Other reversible tasks (exclusions, exact totals,
+  comparisons, "only" tricks) are judged at the end of the deal even where public cards would
+  already prove them safe; that is deliberate and deferred, not a defect.
 
 ## Deal exceptions
 

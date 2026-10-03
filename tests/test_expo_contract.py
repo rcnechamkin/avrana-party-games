@@ -488,7 +488,7 @@ def test_selection_never_fails_while_the_next_seat_can_take_or_pass():
     assert e.s['result'] is None and e.s['phase'] == 'allocation'
 
 
-# ---- pinned defects (games/expo/docs/RECONCILIATION.md) ----------------------------------------
+# ---- pinned defect (games/expo/docs/RECONCILIATION.md) -----------------------------------------
 
 @pytest.mark.xfail(reason='E-D2 / AVR-240: no decision, including End table, is accepted while a seat is away', **DEFECT)
 def test_defect_a_table_can_be_ended_while_a_seated_player_is_away():
@@ -501,16 +501,192 @@ def test_defect_a_table_can_be_ended_while_a_seated_player_is_away():
     assert s.phase == 'game_end'
 
 
-@pytest.mark.xfail(reason='E-D3 / AVR-241: none-of-the-first-N tasks stay pending after their window', **DEFECT)
+# ---- AVR-241: window tasks complete when their window closes (was defect E-D3) -------------------
+# Rulebook p10: a task is complete when its condition is met and it can no longer fail. Only the
+# three "win none of the first N tricks" tasks are completed early by this rule; every other
+# reversible task still waits for the end of the deal.
+
+WINDOW = {'noneFirst3Tricks': 3, 'noneFirst4Tricks': 4, 'noneFirst5Tricks': 5}
+
+
 def test_defect_none_of_the_first_three_tricks_completes_after_trick_three():
     s = task_state(['b', 'b', 'c'])
     assert evaluate(TASKS['noneFirst3Tricks'], 'a', s) == 'satisfied'
 
 
-@pytest.mark.xfail(reason='E-D4 / AVR-241: currents hides the assertion from its own communicator', **DEFECT)
+@pytest.mark.parametrize('key,size', sorted(WINDOW.items()))
+def test_a_window_task_is_pending_inside_its_window_and_satisfied_when_it_closes(key, size):
+    assert evaluate(TASKS[key], 'a', task_state([])) == 'pending'
+    assert evaluate(TASKS[key], 'a', task_state(['b'] * (size - 1))) == 'pending'
+    assert evaluate(TASKS[key], 'a', task_state(['b'] * size)) == 'satisfied'
+    # Winning afterwards does not matter; winning inside the window fails at that trick.
+    assert evaluate(TASKS[key], 'a', task_state(['b'] * size + ['a', 'a'])) == 'satisfied'
+    for at in range(size):
+        wins = ['b'] * at + ['a']
+        assert evaluate(TASKS[key], 'a', task_state(wins)) == 'failed'
+    assert evaluate(TASKS[key], 'a', task_state(['b'] * 13)) == 'satisfied'
+
+
+def test_only_the_three_window_tasks_complete_early_for_a_seat_that_wins_nothing():
+    # A seat that has won no trick has met no positive condition. After five tricks the only
+    # tasks that may already be complete are the window tasks: early completion was not
+    # generalised to any other reversible task (exclusions, exact totals, comparisons, ...).
+    s = task_state(['b', 'c', 'b', 'c', 'b'])
+    early = {k for k, d in TASKS.items() if d['enabled'] and evaluate(d, 'a', s, 0) == 'satisfied'}
+    assert early == set(WINDOW)
+    for key in ('no9', 'noRed', '0tricks', 'onlyLastTrick', 'neverTwoTricksInARow', 'lessTricksThanOthers'):
+        assert evaluate(TASKS[key], 'a', s) == 'pending', key
+
+
+def with_single_task(e, key, owner):
+    e.s.update(pool=[], selected=[key], assignments={key: owner}, progress={key: 'pending'})
+    e.check()
+    return e
+
+
+def play_tricks(e, count, now=100):
+    for _ in range(count * len(e.s['seats'])):
+        if e.s['result']:
+            return
+        q = e.s['turn']
+        act(e, e.controller(q), 'play_card', now=now, card=legal_cards(e.playable(q), e.s['trick'])[0])
+
+
+@pytest.mark.parametrize('key,size', sorted(WINDOW.items()))
+def test_closing_the_window_on_the_last_open_task_wins_the_mission_at_once(key, size):
+    succeeded = failed = 0
+    for seed in range(30):
+        for owner in ('p0', 'p1', 'p2'):
+            e = with_single_task(playing(3, seed), key, owner)
+            play_tricks(e, size)
+            wins = [h['winner'] for h in e.s['history']]
+            if owner in wins:
+                # the owner won inside the window: the mission failed on that very trick
+                assert e.s['result']['status'] == 'failed' and wins.index(owner) == len(wins) - 1
+                failed += 1
+            else:
+                assert len(wins) == size and e.s['progress'][key] == 'satisfied'
+                assert e.s['result'] == {'status': 'success', 'reason': 'All mission objectives completed.'}
+                assert e.s['phase'] == 'mission_result' and size < e.s['planned']
+                assert e.s['log'][-1]['mission'] == e.s['mission']['id']
+                succeeded += 1
+            e.check()
+    assert succeeded and failed                        # both paths were exercised
+
+
+def test_a_window_task_does_not_finish_the_mission_while_another_task_is_open():
+    for seed in range(30):
+        e = playing(3, seed)
+        e.s.update(pool=[], selected=['noneFirst3Tricks', '0tricks'],
+                   assignments={'noneFirst3Tricks': 'p1', '0tricks': 'p1'},
+                   progress={'noneFirst3Tricks': 'pending', '0tricks': 'pending'})
+        play_tricks(e, 3)
+        if 'p1' not in [h['winner'] for h in e.s['history']]:
+            assert e.s['progress'] == {'noneFirst3Tricks': 'satisfied', '0tricks': 'pending'}
+            assert e.s['result'] is None
+            return
+    pytest.fail('fixture must contain a seat that wins none of the first three tricks')
+
+
+def timed_window_table(seed):
+    """Mission 16 with its real-time limit: the volunteer owns noneFirst3Tricks; clock from 100."""
+    e = Engine(['p0', 'p1', 'p2'], random.Random(seed), 16, timed=True)
+    e.s['pool'] = ['noneFirst3Tricks']
+    e.s['selected'] = ['noneFirst3Tricks']
+    volunteer = e.selector()
+    act(e, volunteer, 'volunteer', yes=True)
+    decide(e, 'p0', 'begin')                           # act() supplies now=100
+    assert e.s['expiry'] == 100 + 150 and e.s['assignments'] == {'noneFirst3Tricks': volunteer}
+    return e, volunteer
+
+
+def test_a_timed_mission_completed_by_a_window_task_cannot_time_out_afterwards():
+    for seed in range(40):
+        e, volunteer = timed_window_table(seed)
+        play_tricks(e, 3, now=200)                     # well inside the 150 seconds
+        if volunteer in [h['winner'] for h in e.s['history']]:
+            continue
+        assert e.s['result']['status'] == 'success' and e.s['expiry'] is None
+        done = e.snapshot()
+        assert not e.observe_time(250) and not e.observe_time(10_000)   # the old deadline passes
+        assert e.snapshot() == done
+        # A late command cannot turn the success into a timeout either.
+        with pytest.raises(Invalid):
+            act(e, e.s['turn'], 'play_card', now=10_000, card=e.playable(e.s['turn'])[0])
+        assert e.s['result']['status'] == 'success'
+        return
+    pytest.fail('fixture must contain a volunteer who wins none of the first three tricks')
+
+
+def test_a_timed_mission_still_times_out_while_the_window_is_open():
+    e, volunteer = timed_window_table(0)
+    play_tricks(e, 2, now=200)
+    assert e.s['result'] is None and volunteer not in [h['winner'] for h in e.s['history']]
+    assert e.s['progress']['noneFirst3Tricks'] == 'pending'            # the window is still open
+    assert e.observe_time(250)
+    assert e.s['result'] == {'status': 'failed', 'reason': 'Time has run out.'}
+
+
+# ---- AVR-241: currents shows a declaration to its author only (was defect E-D4) -----------------
+
 def test_defect_currents_shows_the_communicator_their_own_assertion():
     e = playing(mid=9)
     card, opts = next(iter(e.communication_options('p0').items()))
     act(e, 'p0', 'communicate', card=card, assertion=opts[0])
     assert 'assertion' not in e.view('p1')['exposures'][0]
     assert e.view('p0')['exposures'][0].get('assertion') == opts[0]
+
+
+@pytest.mark.parametrize('n', [2, 3, 4, 5])
+def test_currents_hides_a_declaration_from_every_viewer_but_its_author(n):
+    e = playing(n, seed=3, mid=9)
+    assert e.s['communication'] == 'currents'
+    made = {}
+    for author in e.s['humans'][:2]:                   # two players communicate at the same boundary
+        card, opts = next(iter(e.communication_options(author).items()))
+        act(e, author, 'communicate', card=card, assertion=opts[-1])
+        made[author] = (card, opts[-1])
+    viewers = list(e.s['humans']) + [None, 'stranger', 'tonoja']
+    for viewer in viewers:
+        shown = e.view(viewer)['exposures']
+        assert [(x['seat'], x['card']) for x in shown] == [(a, c) for a, (c, _) in made.items()]
+        for x in shown:
+            if viewer == x['seat']:
+                assert x['assertion'] == made[viewer][1]       # the author, and only the author
+            else:
+                assert 'assertion' not in x
+        # Nothing else in a viewer's payload carries another player's declaration.
+        others = {m for a, (_, m) in made.items() if a != viewer}
+        mine = made.get(viewer, (None, None))[1]
+        text = json.dumps(shown)
+        assert all(m == mine or ('"' + m + '"') not in text for m in others)
+    # The author still sees it after a reload or a server restart: the view is rebuilt from state.
+    restored = Engine.restore(json.loads(json.dumps(e.snapshot())))
+    for author, (_, meaning) in made.items():
+        own = next(x for x in restored.view(author)['exposures'] if x['seat'] == author)
+        assert own['assertion'] == meaning
+
+
+def test_normal_communication_still_shows_the_declaration_to_everyone():
+    e = playing()
+    card, opts = next(iter(e.communication_options('p0').items()))
+    act(e, 'p0', 'communicate', card=card, assertion=opts[0])
+    for viewer in ('p0', 'p1', 'p2', None):
+        assert e.view(viewer)['exposures'][0]['assertion'] == opts[0]
+
+
+def test_a_watcher_and_another_player_never_get_a_currents_declaration_through_the_session():
+    s, tokens = session()
+    e = s.engine
+    e.s['communication'] = 'currents'
+    allocated(e)
+    decide(e, e.s['humans'][0], 'begin')
+    author = e.s['humans'][0]
+    card, opts = next(iter(e.communication_options(author).items()))
+    act(e, author, 'communicate', card=card, assertion=opts[0])
+    by_pid = {s.players[t].pid: t for t in tokens}
+    s.join('watcher', 'Observer')
+    assert s.game_state(by_pid[author])['exposures'][0]['assertion'] == opts[0]
+    for token in [t for pid, t in by_pid.items() if pid != author] + ['watcher', None]:
+        assert 'assertion' not in s.game_state(token)['exposures'][0]
+    assert 'assertion' not in s.game_state_spectator()['exposures'][0]      # Party spectators
