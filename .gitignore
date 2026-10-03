@@ -33,6 +33,12 @@ dev.pid
 /test-results/
 /playwright-report/
 
+# EXPO internal development documentation (publisher PDFs, reference snapshots): never commit.
+/games/The Crew II/
+
+# git bundles
+*.bundle
+
 # Derived context, private Linear exports, and machine-specific Graphify state
 /.graphify-context/
 /graphify-out/

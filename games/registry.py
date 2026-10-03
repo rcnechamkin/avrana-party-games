@@ -41,10 +41,26 @@ from games.dodgeball.game import DodgeballSession
 from games.brickade.game import BrickadeSession
 from games._template.game import HighCardSession
 from games.bluff.game import BluffSession          # Avrana Party Games
+from games.expo.game import ExpoSession
 
 GAMES_DIR = Path(__file__).parent
 
 REGISTRY = [
+    {
+        "slug": "expo",
+        "category": "cards", "accent": "#65e5dd",
+        "tagline": "One crew. Every card matters.",
+        "min_p": 2, "max_p": 5, "solo": False,
+        "title": "EXPO",
+        "icon": "🌊",
+        "blurb": "Cooperative trick-taking with private hands, sonar communication, "
+                 "mission tasks and a captain-controlled Tonoja for two players. "
+                 "Disputed source missions remain unavailable.",
+        "players": "2–5 players",
+        "session": ExpoSession,
+        "web": GAMES_DIR / "expo" / "web",
+        "hidden": False,
+    },
     {
         "slug": "brickade",
         "category": "battle", "accent": "#a855f7",

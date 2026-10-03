@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script src="/shared/avrana-integration.js"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>EXPO</title>
+  <link rel="stylesheet" href="/shared/shared.css">
+  <link rel="stylesheet" href="expo.css">
+</head>
+<body>
+  <div class="ocean" aria-hidden="true"></div>
+  <main>
+    <header class="masthead">
+      <a data-avrana-return href="/" class="icon-btn" aria-label="All games">⌂</a>
+      <a class="brand" href="./"><span>AVRANA PARTY</span><strong>EXPO</strong></a>
+      <button id="help-toggle" class="icon-btn" aria-label="How to play" aria-expanded="false">?</button>
+    </header>
+    <aside id="help" class="panel help" hidden>
+      <h2>One crew. One mission.</h2>
+      <p>Take tricks together to complete every assigned task. Keep your hand secret: don’t tell, show or hint which cards you hold.</p>
+      <p>Follow the opening suit when you can. When you cannot, play any card. Submarines beat every color; the highest submarine wins. The captain opens the first trick, and each winner opens the next.</p>
+      <p>After tasks are assigned, communicate a color card before a trick. Reveal your highest, lowest or only card of that color. You normally get one sonar token per attempt. Its meaning stays fixed as your hand changes.</p>
+      <p>With two players, the captain controls Tonoja’s visible cards and task choices without discussion. Covered cards turn over only after their covering card’s trick ends.</p>
+      <p>Task difficulty adds up to the mission’s challenge. Some tasks need the full deal; positive tasks may finish earlier. A legal play can still fail the mission. Only the latest trick may be inspected.</p>
+      <p>Some missions and tasks are unavailable while conflicting source rules are clarified. Available task descriptions follow the supplied rules and the pinned The Team II reference.</p>
+    </aside>
+    <div id="status" class="status" role="status" aria-live="polite">Connecting to the crew…</div>
+    <section id="lobby" class="lobby panel" hidden>
+      <div class="eyebrow">COOPERATIVE · 2–5 PLAYERS</div>
+      <h1>Into the deep.</h1>
+      <p class="intro">Every card matters. Every mission belongs to the whole crew.</p>
+      <label for="name">Your name</label><input data-avrana-profile-name id="name" maxlength="14" autocomplete="nickname">
+      <div data-avrana-global><div id="avatars" class="avatar-grid"></div>
+      <button id="photo" class="btn">Use a photo</button></div>
+      <label for="mission">Choose an expedition</label><select id="mission"></select>
+      <label class="check"><input id="timed" type="checkbox"> Play mission 16 against the clock</label>
+      <label for="tonoja-position">Tonoja’s seat in a two-player crew</label>
+      <select id="tonoja-position"><option value="2">After both players</option><option value="1">Between the players</option><option value="0">Before both players</option></select>
+      <div id="roster" class="roster"></div>
+      <div class="actions"><button id="ready" class="btn btn-primary">Ready up</button><button id="start" class="btn btn-go">Begin expedition</button></div>
+      <p id="lobby-reason" class="muted"></p>
+    </section>
+    <section id="game" hidden>
+      <div class="mission-heading"><div><div id="depth" class="eyebrow"></div><h1 id="mission-title"></h1></div><div id="timer" class="timer" hidden></div></div>
+      <div id="objective" class="objective"></div>
+      <div id="decision" class="panel decision" hidden></div>
+      <div class="game-grid">
+        <section class="panel table-panel"><div class="section-heading"><h2>The crew</h2><span id="trick-count" class="muted"></span></div><div id="seats" class="seats"></div><div id="trick" class="trick"></div><div id="exposures" class="exposures"></div><details id="last"><summary>Latest trick</summary><div id="last-content"></div></details></section>
+        <section class="panel"><div class="section-heading"><h2>Mission tasks</h2><span id="challenge" class="badge"></span></div><div id="tasks" class="tasks"></div><div id="phase-actions" class="actions"></div></section>
+      </div>
+      <section id="hand-panel" class="panel hand-panel"><div class="section-heading"><h2>Your hand</h2><span id="hand-reason" class="muted"></span></div><div id="hand" class="hand"></div><div id="sonar" class="sonar"></div></section>
+      <section id="tonoja-panel" class="panel" hidden><h3>Tonoja · face-up cards</h3><div id="tonoja" class="hand"></div></section>
+      <section id="result" class="panel result" hidden></section>
+      <footer><span>Keep your hand secret.</span><button id="end" class="btn">End table</button></footer>
+    </section>
+  </main>
+  <div id="countdown-overlay" class="countdown-overlay" hidden><span id="cd">3</span></div>
+  <canvas id="confetti"></canvas>
+  <script src="/shared/hubnet.js?v=avrana1"></script>
+  <script src="/shared/brag.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>

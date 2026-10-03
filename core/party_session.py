@@ -44,7 +44,7 @@ log = logging.getLogger("gamehub.party")
 KEYS_ENV = "AVRANA_PARTY_KEYS"
 # Games whose server implements the game side. Kept here, not in games/registry.py: the registry
 # is pinned catalog metadata (provider/catalog.json), and this is a server capability.
-GAMES = ("bluff",)
+GAMES = ("bluff", "expo")
 MAX_BODY = 8192
 PROXY_HEADERS = ("x-forwarded-for", "x-real-ip", "forwarded")
 LOOPBACK = ("127.0.0.1", "::1")
