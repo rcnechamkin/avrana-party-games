@@ -5,9 +5,18 @@
   "session_protocol": {
     "version": "avrana.party-session/v0",
     "vendored": "core/party_protocol.py",
-    "vendored_sha256": "50777e8ef31840218bf4e89aba0c35a9d3d692656a9126d1206a701c8ff39a5b",
+    "vendored_sha256": "9507191cb17f9a69647e4a14a684d2f6ccb5380ed6c698cbba51872d89e13ccb",
     "vectors": "tests/vectors/party-session.v0.json",
     "vectors_sha256": "b6c7f347aa39d8d54c7df2f37a9d5fd62a41f6312dbd1377be4fee208e579245"
+  },
+  "result": {
+    "schema": "avrana.game-result/v1",
+    "carried_by": "ended.result",
+    "vendored": "core/party_result.py",
+    "vendored_sha256": "bbc883a589056348cb540e32027b98822e8f17299f2e18b746c60fe9486c1ccc",
+    "vectors": "tests/vectors/game-result.v1.json",
+    "vectors_sha256": "ddf391e061ae3a831347e56954fed744abc1c294f9e3a7a995d53f7d576d2f48",
+    "reported_by": ["bluff"]
   },
   "routes": {
     "party_ticket": "/party/api/session/ticket",

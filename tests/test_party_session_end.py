@@ -235,7 +235,8 @@ def test_natural_completion_reports_completed_once_off_the_lock(party, caplog):
         assert url == PARTY_URL and not locked
         p = report_of(message)
         assert (p["iss"], p["sid"], p["outcome"]) == ("bluff", SID, "completed")
-        assert set(p) == {"v", "typ", "iss", "aud", "sid", "iat", "exp", "outcome", "nonce"}
+        assert set(p) == {"v", "typ", "iss", "aud", "sid", "iat", "exp", "outcome", "nonce",
+                          "result"}             # the structured result: tests/test_party_result.py
         assert b.party.sid is None                       # no more admissions for that session
         await asyncio.sleep(0.9)                         # results screen ends -> released
         assert len(posts) == 1                           # exactly once

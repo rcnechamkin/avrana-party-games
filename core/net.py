@@ -35,7 +35,7 @@ from collections import deque
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from core import avatars, party_protocol, party_session
+from core import avatars, party_protocol, party_result, party_session
 from core.events import event
 
 log = logging.getLogger("gamehub.net")
@@ -286,15 +286,47 @@ class GameBinding:
         if self.party_room_sid is None:
             return                                   # standalone: nothing to report
         if outcome is not None and self.party.sid == self.party_room_sid:
-            report = self.party.ended(outcome)       # admission for the session stops here
+            result = self._party_result() if outcome == "completed" else None
+            report = self.party.ended(outcome, result=result)    # admission stops here
             self._party_outcome = outcome
-            event(self.slug, "party_ended", outcome=outcome)
+            event(self.slug, "party_ended", outcome=outcome, result=result is not None)
             task = asyncio.create_task(party_session.deliver_ended(
                 self.party_url, report, self.slug, outcome))
             self._party_reports.add(task)
             task.add_done_callback(self._party_reports.discard)
         if self._party_outcome is not None and not self.session.in_game():
             await self._party_release(self._party_outcome)
+
+    def _party_result(self):
+        """The game's structured result for the party (avrana.game-result/v1), or None. The game
+        speaks in its own tokens; here they become the participant ids of the launch roster,
+        the only names for people the party accepts. A result that is missing, malformed or
+        would be refused is left out: the session still ends, as it did before results existed."""
+        def ref(token):
+            entry = self.party_roster.get(token)
+            return entry["participant"] if entry else None
+        try:
+            made = self.session.game_result(ref)
+            if made is None:
+                return None
+            standings = []
+            for entry in made["standings"]:
+                if ref(entry["token"]) is None:
+                    continue                      # not a party participant (a bot)
+                row = {"participant": ref(entry["token"]), "standing": entry["standing"]}
+                if "rank" in entry:
+                    row["rank"] = entry["rank"]
+                standings.append(row)
+            return party_result.build(
+                self.slug, party_session.build_id(self.slug), made["mode"], standings,
+                [r["participant"] for r in self.party_roster.values()],
+                data_schema=made.get("data_schema"), data=made.get("data"),
+                content=made.get("content"))
+        except party_result.Refused as e:
+            log.error("[%s] game result not sent: it would be refused (%s)", self.slug, e)
+        except Exception:
+            log.exception("[%s] game result not sent", self.slug)
+        return None
 
     async def _party_release(self, outcome):
         """The party session is over: tell its phones (a `party_ended` fx: the page shows Back

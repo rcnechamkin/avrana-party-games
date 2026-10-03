@@ -16,6 +16,9 @@ server:
   * `ended` (AVR-24): when the game's own rules finish or abandon a party game, core/net.py
     takes the signed report from GameSide.ended() under its lock and deliver_ended() POSTs it
     here, off the lock and off the event loop, to $AVRANA_PARTY_URL + ENDED_PATH.
+  * results (AVR-237): a completed game may put its structured result in that report
+    (GameSession.game_result(); format core/party_result.py, vendored like the protocol). The
+    server builds it; no browser message can.
 
 Delivery policy for `ended`: one POST, then a retry after each of RETRY_DELAYS while the party
 does not answer (connection error, timeout) or answers 5xx; any other answer is final (200
@@ -29,12 +32,14 @@ The report is never logged, only its outcome and the HTTP status.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import ipaddress
 import json
 import logging
 import os
 import urllib.error
 import urllib.request
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from core import party_protocol
@@ -54,6 +59,21 @@ ENDED_PATH = "/internal/party-session/v0/ended"
 POST_TIMEOUT = 3.0                      # s per attempt
 RETRY_DELAYS = (1.0, 2.0, 4.0)          # s; worst case ~19 s, inside the 30 s message lifetime
 _warned: set = set()                    # log-once keys
+_builds: dict = {}                      # slug -> build id
+
+
+def build_id(slug):
+    """Provenance for a result (`game.build`): which implementation produced it. A digest of the
+    game's own Python sources (games/<slug>/**/*.py, line endings normalized), so it changes
+    exactly when the rules code does and needs no release discipline to stay true."""
+    if slug not in _builds:
+        root = Path(__file__).resolve().parent.parent / "games" / slug
+        digest = hashlib.sha256()
+        for path in sorted(root.rglob("*.py")):
+            digest.update(path.relative_to(root).as_posix().encode() + b"\0")
+            digest.update(path.read_bytes().replace(b"\r\n", b"\n") + b"\0")
+        _builds[slug] = "sha256:" + digest.hexdigest()[:16]
+    return _builds[slug]
 
 
 def load_side(slug, keys_dir):
