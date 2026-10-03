@@ -31,8 +31,11 @@ def assertions(hand, card):
     if card not in hand or suit(card) == 'submarine':
         return []
     same = [rank(c) for c in hand if suit(c) == suit(card)]
+    if len(same) == 1:
+        # A single card of a color is "only" and nothing else: "highest" and "lowest" always
+        # mean another card of that color is held (owner decision C10, AVR-248).
+        return ['only']
     return [name for name, ok in [('highest', rank(card) == max(same)),
-                                ('only', len(same) == 1),
                                 ('lowest', rank(card) == min(same))] if ok]
 
 

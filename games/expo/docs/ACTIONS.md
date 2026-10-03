@@ -204,8 +204,9 @@ recipient (AVR-251), and routine progression decisions should stop requiring eve
     attempt; in `rapture` the shared pool is not empty;
   - the card is a color card in the sender's hand and not already shown;
   - `assertion` is `highest`, `only` or `lowest` and is true of that card among the sender's cards
-    of that color now. For a single card all three are accepted today (P03); the owner decided
-    on 2026-10-04 that only `only` should be, which is AVR-248.
+    of that color now. Exactly one declaration is ever legal for a card: `only` when it is the
+    sender's single card of that color, otherwise `highest` or `lowest` (C10, P03). The same
+    check applies in every communication mode.
 - **Illegal**: one code for all, `communication`: "Communication requires an available sonar
   token, a trick boundary, and your highest, lowest or only color card."
 - **Mutation**: the token is spent (personal or one from the pool); the exposure `{seat, card,

@@ -30,8 +30,9 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
   (AVR-241). Of the four that remain, one affects play and needs an owner decision on the remedy:
   a table cannot be ended while someone is away (AVR-240).
 - Twenty-three digital policies are in force. The owner decided the open ones on 2026-10-04
-  (AVR-243, questions Q1 to Q8 below). Four decisions change behaviour and are not implemented
-  yet: AVR-248, AVR-249, AVR-250, AVR-251. One more needs a further decision: AVR-252.
+  (AVR-243, questions Q1 to Q8 below). Four decisions change behaviour. One is implemented:
+  single-card communication (AVR-248). Three are not yet: AVR-249, AVR-250, AVR-251. One more
+  needs a further decision: AVR-252.
 - Eight missions and five tasks stay blocked on source material (AVR-244).
 - The earlier specification was wrong or stale in eleven places (E-S1 to E-S11).
 
@@ -50,7 +51,7 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 | E-M07 | Legal plays that lose are accepted (R p11) | no task filter in `_play`; evaluation after | `test_full_seeded_games_only_use_legal_actions`, `test_a_named_card_captured_by_someone_else_fails_at_once` | MATCH |
 | E-M08 | Only the latest won trick may be seen (R p4) | `view` sends `last_trick` only | `test_privacy_differential_and_snapshot_json_replay` | MATCH |
 | E-M09 | One token per player per attempt; only before a trick; only after tasks are distributed (R p5) | `communication_options` requires `before_trick` | `test_communication_conditions_resource_and_immutable_meaning`, `test_communication_is_refused_before_the_crew_begins_and_for_non_crew`, `test_sonar_is_available_again_on_the_next_attempt` | MATCH |
-| E-M10 | Declaration must be the true highest, only or lowest; no submarines (R p6) | `rules.assertions` | `test_communication_conditions_resource_and_immutable_meaning` | MATCH |
+| E-M10 | Declaration must be the true highest, only or lowest; no submarines (R p6). A single card is "only" (C10) | `rules.assertions` | `test_communication_conditions_resource_and_immutable_meaning`, `test_every_offered_declaration_is_true_and_single_cards_are_always_only` | MATCH |
 | E-M11 | Shown card stays in hand; declaration never changes; reminder leaves when played; token stays spent (R p6 to p7) | exposure record with `active` | `test_an_exposed_card_stays_in_hand_follows_suit_and_its_token_is_never_restored` | MATCH |
 | E-M12 | Draw tasks to the exact total, skipping cards that would exceed it (R p8) | `_generate` | `test_difficulty_generation_and_no_pass_in_second_circuit` | MATCH (order of skipping not tested, AVR-247) |
 | E-M13 | Captain first, clockwise, one task per turn (R p9) | `allocation_ring`, `selector` | `test_difficulty_generation_and_no_pass_in_second_circuit`, `test_skip_captain_and_terrain_draws_are_frozen_on_restore` | MATCH |
@@ -124,7 +125,7 @@ a source's wording makes the choice non-obvious and the owner has not confirmed 
 |---|---|---|---|---|
 | P01 | First card of the deal goes to a randomly drawn seat | R only says deal equally | `test_deals_conserve_and_captain` | uncontested |
 | P02 | Hand counts and trick counts per seat are public | observable at a table | `test_privacy_differential_and_snapshot_json_replay` | uncontested |
-| P03 | A single card of a color may be declared highest, only or lowest | C10 | `test_communication_conditions_resource_and_immutable_meaning` | **decided 2026-10-04 (Q1): to be replaced.** A single card may be declared only "only". The engine still accepts all three until AVR-248 |
+| P03 | A single card of a color may be declared only "only"; "highest" and "lowest" need a second card of that color, and such a holding can never be declared "only". Replaced the earlier policy (all three accepted) on 2026-10-04 | C10 | `test_communication_conditions_resource_and_immutable_meaning`, `test_the_rule_gives_a_single_card_only_and_never_gives_only_to_a_longer_holding`, `test_the_engine_refuses_highest_and_lowest_for_a_single_card_in_every_mode`, `test_two_cards_of_a_color_keep_highest_and_lowest_and_cannot_be_called_only`, `test_an_earlier_highest_declaration_stays_when_the_card_becomes_the_only_one` | decided by the owner 2026-10-04 (Q1); implemented (AVR-248) |
 | P04 | Used pile, automatic replenishment when the target is unreachable, at most 200 reshuffled scans | C09; R p8 is a suggestion | `test_explicit_feasibility_and_used_deck_replenishment` | confirmed 2026-10-04 (Q3) |
 | P05 | A prediction is an integer 0 to planned tricks and cannot be changed | R p18 says only to note it; V allowed edits | `test_prediction_zero_is_locked_and_secret_is_private`, `test_blocked_content_and_types` | uncontested |
 | P06 | An attempt is counted at the crew's begin; setup corrections are free; an avoidable selection failure is counted | R p13 gives the principle, not the bookkeeping | `test_a_deal_exception_is_redealt_before_the_attempt_is_counted`, `test_timed_start_barrier_and_volunteer_eligibility_failure` | uncontested |
@@ -197,7 +198,7 @@ something more distinctly Avrana is a later phase, not this one.
 
 | Q | Decision | Class | Behaviour change | Issue |
 |---|---|---|---|---|
-| Q1 | A single card of a color may be communicated only as "only" | source-leaning interpretation | yes | AVR-248 |
+| Q1 | A single card of a color may be communicated only as "only" | source-leaning interpretation | yes | AVR-248, implemented |
 | Q2 | Keep: mission 16's clock starts at the crew's unanimous Begin | Avrana policy, confirmed | no | |
 | Q3 | Keep automatic task-deck replenishment, no crew confirmation | Avrana policy, confirmed | no | |
 | Q4 | Keep the reference-derived catalog enabled where no higher source contradicts it; document provenance | reference-derived, accepted | no | AVR-244 for stronger evidence |
@@ -222,7 +223,11 @@ must stop offering two options. If kept: a player can deliberately under-inform.
 
 **Decision (owner, 2026-10-04):** a player holding exactly one card of a color may communicate it
 only as "only", never as "highest" or "lowest". Reason given: it matches prior real-world play and
-gives the communication states distinct meanings. Not implemented yet: AVR-248.
+gives the communication states distinct meanings. Implemented 2026-10-04 (AVR-248):
+`rules.assertions` returns only `only` for a single card, in every communication mode, so the
+engine refuses the other two with nothing changed. A declaration made earlier is never revised: a
+card declared "highest" stays "highest" after it becomes the player's last card of that color
+(R p7). The "Now" line above describes the behaviour before this change.
 
 **Q2 (C13, AVR-243). When does the real-time clock start?**
 Evidence: R p20: start the timer after assigning the tasks; no play or communication before it
@@ -460,3 +465,21 @@ or content-hash change. E-D3 and E-D4 are fixed.
 
 Not covered: neither fix was exercised through a browser. The client already shows whatever
 declaration and task status the server sends. Real phones and the appliance remain unverified.
+
+### AVR-248, 2026-10-04
+
+Scope: `rules.assertions` in `games/expo/rules.py`. No engine, content, client, adapter,
+snapshot-format or content-hash change. Policy P03 is replaced as the owner decided (Q1, C10).
+
+| Check | Result |
+|---|---|
+| The new and updated tests against the code before the fix | 8 failed, as they should |
+| `pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_docs.py` | 244 passed, 1 expected failure (E-D2) |
+| Communication, currents, privacy, spectator and watcher tests across the repository | 42 passed |
+| `pytest` (whole repository, with a sibling Party checkout present) | 1,662 passed, 1 expected failure, 0 failed |
+| `ops/check_docs.py`, `tests/test_no_private_data.py`, catalog drift check, `ops/check_static.sh` | all passed |
+| `tests/playtest_expo.mjs`, headless Chrome, 2, 3, 4 and 5 humans (it communicates one card through the page) | passed |
+| `ops/test_release_safety.sh` | not run locally (needs rsync; GitHub Actions runs it) |
+
+Not covered: the refusal itself was not exercised through a browser, because the client only
+offers the declarations the server lists. Real phones and the appliance remain unverified.
