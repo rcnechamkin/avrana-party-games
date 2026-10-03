@@ -1,8 +1,8 @@
 {
   "schema": "avrana.lan-catalog/v1",
   "source": {
-    "commit": "2cf4831064de709feeb31865c5022a3f048e49ef",
-    "registrySha256": "faf17f8082bdfa9764594a3c20766303a7954ccf30884c9905de0d71176d2aee",
+    "commit": "c6199beb0e73f411bab9ace5d5823d661c17dc7d",
+    "registrySha256": "484c3592b736921cd5b642b27638c811e5ec6d32f04cb69e741353da9ee839a8",
     "integration": "avrana.lan-launch/v1"
   },
   "games": [
@@ -226,6 +226,23 @@
       "accent": "#38bdf8",
       "playersLabel": "1–4 + bots",
       "launch": "/games/euchre/"
+    },
+    {
+      "id": "lan-expo",
+      "slug": "expo",
+      "title": "EXPO",
+      "icon": "🌊",
+      "summary": "One crew. Every card matters.",
+      "description": "Cooperative trick-taking with private hands, sonar communication, mission tasks and a captain-controlled Tonoja for two players. Disputed source missions remain unavailable.",
+      "min_p": 2,
+      "max_p": 5,
+      "tv": false,
+      "category": "cards",
+      "solo": false,
+      "art": null,
+      "accent": "#65e5dd",
+      "playersLabel": "2–5 players",
+      "launch": "/games/expo/"
     },
     {
       "id": "lan-famfeud",

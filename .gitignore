@@ -32,3 +32,9 @@ dev.pid
 *.tmp
 /test-results/
 /playwright-report/
+
+# EXPO internal development documentation (publisher PDFs, reference snapshots): never commit.
+/games/The Crew II/
+
+# git bundles
+*.bundle

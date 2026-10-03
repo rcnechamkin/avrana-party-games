@@ -1,0 +1,1946 @@
+[
+  {
+    "id": "green6",
+    "family": "capture",
+    "params": {
+      "cards": [
+        "green:6"
+      ]
+    },
+    "difficulty": {
+      "3": 1,
+      "4": 1,
+      "5": 1
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.green6",
+    "enabled": true,
+    "text": "Capture green 6."
+  },
+  {
+    "id": "yellow1",
+    "family": "capture",
+    "params": {
+      "cards": [
+        "yellow:1"
+      ]
+    },
+    "difficulty": {
+      "3": 1,
+      "4": 1,
+      "5": 1
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.yellow1",
+    "enabled": true,
+    "text": "Capture yellow 1."
+  },
+  {
+    "id": "red3",
+    "family": "capture",
+    "params": {
+      "cards": [
+        "pink:3"
+      ]
+    },
+    "difficulty": {
+      "3": 1,
+      "4": 1,
+      "5": 1
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.red3",
+    "enabled": true,
+    "text": "Capture pink 3."
+  },
+  {
+    "id": "blue4",
+    "family": "capture",
+    "params": {
+      "cards": [
+        "blue:4"
+      ]
+    },
+    "difficulty": {
+      "3": 1,
+      "4": 1,
+      "5": 1
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.blue4",
+    "enabled": true,
+    "text": "Capture blue 4."
+  },
+  {
+    "id": "black3",
+    "family": "capture",
+    "params": {
+      "cards": [
+        "submarine:3"
+      ]
+    },
+    "difficulty": {
+      "3": 1,
+      "4": 1,
+      "5": 1
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.black3",
+    "enabled": true,
+    "text": "Capture submarine 3."
+  },
+  {
+    "id": "black1",
+    "family": "count",
+    "params": {
+      "selector": {
+        "suits": [
+          "submarine"
+        ]
+      },
+      "count": 1,
+      "mode": "exact",
+      "required": "submarine:1"
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.black1",
+    "enabled": true,
+    "text": "Capture only submarine 1 among submarine cards.",
+    "referenceFootnote": "if 1+4 or 1-3\nin same hand\n⇒ re-deal"
+  },
+  {
+    "id": "black2",
+    "family": "count",
+    "params": {
+      "selector": {
+        "suits": [
+          "submarine"
+        ]
+      },
+      "count": 1,
+      "mode": "exact",
+      "required": "submarine:2"
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.black2",
+    "enabled": true,
+    "text": "Capture only submarine 2 among submarine cards.",
+    "referenceFootnote": "if 2+4 or 1-3\nin same hand\n⇒ re-deal"
+  },
+  {
+    "id": "green2lastTrick",
+    "family": "capture_final",
+    "params": {
+      "card": "green:2"
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 4,
+      "5": 5
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.green2lastTrick",
+    "enabled": true,
+    "text": "Capture green 2 in the final trick."
+  },
+  {
+    "id": "2x9",
+    "family": "count",
+    "params": {
+      "selector": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          9
+        ]
+      },
+      "count": 2,
+      "mode": "exact"
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.2x9",
+    "enabled": true,
+    "text": "Capture exactly 2 color cards of rank 9."
+  },
+  {
+    "id": "3x6",
+    "family": "count",
+    "params": {
+      "selector": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          6
+        ]
+      },
+      "count": 3,
+      "mode": "exact"
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 4,
+      "5": 4
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.3x6",
+    "enabled": true,
+    "text": "Capture exactly 3 color cards of rank 6."
+  },
+  {
+    "id": "4x3",
+    "family": "count",
+    "params": {
+      "selector": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          3
+        ]
+      },
+      "count": 4,
+      "mode": "exact"
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 4,
+      "5": 5
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.4x3",
+    "enabled": true,
+    "text": "Capture exactly 4 color cards of rank 3."
+  },
+  {
+    "id": "4x9",
+    "family": "count",
+    "params": {
+      "selector": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          9
+        ]
+      },
+      "count": 4,
+      "mode": "exact"
+    },
+    "difficulty": {
+      "3": 4,
+      "4": 5,
+      "5": 6
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.4x9",
+    "enabled": true,
+    "text": "Capture exactly 4 color cards of rank 9."
+  },
+  {
+    "id": "3orMore5",
+    "family": "count",
+    "params": {
+      "selector": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          5
+        ]
+      },
+      "count": 3,
+      "mode": "at_least"
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 4,
+      "5": 5
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.3orMore5",
+    "enabled": true,
+    "text": "Capture at least 3 color cards of rank 5."
+  },
+  {
+    "id": "2orMore7",
+    "family": "count",
+    "params": {
+      "selector": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          7
+        ]
+      },
+      "count": 2,
+      "mode": "at_least"
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 2,
+      "5": 2
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.2orMore7",
+    "enabled": true,
+    "text": "Capture at least 2 color cards of rank 7."
+  },
+  {
+    "id": "3orMore9",
+    "family": "count",
+    "params": {
+      "selector": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          9
+        ]
+      },
+      "count": 3,
+      "mode": "at_least"
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 4,
+      "5": 5
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.3orMore9",
+    "enabled": true,
+    "text": "Capture at least 3 color cards of rank 9."
+  },
+  {
+    "id": "yellow9+blue7",
+    "family": "capture",
+    "params": {
+      "cards": [
+        "yellow:9",
+        "blue:7"
+      ]
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.yellow9+blue7",
+    "enabled": true,
+    "text": "Capture yellow 9, blue 7."
+  },
+  {
+    "id": "blue6+yellow7",
+    "family": "capture",
+    "params": {
+      "cards": [
+        "blue:6",
+        "yellow:7"
+      ]
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 2,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.blue6+yellow7",
+    "enabled": true,
+    "text": "Capture blue 6, yellow 7."
+  },
+  {
+    "id": "red8+blue5",
+    "family": "capture",
+    "params": {
+      "cards": [
+        "pink:8",
+        "blue:5"
+      ]
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 2,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.red8+blue5",
+    "enabled": true,
+    "text": "Capture pink 8, blue 5."
+  },
+  {
+    "id": "green5+blue8",
+    "family": "capture",
+    "params": {
+      "cards": [
+        "green:5",
+        "blue:8"
+      ]
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 2,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.green5+blue8",
+    "enabled": true,
+    "text": "Capture green 5, blue 8."
+  },
+  {
+    "id": "red9+yellow8",
+    "family": "capture",
+    "params": {
+      "cards": [
+        "pink:9",
+        "yellow:8"
+      ]
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 2,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.red9+yellow8",
+    "enabled": true,
+    "text": "Capture pink 9, yellow 8."
+  },
+  {
+    "id": "red5+yellow6",
+    "family": "capture",
+    "params": {
+      "cards": [
+        "pink:5",
+        "yellow:6"
+      ]
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 2,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.red5+yellow6",
+    "enabled": true,
+    "text": "Capture pink 5, yellow 6."
+  },
+  {
+    "id": "red1+green7",
+    "family": "capture",
+    "params": {
+      "cards": [
+        "pink:1",
+        "green:7"
+      ]
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 2,
+      "5": 2
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.red1+green7",
+    "enabled": true,
+    "text": "Capture pink 1, green 7."
+  },
+  {
+    "id": "blue2+blue1+blue3",
+    "family": "capture",
+    "params": {
+      "cards": [
+        "blue:2",
+        "blue:1",
+        "blue:3"
+      ]
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.blue2+blue1+blue3",
+    "enabled": true,
+    "text": "Capture blue 2, blue 1, blue 3."
+  },
+  {
+    "id": "yellow4+green3+yellow5",
+    "family": "capture",
+    "params": {
+      "cards": [
+        "yellow:4",
+        "green:3",
+        "yellow:5"
+      ]
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 4,
+      "5": 4
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.yellow4+green3+yellow5",
+    "enabled": true,
+    "text": "Capture yellow 4, green 3, yellow 5."
+  },
+  {
+    "id": "1red",
+    "family": "count",
+    "params": {
+      "selector": {
+        "suits": [
+          "pink"
+        ]
+      },
+      "count": 1,
+      "mode": "exact"
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 3,
+      "5": 4
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.1red",
+    "enabled": true,
+    "text": "Capture exactly 1 pink card."
+  },
+  {
+    "id": "2blue",
+    "family": "count",
+    "params": {
+      "selector": {
+        "suits": [
+          "blue"
+        ]
+      },
+      "count": 2,
+      "mode": "exact"
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 4,
+      "5": 4
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.2blue",
+    "enabled": true,
+    "text": "Capture exactly 2 blue cards."
+  },
+  {
+    "id": "2green",
+    "family": "count",
+    "params": {
+      "selector": {
+        "suits": [
+          "green"
+        ]
+      },
+      "count": 2,
+      "mode": "exact"
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 4,
+      "5": 4
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.2green",
+    "enabled": true,
+    "text": "Capture exactly 2 green cards."
+  },
+  {
+    "id": "1black",
+    "family": "count",
+    "params": {
+      "selector": {
+        "suits": [
+          "submarine"
+        ]
+      },
+      "count": 1,
+      "mode": "exact"
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.1black",
+    "enabled": true,
+    "text": "Capture exactly 1 submarine card.",
+    "referenceFootnote": "if 1-4 in same\nhand ⇒ re-deal"
+  },
+  {
+    "id": "2black",
+    "family": "count",
+    "params": {
+      "selector": {
+        "suits": [
+          "submarine"
+        ]
+      },
+      "count": 2,
+      "mode": "exact"
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 3,
+      "5": 4
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.2black",
+    "enabled": true,
+    "text": "Capture exactly 2 submarine cards.",
+    "referenceFootnote": "if 2-4 in same\nhand ⇒ re-deal"
+  },
+  {
+    "id": "3black",
+    "family": "count",
+    "params": {
+      "selector": {
+        "suits": [
+          "submarine"
+        ]
+      },
+      "count": 3,
+      "mode": "exact"
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 4,
+      "5": 4
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.3black",
+    "enabled": true,
+    "text": "Capture exactly 3 submarine cards.",
+    "referenceFootnote": "if 1-4 in same\nhand ⇒ re-deal"
+  },
+  {
+    "id": "5orMoreRed",
+    "family": "count",
+    "params": {
+      "selector": {
+        "suits": [
+          "pink"
+        ]
+      },
+      "count": 5,
+      "mode": "at_least"
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.5orMoreRed",
+    "enabled": true,
+    "text": "Capture at least 5 pink cards."
+  },
+  {
+    "id": "7orMoreYellow",
+    "family": "count",
+    "params": {
+      "selector": {
+        "suits": [
+          "yellow"
+        ]
+      },
+      "count": 7,
+      "mode": "at_least"
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.7orMoreYellow",
+    "enabled": true,
+    "text": "Capture at least 7 yellow cards."
+  },
+  {
+    "id": "1red+1green",
+    "family": "count",
+    "params": {
+      "selector": {
+        "suits": [
+          "pink",
+          "green"
+        ]
+      },
+      "per_suit": [
+        "pink",
+        "green"
+      ],
+      "count": 1,
+      "mode": "exact"
+    },
+    "difficulty": {
+      "3": 4,
+      "4": 4,
+      "5": 4
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.1red+1green",
+    "enabled": true,
+    "text": "Capture exactly one pink and one green card."
+  },
+  {
+    "id": "equalRedYellow",
+    "family": "equal",
+    "params": {
+      "suits": [
+        "pink",
+        "yellow"
+      ]
+    },
+    "difficulty": {
+      "3": 4,
+      "4": 4,
+      "5": 4
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.equalRedYellow",
+    "enabled": true,
+    "text": "Capture equal numbers of pink and yellow, at least one each.",
+    "referenceFootnote": "at least\none each"
+  },
+  {
+    "id": "moreRedThanGreen",
+    "family": "greater",
+    "params": {
+      "suits": [
+        "pink",
+        "green"
+      ]
+    },
+    "difficulty": {
+      "3": 1,
+      "4": 1,
+      "5": 1
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.moreRedThanGreen",
+    "enabled": false,
+    "text": "Capture more pink than green.",
+    "blocked": "C05",
+    "referenceFootnote": "can be 0 green"
+  },
+  {
+    "id": "moreYellowThanBlue",
+    "family": "greater",
+    "params": {
+      "suits": [
+        "yellow",
+        "blue"
+      ]
+    },
+    "difficulty": {
+      "3": 1,
+      "4": 1,
+      "5": 1
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.moreYellowThanBlue",
+    "enabled": false,
+    "text": "Capture more yellow than blue.",
+    "blocked": "C05",
+    "referenceFootnote": "can be 0 blue"
+  },
+  {
+    "id": "eachColor",
+    "family": "each_color",
+    "params": {},
+    "difficulty": {
+      "3": 2,
+      "4": 3,
+      "5": 4
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.eachColor",
+    "enabled": true,
+    "text": "Capture at least one card of each color."
+  },
+  {
+    "id": "allOneColor",
+    "family": "all_color",
+    "params": {},
+    "difficulty": {
+      "3": 3,
+      "4": 4,
+      "5": 5
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.allOneColor",
+    "enabled": true,
+    "text": "Capture all nine cards of at least one color."
+  },
+  {
+    "id": "equalRedBlueInTrick",
+    "family": "equal_trick",
+    "params": {
+      "suits": [
+        "pink",
+        "blue"
+      ]
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.equalRedBlueInTrick",
+    "enabled": true,
+    "text": "Capture equal numbers of pink and blue, at least one each in a single trick.",
+    "referenceFootnote": "at least\none each"
+  },
+  {
+    "id": "equalGreenYellowInTrick",
+    "family": "equal_trick",
+    "params": {
+      "suits": [
+        "green",
+        "yellow"
+      ]
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.equalGreenYellowInTrick",
+    "enabled": true,
+    "text": "Capture equal numbers of green and yellow, at least one each in a single trick.",
+    "referenceFootnote": "at least\none each"
+  },
+  {
+    "id": "red7WithBlack",
+    "family": "win_with",
+    "params": {
+      "instrument": {
+        "suits": [
+          "submarine"
+        ]
+      },
+      "target": {
+        "card": "pink:7"
+      }
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.red7WithBlack",
+    "enabled": true,
+    "text": "Win a trick by playing a submarine and capture the pink 7 in that trick."
+  },
+  {
+    "id": "green9WithBlack",
+    "family": "win_with",
+    "params": {
+      "instrument": {
+        "suits": [
+          "submarine"
+        ]
+      },
+      "target": {
+        "card": "green:9"
+      }
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.green9WithBlack",
+    "enabled": true,
+    "text": "Win a trick by playing a submarine and capture the green 9 in that trick."
+  },
+  {
+    "id": "4with8",
+    "family": "win_with",
+    "params": {
+      "instrument": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          4
+        ]
+      },
+      "target": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          8
+        ]
+      }
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 4,
+      "5": 5
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.4with8",
+    "enabled": false,
+    "text": "Win a trick by playing a color 4 and capture a color 8 in that trick.",
+    "blocked": "C18: win-with illustration orientation"
+  },
+  {
+    "id": "5with7",
+    "family": "win_with",
+    "params": {
+      "instrument": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          7
+        ]
+      },
+      "target": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          5
+        ]
+      }
+    },
+    "difficulty": {
+      "3": 1,
+      "4": 2,
+      "5": 2
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.5with7",
+    "enabled": false,
+    "text": "Win a trick by playing a color 7 and capture a color 5 in that trick.",
+    "blocked": "C18: win-with illustration orientation"
+  },
+  {
+    "id": "6with6",
+    "family": "win_with",
+    "params": {
+      "instrument": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          6
+        ]
+      },
+      "target": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          6
+        ]
+      }
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 3,
+      "5": 4
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.6with6",
+    "enabled": false,
+    "text": "Win a trick by playing a color 6 and capture a color 6 in that trick.",
+    "blocked": "C18: win-with illustration orientation",
+    "referenceFootnote": "not the same"
+  },
+  {
+    "id": "trickWith2",
+    "family": "win_with",
+    "params": {
+      "instrument": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          2
+        ]
+      }
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 4,
+      "5": 5
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.trickWith2",
+    "enabled": true,
+    "text": "Win a trick by playing a color 2."
+  },
+  {
+    "id": "trickWith3",
+    "family": "win_with",
+    "params": {
+      "instrument": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          3
+        ]
+      }
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 4,
+      "5": 5
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.trickWith3",
+    "enabled": true,
+    "text": "Win a trick by playing a color 3."
+  },
+  {
+    "id": "trickWith5",
+    "family": "win_with",
+    "params": {
+      "instrument": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          5
+        ]
+      }
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 3,
+      "5": 4
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.trickWith5",
+    "enabled": true,
+    "text": "Win a trick by playing a color 5."
+  },
+  {
+    "id": "trickWith6",
+    "family": "win_with",
+    "params": {
+      "instrument": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          6
+        ]
+      }
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.trickWith6",
+    "enabled": true,
+    "text": "Win a trick by playing a color 6."
+  },
+  {
+    "id": "0tricks",
+    "family": "tricks",
+    "params": {
+      "count": 0
+    },
+    "difficulty": {
+      "3": 4,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.0tricks",
+    "enabled": true,
+    "text": "Win exactly 0 tricks."
+  },
+  {
+    "id": "exactly1trick",
+    "family": "tricks",
+    "params": {
+      "count": 1
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 2,
+      "5": 2
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.exactly1trick",
+    "enabled": true,
+    "text": "Win exactly 1 trick."
+  },
+  {
+    "id": "exactly2trick",
+    "family": "tricks",
+    "params": {
+      "count": 2
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 2,
+      "5": 2
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.exactly2trick",
+    "enabled": true,
+    "text": "Win exactly 2 tricks."
+  },
+  {
+    "id": "exactly4trick",
+    "family": "tricks",
+    "params": {
+      "count": 4
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 3,
+      "5": 5
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.exactly4trick",
+    "enabled": true,
+    "text": "Win exactly 4 tricks."
+  },
+  {
+    "id": "exactlyXtrick",
+    "family": "tricks",
+    "params": {
+      "predict": true,
+      "secret": false
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 2,
+      "5": 2
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.exactlyXtrick",
+    "enabled": true,
+    "text": "Predict your public exact number of tricks.",
+    "referenceFootnote": "predict\nopenly"
+  },
+  {
+    "id": "exactlyXtrickSecret",
+    "family": "tricks",
+    "params": {
+      "predict": true,
+      "secret": true
+    },
+    "difficulty": {
+      "3": 4,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.exactlyXtrickSecret",
+    "enabled": true,
+    "text": "Predict your secret exact number of tricks.",
+    "referenceFootnote": "predict\nin secret"
+  },
+  {
+    "id": "exactly2trickInARow",
+    "family": "exact_streak",
+    "params": {
+      "count": 2
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.exactly2trickInARow",
+    "enabled": true,
+    "text": "Win exactly 2 consecutive tricks. Win no other tricks."
+  },
+  {
+    "id": "exactly3trickInARow",
+    "family": "exact_streak",
+    "params": {
+      "count": 3
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 3,
+      "5": 4
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.exactly3trickInARow",
+    "enabled": true,
+    "text": "Win exactly 3 consecutive tricks. Win no other tricks."
+  },
+  {
+    "id": "firstTrick",
+    "family": "indices",
+    "params": {
+      "required": [
+        1
+      ],
+      "only": false
+    },
+    "difficulty": {
+      "3": 1,
+      "4": 1,
+      "5": 1
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.firstTrick",
+    "enabled": true,
+    "text": "Win the first trick."
+  },
+  {
+    "id": "firstTwoTrick",
+    "family": "indices",
+    "params": {
+      "required": [
+        1,
+        2
+      ],
+      "only": false
+    },
+    "difficulty": {
+      "3": 1,
+      "4": 1,
+      "5": 2
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.firstTwoTrick",
+    "enabled": true,
+    "text": "Win the first two tricks."
+  },
+  {
+    "id": "firstThreeTrick",
+    "family": "indices",
+    "params": {
+      "required": [
+        1,
+        2,
+        3
+      ],
+      "only": false
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 3,
+      "5": 4
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.firstThreeTrick",
+    "enabled": true,
+    "text": "Win the first three tricks."
+  },
+  {
+    "id": "lastTrick",
+    "family": "indices",
+    "params": {
+      "required": [
+        "last"
+      ],
+      "only": false
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.lastTrick",
+    "enabled": true,
+    "text": "Win the final trick."
+  },
+  {
+    "id": "firstAndLastTrick",
+    "family": "indices",
+    "params": {
+      "required": [
+        1,
+        "last"
+      ],
+      "only": false
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 4,
+      "5": 4
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.firstAndLastTrick",
+    "enabled": true,
+    "text": "Win the first and final tricks."
+  },
+  {
+    "id": "onlyFirstTrick",
+    "family": "indices",
+    "params": {
+      "required": [
+        1
+      ],
+      "only": true
+    },
+    "difficulty": {
+      "3": 4,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.onlyFirstTrick",
+    "enabled": true,
+    "text": "Win only the first trick."
+  },
+  {
+    "id": "onlyLastTrick",
+    "family": "indices",
+    "params": {
+      "required": [
+        "last"
+      ],
+      "only": true
+    },
+    "difficulty": {
+      "3": 4,
+      "4": 4,
+      "5": 4
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.onlyLastTrick",
+    "enabled": true,
+    "text": "Win only the final trick."
+  },
+  {
+    "id": "2tricksInARow",
+    "family": "streak",
+    "params": {
+      "count": 2
+    },
+    "difficulty": {
+      "3": 1,
+      "4": 1,
+      "5": 1
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.2tricksInARow",
+    "enabled": true,
+    "text": "Win at least 2 consecutive tricks."
+  },
+  {
+    "id": "3tricksInARow",
+    "family": "streak",
+    "params": {
+      "count": 3
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 3,
+      "5": 4
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.3tricksInARow",
+    "enabled": true,
+    "text": "Win at least 3 consecutive tricks."
+  },
+  {
+    "id": "moreThanHalfTricks",
+    "family": "majority",
+    "params": {},
+    "difficulty": {
+      "3": 3,
+      "4": 4,
+      "5": 5
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.moreThanHalfTricks",
+    "enabled": true,
+    "text": "Win more than half of all tricks."
+  },
+  {
+    "id": "moreTricksThanOthers",
+    "family": "compare",
+    "params": {
+      "op": "gt",
+      "other": "all"
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.moreTricksThanOthers",
+    "enabled": true,
+    "text": "Win more tricks than every other crew member."
+  },
+  {
+    "id": "lessTricksThanOthers",
+    "family": "compare",
+    "params": {
+      "op": "lt",
+      "other": "all"
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 2,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.lessTricksThanOthers",
+    "enabled": true,
+    "text": "Win fewer tricks than every other crew member."
+  },
+  {
+    "id": "lessTricksThanCaptain",
+    "family": "compare",
+    "params": {
+      "op": "lt",
+      "other": "captain"
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 2,
+      "5": 2
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.lessTricksThanCaptain",
+    "enabled": true,
+    "text": "Win fewer tricks than the captain. The captain cannot select this task."
+  },
+  {
+    "id": "equalTricksThanCaptain",
+    "family": "compare",
+    "params": {
+      "op": "eq",
+      "other": "captain"
+    },
+    "difficulty": {
+      "3": 4,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.equalTricksThanCaptain",
+    "enabled": true,
+    "text": "Win as many tricks as the captain. The captain cannot select this task.",
+    "referenceFootnote": "not as captain"
+  },
+  {
+    "id": "moreTricksThanCaptain",
+    "family": "compare",
+    "params": {
+      "op": "gt",
+      "other": "captain"
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 2,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.moreTricksThanCaptain",
+    "enabled": true,
+    "text": "Win more tricks than the captain. The captain cannot select this task."
+  },
+  {
+    "id": "onlyOddTrick",
+    "family": "parity",
+    "params": {
+      "parity": 1
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 4,
+      "5": 5
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.onlyOddTrick",
+    "enabled": true,
+    "text": "Win a trick of only odd color ranks. No submarines."
+  },
+  {
+    "id": "onlyEvenTrick",
+    "family": "parity",
+    "params": {
+      "parity": 0
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 5,
+      "5": 6
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.onlyEvenTrick",
+    "enabled": true,
+    "text": "Win a trick of only even color ranks. No submarines."
+  },
+  {
+    "id": "no1",
+    "family": "forbidden",
+    "params": {
+      "selector": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          1
+        ]
+      }
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 2,
+      "5": 2
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.no1",
+    "enabled": true,
+    "text": "Capture no color cards of rank 1."
+  },
+  {
+    "id": "no5",
+    "family": "forbidden",
+    "params": {
+      "selector": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          5
+        ]
+      }
+    },
+    "difficulty": {
+      "3": 1,
+      "4": 2,
+      "5": 2
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.no5",
+    "enabled": true,
+    "text": "Capture no color cards of rank 5."
+  },
+  {
+    "id": "no9",
+    "family": "forbidden",
+    "params": {
+      "selector": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          9
+        ]
+      }
+    },
+    "difficulty": {
+      "3": 1,
+      "4": 1,
+      "5": 1
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.no9",
+    "enabled": true,
+    "text": "Capture no color cards of rank 9."
+  },
+  {
+    "id": "no89",
+    "family": "forbidden",
+    "params": {
+      "selector": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          8,
+          9
+        ]
+      }
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 3,
+      "5": 2
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.no89",
+    "enabled": true,
+    "text": "Capture no color cards of rank 8/9."
+  },
+  {
+    "id": "no123",
+    "family": "forbidden",
+    "params": {
+      "selector": {
+        "suits": [
+          "blue",
+          "green",
+          "pink",
+          "yellow"
+        ],
+        "ranks": [
+          1,
+          2,
+          3
+        ]
+      }
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.no123",
+    "enabled": true,
+    "text": "Capture no color cards of rank 1/2/3."
+  },
+  {
+    "id": "noRed",
+    "family": "forbidden",
+    "params": {
+      "selector": {
+        "suits": [
+          "pink"
+        ]
+      }
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 2,
+      "5": 2
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.noRed",
+    "enabled": true,
+    "text": "Capture no pink cards."
+  },
+  {
+    "id": "noYellow",
+    "family": "forbidden",
+    "params": {
+      "selector": {
+        "suits": [
+          "yellow"
+        ]
+      }
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 2,
+      "5": 2
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.noYellow",
+    "enabled": true,
+    "text": "Capture no yellow cards."
+  },
+  {
+    "id": "noGreen",
+    "family": "forbidden",
+    "params": {
+      "selector": {
+        "suits": [
+          "green"
+        ]
+      }
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 2,
+      "5": 2
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.noGreen",
+    "enabled": true,
+    "text": "Capture no green cards."
+  },
+  {
+    "id": "noRedBlue",
+    "family": "forbidden",
+    "params": {
+      "selector": {
+        "suits": [
+          "pink",
+          "blue"
+        ]
+      }
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.noRedBlue",
+    "enabled": true,
+    "text": "Capture no pink or blue cards."
+  },
+  {
+    "id": "noYellowGreen",
+    "family": "forbidden",
+    "params": {
+      "selector": {
+        "suits": [
+          "yellow",
+          "green"
+        ]
+      }
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.noYellowGreen",
+    "enabled": true,
+    "text": "Capture no yellow or green cards."
+  },
+  {
+    "id": "noBlack",
+    "family": "forbidden",
+    "params": {
+      "selector": {
+        "suits": [
+          "submarine"
+        ]
+      }
+    },
+    "difficulty": {
+      "3": 1,
+      "4": 1,
+      "5": 1
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.noBlack",
+    "enabled": true,
+    "text": "Capture no submarine cards."
+  },
+  {
+    "id": "noLeadRedGreen",
+    "family": "no_lead",
+    "params": {
+      "suits": [
+        "pink",
+        "green"
+      ]
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 1,
+      "5": 1
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.noLeadRedGreen",
+    "enabled": true,
+    "text": "Never open a trick with pink or green."
+  },
+  {
+    "id": "noLeadRedYellowBlue",
+    "family": "no_lead",
+    "params": {
+      "suits": [
+        "pink",
+        "yellow",
+        "blue"
+      ]
+    },
+    "difficulty": {
+      "3": 4,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.noLeadRedYellowBlue",
+    "enabled": true,
+    "text": "Never open a trick with pink or yellow or blue."
+  },
+  {
+    "id": "noneFirst3Tricks",
+    "family": "indices",
+    "params": {
+      "forbidden": [
+        1,
+        2,
+        3
+      ]
+    },
+    "difficulty": {
+      "3": 1,
+      "4": 2,
+      "5": 2
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.noneFirst3Tricks",
+    "enabled": true,
+    "text": "Win none of the first 3 tricks."
+  },
+  {
+    "id": "noneFirst4Tricks",
+    "family": "indices",
+    "params": {
+      "forbidden": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    "difficulty": {
+      "3": 1,
+      "4": 2,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.noneFirst4Tricks",
+    "enabled": true,
+    "text": "Win none of the first 4 tricks."
+  },
+  {
+    "id": "noneFirst5Tricks",
+    "family": "indices",
+    "params": {
+      "forbidden": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.noneFirst5Tricks",
+    "enabled": true,
+    "text": "Win none of the first 5 tricks."
+  },
+  {
+    "id": "neverTwoTricksInARow",
+    "family": "never_streak",
+    "params": {
+      "count": 2
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 2,
+      "5": 2
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.neverTwoTricksInARow",
+    "enabled": true,
+    "text": "Never win 2 consecutive tricks."
+  },
+  {
+    "id": "allLess7",
+    "family": "value",
+    "params": {
+      "op": "all_lt",
+      "threshold": 7
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 3,
+      "5": 3
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.allLess7",
+    "enabled": true,
+    "text": "Win a trick with every rank below 7. No submarines.",
+    "referenceFootnote": "no trumps\nallowed"
+  },
+  {
+    "id": "allGreater5",
+    "family": "value",
+    "params": {
+      "op": "all_gt",
+      "threshold": 5
+    },
+    "difficulty": {
+      "3": 2,
+      "4": 3,
+      "5": 4
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.allGreater5",
+    "enabled": true,
+    "text": "Win a trick with every rank above 5. No submarines."
+  },
+  {
+    "id": "value22or23",
+    "family": "value",
+    "params": {
+      "op": "in",
+      "values": [
+        22,
+        23
+      ]
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 3,
+      "5": 4
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.value22or23",
+    "enabled": true,
+    "text": "Win a trick totaling 22 or 23. No submarines.",
+    "referenceFootnote": "no trumps\nallowed"
+  },
+  {
+    "id": "sumBelow",
+    "family": "value",
+    "params": {
+      "op": "lt",
+      "thresholds": {
+        "3": 8,
+        "4": 12,
+        "5": 16
+      }
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 3,
+      "5": 4
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.sumBelow",
+    "enabled": true,
+    "text": "Win a trick with a total below 8 with 3 crew, 12 with 4 crew, 16 with 5 crew. No submarines.",
+    "referenceFootnote": "no trumps\nallowed",
+    "text_by_crew": {
+      "3": "Win a trick with a total below 8. No submarines.",
+      "4": "Win a trick with a total below 12. No submarines.",
+      "5": "Win a trick with a total below 16. No submarines."
+    }
+  },
+  {
+    "id": "sumAbove",
+    "family": "value",
+    "params": {
+      "op": "gt",
+      "thresholds": {
+        "3": 23,
+        "4": 28,
+        "5": 31
+      }
+    },
+    "difficulty": {
+      "3": 3,
+      "4": 3,
+      "5": 4
+    },
+    "source": "The Team II/2.json taskDeck.cardTypes.sumAbove",
+    "enabled": true,
+    "text": "Win a trick with a total above 23 with 3 crew, 28 with 4 crew, 31 with 5 crew. No submarines.",
+    "referenceFootnote": "no trumps\nallowed",
+    "text_by_crew": {
+      "3": "Win a trick with a total above 23. No submarines.",
+      "4": "Win a trick with a total above 28. No submarines.",
+      "5": "Win a trick with a total above 31. No submarines."
+    }
+  }
+]

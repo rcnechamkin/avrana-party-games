@@ -539,7 +539,7 @@ def test_api_games_does_not_advertise_without_a_key():
 
 def test_only_party_session_games_load_a_key(tmp_path):
     import games.registry as reg
-    assert party_session.GAMES == ("bluff",)
+    assert party_session.GAMES == ("bluff", "expo")
     assert set(party_session.GAMES) <= {e["slug"] for e in reg.REGISTRY}
     for slug in ("bluff", "poker"):
         proto.write_key(str(tmp_path / ("%s.key" % slug)), KEY)
