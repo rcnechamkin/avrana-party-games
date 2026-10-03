@@ -13,6 +13,7 @@
     {"path": "docs/ASSETS.md", "class": "guide", "status": "current"},
     {"path": "docs/GRAPHIFY.md", "class": "guide", "status": "current"},
     {"path": "games/bluff/README.md", "class": "guide", "status": "current"},
+    {"path": "games/expo/README.md", "class": "guide", "status": "current"},
     {"path": "games/bluff/PLAYTEST-BRIEFING.md", "class": "reference", "status": "current"},
     {"path": "ops/lab/README.md", "class": "guide", "status": "mixed", "notes": "Pi lab helpers; dated sprint notes inside are historical."}
   ]
