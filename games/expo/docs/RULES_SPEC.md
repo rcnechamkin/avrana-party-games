@@ -166,8 +166,11 @@ Sources: R p13 to p14, p17.
 - MUST: an avoidable bad assignment is a failed attempt (R p13 gives an example).
 - MUST NOT: nobody, including the software, tells the crew during play that the mission is
   already lost on the basis of hidden cards (R p13).
-- AMBIGUITY C20: R does not spell out the case where the captain is the only seat left for a
-  captain-comparison task. See RECONCILIATION Q9 and AVR-239.
+- DECIDED C20 (owner, 2026-10-04): R does not spell out the case where the captain is the only
+  seat left for a captain-comparison task. Applying the two rules above: if the draw makes it
+  unavoidable, the most recently revealed comparison task is replaced by another of equal
+  difficulty before selection, and no attempt is counted; if the crew let it happen, the attempt
+  is a counted failure. The captain does not pass the task onward.
 - POLICY P06: an attempt is counted when the crew begins play. Setup corrections before that are
   free. A failure during selection that the crew could have avoided is counted.
 

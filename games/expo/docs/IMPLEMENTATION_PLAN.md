@@ -36,7 +36,7 @@ engine depends on the module host.
 | # | Milestone (as planned) | State on 2026-10-03 |
 |---|---|---|
 | 1 | Source reconciliation and content audit | Done for the supplied sources by this reconciliation. Eight missions and five tasks remain blocked on material nobody has supplied (AVR-244). Four policies await confirmation (AVR-243) |
-| 2 | Pure engine | Built. Two defects affect play (E-D1, E-D2) |
+| 2 | Pure engine | Built. One defect affects play (E-D2); E-D1 was fixed on 2026-10-04 (AVR-239) |
 | 3 | Task and mission evaluators | Built for 91 tasks and 24 numbered missions plus the continuation. One timing defect (E-D3) |
 | 4 | Session adapter and reliability | Built. Persistence shortfalls E-D5 to E-D7 |
 | 5 | Phone client | Built and playable; draft presentation specs not implemented (E-X1). No dedicated TV view |
@@ -85,7 +85,7 @@ Coverage verdict: **full** (positive, illegal and boundary paths tested), **part
 | T11 | Terrain | `test_terrain_card_maps_to_the_communication_mode_and_returns_to_the_deck` | not applicable | all three modes reached; no submarine | `test_skip_captain_and_terrain_draws_are_frozen_on_restore` | missions 21 to 25, 27 | full |
 | T12 | Exact task draw (R06) | `test_difficulty_generation_and_no_pass_in_second_circuit` | unreachable target is a setup error (not tested) | 2 to 5 players, eleven missions; replenishment: `test_explicit_feasibility_and_used_deck_replenishment` | deck order is state | continuation 33, 50 | partial: skip order against a fixed permutation; unreachable target |
 | T13 | Selection and pass (R06) | `test_pass_capacity_and_captain_comparison` | `test_difficulty_generation_and_no_pass_in_second_circuit` | fewer than, equal to, more than seats | cursor is state: `test_storage_failure_rejects_action_without_losing_table` | | full |
-| T14 | Owner eligibility (R06) | `test_collective_and_free_allocation_refuse_a_captain_comparison_task_for_the_captain` | normal, one, free, volunteer: also `test_pass_capacity_and_captain_comparison`, `test_timed_start_barrier_and_volunteer_eligibility_failure` | forced case: **defect E-D1**, pinned by `test_defect_unavoidable_captain_comparison_draw_does_not_stall_selection` and `test_defect_captain_left_with_a_comparison_task_ends_the_attempt_instead_of_stalling` | restore refuses an ineligible owner (`Engine.check`) | missions 6, 10, 13, 16, 17 | partial: `captain_one` with an ineligible captain not tested |
+| T14 | Owner eligibility (R06) | `test_collective_and_free_allocation_refuse_a_captain_comparison_task_for_the_captain` | normal, one, free, volunteer: also `test_pass_capacity_and_captain_comparison`, `test_timed_start_barrier_and_volunteer_eligibility_failure` | forced case (C20): unavoidable draw repaired, `test_defect_unavoidable_captain_comparison_draw_does_not_stall_selection`, `test_an_unavoidable_comparison_draw_replaces_the_most_recently_revealed_task`, `test_an_avoidable_comparison_draw_is_left_alone`; avoidable mistake is a counted failure, `test_defect_captain_left_with_a_comparison_task_ends_the_attempt_instead_of_stalling`, `test_a_comparison_task_left_for_the_captain_is_a_counted_failure_with_a_reason`; 3, 4, 5 seats and two players | restore refuses an ineligible owner (`Engine.check`) | missions 6, 10, 13, 16, 17 | partial: `captain_one` with an ineligible captain not tested |
 | T15 | Named-card tasks (R07) | `test_every_enabled_task_has_deterministic_success_fixture` | `test_a_named_card_captured_by_someone_else_fails_at_once` | cards won in different tricks | tasks and history are state | | full |
 | T16 | Exact and at-least counts | `test_exact_atleast_exclusions_and_final_semantics` | exceeding an exact count fails | reaching an exact count stays pending | | | partial: unreachable-count bound not tested per task |
 | T17 | Exclusions and "only" tricks | `test_exact_atleast_exclusions_and_final_semantics` | forbidden card, extra trick | window tasks: **defect E-D3**, `test_defect_none_of_the_first_three_tricks_completes_after_trick_three` | | | partial |
@@ -96,7 +96,7 @@ Coverage verdict: **full** (positive, illegal and boundary paths tested), **part
 | T22 | Win-with | `test_win_with_uses_the_owners_own_winning_card` | wrong instrument, target lost | `6with6` distinct card: blocked | | | full for enabled tasks |
 | T23 | Color tasks | `test_every_enabled_task_has_deterministic_success_fixture` | `test_equal_counts_need_at_least_one_of_each_and_never_lead_fails_on_the_lead_itself` | zero each is not equal | | | partial: `each_color`, `all_color` failure only at end |
 | T24 | Never-lead tasks | generic fixture | `test_equal_counts_need_at_least_one_of_each_and_never_lead_fails_on_the_lead_itself` | another seat's lead is irrelevant | | | full |
-| T25 | Feasibility (R08) | `test_explicit_feasibility_and_used_deck_replenishment`, `test_named_submarine_alignments_are_deal_exceptions`, `test_a_deal_exception_is_redealt_before_the_attempt_is_counted` | no repair when one seat can hold both | every listed alignment and a near miss | | | full for the two recognised cases; C20 is E-D1 |
+| T25 | Feasibility (R08) | `test_explicit_feasibility_and_used_deck_replenishment`, `test_named_submarine_alignments_are_deal_exceptions`, `test_a_deal_exception_is_redealt_before_the_attempt_is_counted` | no repair when one seat can hold both | every listed alignment and a near miss | | | full for the three recognised cases (fixed-trick pair, submarine alignments, captain comparison: `test_the_comparison_repair_is_deterministic_and_survives_a_snapshot`) |
 | T26 | Distress (R09) | `test_distress_sealed_exchange_and_persistence` | submarine refused: `test_distress_surcharge_is_logged_once_and_a_new_mission_clears_it`; two players: `test_two_humans_cannot_use_distress_or_shared_sonar_or_volunteer_missions` | left and right; decline on a later attempt | sealed choices are state; not asserted across a restore | surcharge once; cleared by a new mission | partial: restore mid-exchange |
 | T27 | Mission outcome (R07) | `test_full_seeded_games_only_use_legal_actions` | failure precedes success | no-task missions need their objective | result is state: `test_closed_snapshot_restores_shared_lobby_reset_and_rejects_corrupt_phase` | | partial: early success with all tasks complete has no direct assertion |
 | T28 | Rank balance (missions 8, 21) | `test_rank_balance_allows_a_difference_of_one_and_ignores_submarine_one` | `test_modifiers_balance_first_winner_final_card_and_timer` | difference 1 legal, 2 fails; submarine 1 ignored | | includes the dummy (P23, untested) | partial |
@@ -120,10 +120,9 @@ Coverage verdict: **full** (positive, illegal and boundary paths tested), **part
 
 In order. Each item has its issue; none is started by this document.
 
-1. **Owner decisions** (AVR-243, and the questions inside AVR-239, AVR-240, AVR-245). Several
-   fixes below cannot be written correctly until these are answered.
-2. **Selection stall** (AVR-239, E-D1). The one defect that can make an enabled mission
-   unplayable.
+1. **Owner decisions** (AVR-243, and the questions inside AVR-240, AVR-245). Several fixes below
+   cannot be written correctly until these are answered.
+2. ~~Selection stall (AVR-239, E-D1)~~: done 2026-10-04.
 3. **Ending a table while a player is away** (AVR-240, E-D2).
 4. **Task completion timing and currents visibility** (AVR-241, E-D3, E-D4). No decision needed.
 5. **Test gaps** (AVR-247). Before any content is enabled.

@@ -94,28 +94,51 @@ class Engine:
             self.rng.shuffle(s['deck'])
         raise Invalid('task_deck', 'Task generation needs a fresh task deck.')
 
-    def _repair_tasks(self, pool, m):
+    def _index_conflict(self, pool, m):
         # R14's explicit example: overlapping fixed trick requirements forced
         # onto distinct owners when each can select at most one task.
-        if m['allocation'] not in ('normal', 'skip_captain'):
-            return pool
         eligible_count = len(self.s['seats']) - (m['allocation'] == 'skip_captain')
         if len(pool) > eligible_count:
+            return None
+        seen = set()
+        for k in pool:
+            p = TASKS[k]['params']
+            indices = set(p.get('required', [])) if TASKS[k]['family'] == 'indices' else set()
+            if indices & seen:
+                return k
+            seen.update(indices)
+        return None
+
+    def _captain_conflict(self, pool, m):
+        # C20 (AVR-239): in clockwise selection the captain takes every Nth task and may
+        # not pass once there are as many tasks as seats. If the draw leaves fewer
+        # ordinary tasks than the captain must take, a captain comparison task is
+        # forced onto the captain whatever the crew does. The most recently revealed
+        # one is the conflict (R13-14). In `skip_captain` the captain takes nothing.
+        if m['allocation'] != 'normal':
+            return None
+        seats, count = len(self.s['seats']), len(pool)
+        comparison = [k for k in pool if TASKS[k]['params'].get('other') == 'captain']
+        captain_picks = -(-count // seats)
+        if count < seats or count - len(comparison) >= captain_picks:
+            return None
+        return comparison[-1]
+
+    def _repair_tasks(self, pool, m):
+        # Unavoidable task combinations are exchanged for another task of the same
+        # difficulty before selection opens; no attempt is counted (R13-14).
+        if m['allocation'] not in ('normal', 'skip_captain'):
             return pool
+        crew = str(len(self.s['seats']))
         for _ in range(100):
-            seen = set()
-            conflict = None
-            for k in pool:
-                p = TASKS[k]['params']
-                indices = set(p.get('required', [])) if TASKS[k]['family'] == 'indices' else set()
-                if indices & seen:
-                    conflict = k
-                    break
-                seen.update(indices)
+            conflict, forced = self._index_conflict(pool, m), False
+            if conflict is None:
+                conflict, forced = self._captain_conflict(pool, m), True
             if conflict is None:
                 return pool
-            difficulty = TASKS[conflict]['difficulty'][str(len(self.s['seats']))]
-            candidates = [k for k in self.s['deck'] if TASKS[k]['difficulty'][str(len(self.s['seats']))] == difficulty]
+            difficulty = TASKS[conflict]['difficulty'][crew]
+            candidates = [k for k in self.s['deck'] if TASKS[k]['difficulty'][crew] == difficulty
+                          and not (forced and TASKS[k]['params'].get('other') == 'captain')]
             require(bool(candidates), 'feasibility', 'No same-difficulty replacement is available for this setup.')
             replacement = self.rng.choice(candidates)
             self.s['deck'].remove(replacement)
@@ -218,6 +241,25 @@ class Engine:
         self.s['pool'].remove(k)
         self.s['assignments'][k] = owner
         self.s['progress'][k] = 'pending'
+
+    def _may_pass_task(self):
+        s = self.s
+        slots = len(s['allocation_ring']) - s['pick_index'] - 1
+        return s['initial_count'] < len(s['allocation_ring']) and len(s['pool']) <= slots
+
+    def _selection_blocked(self):
+        # C20 (AVR-239): the next selector can take none of the remaining tasks and may
+        # not pass. Only the captain can be in this position, and only because the crew
+        # left a captain comparison task for the captain: an avoidable mistake, so the
+        # attempt ends as a counted failure (R13), as an ineligible volunteer does.
+        s = self.s
+        seat = self.selector()
+        if any(self.eligible(k, seat) for k in s['pool']) or self._may_pass_task():
+            return
+        s['attempts'] += 1
+        s['counted'] = True
+        self._finish('failed', 'The captain was left with only captain comparison tasks, which the captain '
+                               'may not take. Give those tasks to other crew members on the next attempt.')
 
     def _begin(self, now):
         s = self.s
@@ -413,14 +455,15 @@ class Engine:
             s['pick_index'] += 1
             if not s['pool']:
                 self._allocation_done()
+            else:
+                self._selection_blocked()
         elif t == 'pass_task':
             require(s['phase'] == 'allocation' and s['mission']['allocation'] in ('normal', 'skip_captain'),
                     'phase', 'Passing is not available here.')
             require(actor == self.controller(self.selector()), 'turn', 'It is another crew member’s turn.')
-            slots = len(s['allocation_ring']) - s['pick_index'] - 1
-            require(s['initial_count'] < len(s['allocation_ring']) and len(s['pool']) <= slots,
-                    'pass', 'The remaining tasks must be assigned this round.')
+            require(self._may_pass_task(), 'pass', 'The remaining tasks must be assigned this round.')
             s['pick_index'] += 1
+            self._selection_blocked()
         elif t == 'volunteer':
             require(s['phase'] == 'allocation' and s['mission']['allocation'] == 'volunteer',
                     'phase', 'There is no volunteer question now.')

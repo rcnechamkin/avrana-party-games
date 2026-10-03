@@ -25,7 +25,7 @@ specification, deferred) and an issue.
 | Is the code right? Where is it wrong? What does the owner still have to decide? | [RECONCILIATION](docs/RECONCILIATION.md) |
 | Which tests prove each rule, and what should be built next? | [IMPLEMENTATION_PLAN](docs/IMPLEMENTATION_PLAN.md) |
 
-## Status on 2026-10-03
+## Status on 2026-10-04
 
 **Playable.** Two to five humans; two humans play with a captain-controlled dummy hand (Tonoja).
 24 of the 32 numbered missions and a continuation (33 to 50) are enabled for three to five
@@ -41,11 +41,13 @@ missions.
 
 | | Defect | Issue |
 |---|---|---|
-| E-D1 | Task selection stalls if the captain is the only seat left for a captain-comparison task. Unavoidable for three seats on mission 11 with one particular draw | AVR-239 |
 | E-D2 | A table cannot be ended while a seated player is away; a standalone table can be stranded until the server restarts | AVR-240 |
 | E-D3 | "Win none of the first N tricks" tasks complete only at the last trick | AVR-241 |
 | E-D4 | In currents mode the communicator cannot see their own declaration | AVR-241 |
 | E-D5 to E-D7 | Snapshot hardening: content hash scope, request memory, timed restore and the clock | AVR-242 |
+
+Fixed: E-D1, the task-selection stall when the captain was the only seat left for a
+captain-comparison task (AVR-239, 2026-10-04).
 
 **Waiting on the owner.** Four digital policies are in force without confirmation (single-card
 declarations, when the real-time clock starts, task-deck reuse, mission 8 with the dummy) and

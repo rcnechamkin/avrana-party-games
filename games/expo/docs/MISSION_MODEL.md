@@ -231,7 +231,16 @@ selected.
   selecting seats (so each seat takes at most one) and two drawn tasks both require the same trick
   (`firstTrick` with `firstTwoTrick`, for example), the later one is replaced by a random task of
   the same difficulty from the deck. With more tasks than seats nothing is replaced.
-- Not handled: a captain forced onto a captain-comparison task (C20, AVR-239).
+- Repair for the captain (R08, C20): in `normal` allocation, when the draw has at least as many
+  tasks as seats and fewer ordinary tasks than the captain must take (the captain takes every Nth
+  task), a captain-comparison task would be forced onto the captain whatever the crew does. The
+  most recently revealed comparison task is replaced by a random task of the same difficulty that
+  is not a captain comparison, and the replaced task returns to the deck. This can only occur at
+  three seats, with three or four tasks that include all three comparison tasks. Both repairs run
+  before the deal, so no attempt is counted, and they repeat until neither applies.
+- Not a repair: if the draw was fine and the crew leaves a comparison task for the captain's turn,
+  the attempt ends as a counted failure (see [ACTIONS](ACTIONS.md#choose_task-task)). A retry with
+  the same tasks is offered as after any failure.
 
 ## Catalog
 

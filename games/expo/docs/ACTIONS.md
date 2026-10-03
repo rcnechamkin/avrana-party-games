@@ -73,12 +73,19 @@ These belong to the platform; EXPO only constrains them.
 | the captain taking a captain-comparison task | `owner` | The captain cannot take a captain comparison task. |
 
 - **Mutation**: task moves from pool to the seat, status `pending`; cursor advances; when the pool
-  empties the phase becomes `prediction` (if any prediction task was taken) or `assistance`.
+  empties the phase becomes `prediction` (if any prediction task was taken) or `assistance`. If
+  tasks remain and the next selecting seat can take none of them and may not pass, the attempt
+  ends at once as a counted failure: phase `mission_result`, result `failed` with the reason "The
+  captain was left with only captain comparison tasks, which the captain may not take. Give those
+  tasks to other crew members on the next attempt." (C20). Only the captain can be in that
+  position. The unassigned task stays unassigned; the crew may retry with the same or new tasks.
 - **Knowable before**: yes. Outcome no: a hard or even hopeless choice is legal (R08).
 - **Client**: "Take this task" on each open task, disabled unless the viewer controls the selecting
   seat and that seat is eligible ("Another crew member must select this task.").
-- **Known defect**: when the only tasks left are ones the selecting captain may not take and
-  passing is not allowed, no action is legal (E-D1, AVR-239).
+- **Not warned**: the client does not tell the crew that a pick will leave the captain without a
+  legal task. The information is public (the tasks and the order are visible), and the mistake is
+  the crew's to avoid (R08). A draw that makes it unavoidable never reaches selection: it is
+  repaired during preparation ([MISSION_MODEL](MISSION_MODEL.md#generation-reuse-and-repair)).
 
 ### `pass_task {}`
 

@@ -111,6 +111,10 @@ command and rolls it back, or refuses the restore.
    closed  (crew decision: end, from any phase)  -> platform results -> platform lobby
 ```
 
+`allocation` can also go straight to `mission_result`: a volunteer who may not own a task, or a
+captain left with only captain-comparison tasks, ends the attempt as a counted failure before any
+card is played.
+
 `mission_result` is a game phase, not the platform's end screen: the crew stays at the table to
 retry or go on. Only `closed` hands control back to the platform (`game_end`).
 
