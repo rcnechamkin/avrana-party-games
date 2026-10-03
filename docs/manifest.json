@@ -13,7 +13,14 @@
     {"path": "docs/ASSETS.md", "class": "guide", "status": "current"},
     {"path": "docs/GRAPHIFY.md", "class": "guide", "status": "current"},
     {"path": "games/bluff/README.md", "class": "guide", "status": "current"},
-    {"path": "games/expo/README.md", "class": "guide", "status": "current"},
+    {"path": "games/expo/README.md", "class": "guide", "status": "current", "last_verified": "2026-10-03", "notes": "Entry point and implementation status; the design record is games/expo/docs/."},
+    {"path": "games/expo/docs/RULES_SPEC.md", "class": "canonical", "status": "current", "last_verified": "2026-10-03", "notes": "Canonical base rules with sources (AVR-215)."},
+    {"path": "games/expo/docs/MISSION_MODEL.md", "class": "canonical", "status": "current", "last_verified": "2026-10-03", "notes": "Missions, tasks and modifiers; mission table checked by tests/test_expo_docs.py."},
+    {"path": "games/expo/docs/ACTIONS.md", "class": "canonical", "status": "current", "last_verified": "2026-10-03", "notes": "Per-action legality and rejection contract."},
+    {"path": "games/expo/docs/GAME_STATE.md", "class": "canonical", "status": "current", "last_verified": "2026-10-03", "notes": "State model, projections, reconnect and restoration as built."},
+    {"path": "games/expo/docs/VTT_REFERENCE.md", "class": "canonical", "status": "current", "last_verified": "2026-10-03", "notes": "Source pins, reuse/rewrite boundary, conflict register, task catalog."},
+    {"path": "games/expo/docs/IMPLEMENTATION_PLAN.md", "class": "canonical", "status": "current", "last_verified": "2026-10-03", "notes": "Architecture, milestone state, rule-to-test matrix, next work."},
+    {"path": "games/expo/docs/RECONCILIATION.md", "class": "canonical", "status": "current", "last_verified": "2026-10-03", "notes": "Source/spec/code/test audit, defects, policy audit, owner decisions."},
     {"path": "games/bluff/PLAYTEST-BRIEFING.md", "class": "reference", "status": "current"},
     {"path": "ops/lab/README.md", "class": "guide", "status": "mixed", "notes": "Pi lab helpers; dated sprint notes inside are historical."}
   ]
