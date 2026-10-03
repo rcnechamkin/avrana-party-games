@@ -50,9 +50,10 @@ the first N tricks" tasks and the communicator not seeing their own declaration 
 (AVR-241, 2026-10-04).
 
 **Decided, not built yet.** The owner answered the open policy questions on 2026-10-04 under a
-"fidelity first" principle (AVR-243). Four answers change behaviour: a single card is communicated
-only as "only" (AVR-248), enable the task `5with7` (AVR-249), one shared sonar token for two
-players (AVR-250), and the captain's authority in missions 10 and 13 (AVR-251).
+"fidelity first" principle (AVR-243). Three answers that change behaviour are still to build:
+enable the task `5with7` (AVR-249), one shared sonar token for two players (AVR-250), and the
+captain's authority in missions 10 and 13 (AVR-251). Built: a single card of a color is
+communicated only as "only" (AVR-248, 2026-10-04).
 
 **Waiting on the owner.** The rule for routine progression decisions: AVR-252, tied to AVR-240.
 Party-round setup: AVR-245. Presentation contract: AVR-246.

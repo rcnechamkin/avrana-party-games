@@ -78,7 +78,7 @@ Coverage verdict: **full** (positive, illegal and boundary paths tested), **part
 | T04 | Follow a color (R03) | `test_immutable_suit_rules_and_trumps` | `test_follow_suit_rejection_and_current_trick_order` | void may discard or trump | | | full |
 | T05 | Follow a submarine lead (R03) | `test_immutable_suit_rules_and_trumps` | same | void plays any color | | | full |
 | T06 | Winner (R04) | `test_winner_matches_independent_oracle` (3,000 random tricks against an independent oracle) | not applicable | 3, 4, 5 cards; several submarines | recorded winner re-verified on restore | | full |
-| T07 | Communication truth (R05) | `test_communication_conditions_resource_and_immutable_meaning` | interior card and submarine refused, same test | single card accepts all three (P03) | | | full for today's policy |
+| T07 | Communication truth (R05) | `test_communication_conditions_resource_and_immutable_meaning` | interior card and submarine refused, same test; `highest` and `lowest` refused for a single card with no state change: `test_the_engine_refuses_highest_and_lowest_for_a_single_card_in_every_mode` | a single card is `only`, two or more are never `only`: `test_the_rule_gives_a_single_card_only_and_never_gives_only_to_a_longer_holding`, `test_two_cards_of_a_color_keep_highest_and_lowest_and_cannot_be_called_only`; every offer at 2 to 5 players: `test_every_offered_declaration_is_true_and_single_cards_are_always_only` | an earlier declaration is not revised: `test_an_earlier_highest_declaration_stays_when_the_card_becomes_the_only_one` | normal, currents, rapture | full |
 | T08 | Shown card stays owned (R05) | `test_an_exposed_card_stays_in_hand_follows_suit_and_its_token_is_never_restored` | second use refused | meaning not revised when the hand changes | exposure and spent token are state: `test_a_dropped_crew_member_returns_by_fresh_ticket_to_the_same_seat_and_hand` covers hand only | | partial: restore of an active exposure not asserted |
 | T09 | Communication timing (R05) | as T07 | mid-trick and before begin: `test_communication_conditions_resource_and_immutable_meaning`, `test_communication_is_refused_before_the_crew_begins_and_for_non_crew` | | | mission 23: `test_modifiers_balance_first_winner_final_card_and_timer` | partial: delegated "before the first trick only" has no direct test |
 | T10 | Resources by mode | `test_currents_masks_assertion_and_shared_pool_is_atomic`, `test_sonar_is_available_again_on_the_next_attempt` | empty pool, same test | pool exhaustion | | currents, rapture | partial: two requests for the last token at one revision not tested |
@@ -122,9 +122,9 @@ In order. Each item has its issue; none is started by this document.
 
 1. **Owner decisions.** AVR-243 was answered on 2026-10-04. Still open: the questions inside
    AVR-240, AVR-245 and AVR-252.
-   **Decided behaviour changes from AVR-243**, each small and independent: a single card is
-   communicated only as "only" (AVR-248); enable `5with7` (AVR-249); one shared sonar token for
-   two players (AVR-250); captain's authority in missions 10 and 13 (AVR-251).
+   **Decided behaviour changes from AVR-243**, each small and independent: ~~a single card is
+   communicated only as "only" (AVR-248)~~ done 2026-10-04; enable `5with7` (AVR-249); one shared
+   sonar token for two players (AVR-250); captain's authority in missions 10 and 13 (AVR-251).
 2. ~~Selection stall (AVR-239, E-D1)~~: done 2026-10-04.
 3. **Ending a table while a player is away** (AVR-240, E-D2), together with the rule for routine
    progression decisions (AVR-252).

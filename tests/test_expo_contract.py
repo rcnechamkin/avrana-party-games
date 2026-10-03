@@ -18,7 +18,7 @@ from games.expo import content
 from games.expo.content import TASKS, catalog
 from games.expo.engine import Engine, Invalid
 from games.expo.game import ExpoSession
-from games.expo.rules import DECK, legal_cards, rank, suit
+from games.expo.rules import DECK, assertions, legal_cards, rank, suit
 from games.expo.tasks import evaluate
 
 from test_expo import act, allocated, command, decide, playing, session, task_state
@@ -690,3 +690,114 @@ def test_a_watcher_and_another_player_never_get_a_currents_declaration_through_t
     for token in [t for pid, t in by_pid.items() if pid != author] + ['watcher', None]:
         assert 'assertion' not in s.game_state(token)['exposures'][0]
     assert 'assertion' not in s.game_state_spectator()['exposures'][0]      # Party spectators
+
+
+# ---- AVR-248: a single card of a color is communicated only as "only" (C10, owner decision Q1) ---
+# The three declarations have distinct meanings: "highest" and "lowest" always imply another card
+# of that color, "only" says there is none. A declaration, once made, is never revised.
+
+P0_HAND = ['yellow:4', 'blue:2', 'blue:9', 'submarine:4']             # one yellow, two blues
+
+
+def table_with_known_hand(mid=1, mode=None):
+    """Three players before the first trick; p0 is captain and holds exactly P0_HAND's yellow and blues."""
+    e = playing(3, seed=5, mid=mid)
+    size = len(e.s['hands']['p0'])
+    filler = [c for c in DECK if suit(c) in ('green', 'pink')][:size - len(P0_HAND)]
+    mine = P0_HAND + filler
+    rest = [c for c in DECK if c not in mine]
+    cut = len(e.s['hands']['p1'])
+    e.s['hands'] = {'p0': sorted(mine), 'p1': sorted(rest[:cut]), 'p2': sorted(rest[cut:])}
+    e.s['captain'] = e.s['leader'] = e.s['turn'] = 'p0'
+    if mode:
+        e.s['communication'] = mode
+    e.check()
+    return e
+
+
+def test_the_rule_gives_a_single_card_only_and_never_gives_only_to_a_longer_holding():
+    assert assertions(['yellow:4', 'blue:2', 'blue:9'], 'yellow:4') == ['only']
+    assert assertions(['blue:2', 'blue:9'], 'blue:2') == ['lowest']
+    assert assertions(['blue:2', 'blue:9'], 'blue:9') == ['highest']
+    assert assertions(['blue:2', 'blue:5', 'blue:9'], 'blue:5') == []
+    assert assertions(['blue:2', 'blue:5', 'blue:9'], 'blue:2') == ['lowest']
+    assert assertions(['blue:2', 'blue:5', 'blue:9'], 'blue:9') == ['highest']
+    assert assertions(['submarine:1'], 'submarine:1') == [] and assertions(['blue:2'], 'blue:9') == []
+    for color in ('blue', 'green', 'pink', 'yellow'):                 # every rank, every color
+        for r in range(1, 10):
+            assert assertions([f'{color}:{r}', 'submarine:2'], f'{color}:{r}') == ['only']
+
+
+@pytest.mark.parametrize('mode', [None, 'currents', 'rapture'])
+def test_the_engine_refuses_highest_and_lowest_for_a_single_card_in_every_mode(mode):
+    e = table_with_known_hand(mid=9 if mode == 'currents' else 1, mode=mode)
+    assert e.communication_options('p0')['yellow:4'] == ['only']
+    assert e.view('p0')['me']['communication_options']['yellow:4'] == ['only']   # what the client offers
+    before = e.snapshot()
+    for declared in ('highest', 'lowest'):
+        with pytest.raises(Invalid) as refused:
+            act(e, 'p0', 'communicate', card='yellow:4', assertion=declared)
+        assert refused.value.code == 'communication'
+        assert e.snapshot() == before                                 # state, random generator, request memory
+    assert e.s['exposures'] == [] and 'p0' not in e.s['spent']
+    act(e, 'p0', 'communicate', card='yellow:4', assertion='only')
+    assert e.s['exposures'] == [{'seat': 'p0', 'card': 'yellow:4', 'assertion': 'only', 'active': True}]
+
+
+@pytest.mark.parametrize('card,legal', [('blue:2', 'lowest'), ('blue:9', 'highest')])
+def test_two_cards_of_a_color_keep_highest_and_lowest_and_cannot_be_called_only(card, legal):
+    e = table_with_known_hand()
+    assert e.communication_options('p0')[card] == [legal]
+    before = e.snapshot()
+    for declared in ('only', 'highest' if legal == 'lowest' else 'lowest'):
+        with pytest.raises(Invalid):
+            act(e, 'p0', 'communicate', card=card, assertion=declared)
+        assert e.snapshot() == before
+    act(e, 'p0', 'communicate', card=card, assertion=legal)
+    assert e.s['exposures'][0]['assertion'] == legal
+
+
+@pytest.mark.parametrize('mode', [None, 'currents'])
+def test_an_earlier_highest_declaration_stays_when_the_card_becomes_the_only_one(mode):
+    e = table_with_known_hand(mid=9 if mode == 'currents' else 1, mode=mode)
+    act(e, 'p0', 'communicate', card='blue:9', assertion='highest')
+    act(e, 'p0', 'play_card', card='blue:2')                          # p0 leads the other blue
+    for _ in range(2):
+        q = e.s['turn']
+        act(e, q, 'play_card', card=legal_cards(e.playable(q), e.s['trick'])[0])
+    assert [c for c in e.s['hands']['p0'] if suit(c) == 'blue'] == ['blue:9']
+    assert assertions(e.s['hands']['p0'], 'blue:9') == ['only']       # what a new declaration would be
+    record = e.s['exposures'][0]
+    assert record == {'seat': 'p0', 'card': 'blue:9', 'assertion': 'highest', 'active': True}
+    assert e.view('p0')['exposures'][0]['assertion'] == 'highest'     # the author still sees it
+    other = e.view('p1')['exposures'][0]
+    assert other.get('assertion') == (None if mode == 'currents' else 'highest')
+    if e.s['result'] is None:
+        assert 'blue:9' not in e.communication_options('p0')          # the token is spent; nothing to revise
+        with pytest.raises(Invalid):
+            act(e, 'p0', 'communicate', card='blue:9', assertion='only')
+        assert e.s['exposures'][0]['assertion'] == 'highest'
+
+
+def test_single_card_validation_does_not_change_who_sees_a_currents_declaration():
+    e = table_with_known_hand(mid=9, mode='currents')
+    act(e, 'p0', 'communicate', card='yellow:4', assertion='only')
+    assert e.view('p0')['exposures'][0]['assertion'] == 'only'
+    for viewer in ('p1', 'p2', None):
+        assert 'assertion' not in e.view(viewer)['exposures'][0]
+
+
+def test_every_offered_declaration_is_true_and_single_cards_are_always_only():
+    for seed in range(30):
+        for n in (2, 3, 4, 5):
+            e = playing(n, seed)
+            for human in e.s['humans']:
+                hand = e.s['hands'][human]
+                for card, offered in e.communication_options(human).items():
+                    same = [c for c in hand if suit(c) == suit(card)]
+                    assert len(offered) == 1                          # never an ambiguous choice
+                    if len(same) == 1:
+                        assert offered == ['only']
+                    else:
+                        assert offered == (['highest'] if rank(card) == max(map(rank, same)) else ['lowest'])
+

@@ -109,9 +109,12 @@ Sources: R p5 to p7, p24; modes R p19 to p20.
 - MUST: the declaration is never changed or withdrawn, even when later plays make it untrue.
 - MUST: when the shown card is played, its reminder is removed. The token stays spent.
 - MUST: any player may communicate at a trick boundary, not only the leader.
-- DECIDED C10 (owner, 2026-10-04): a player's only card of a color may be declared "only" and
-  nothing else. R does not say so outright; R p7 treats "highest" and "only" as different states
-  of a holding. The code still accepts all three declarations for a single card until AVR-248.
+- MUST (C10, decided by the owner 2026-10-04): a player's only card of a color may be declared
+  "only" and nothing else. "Highest" and "lowest" therefore always mean the player holds at least
+  one more card of that color, and such a card can never be declared "only". R does not say this
+  outright; R p7 treats "highest" and "only" as different states of a holding. This judges the
+  hand at the moment of communicating: a card declared "highest" keeps that declaration when
+  later play leaves it as the last card of its color.
 - Communication modes are mission modifiers, specified in
   [MISSION_MODEL](MISSION_MODEL.md#communication-modes): normal, currents, rapture of the deep,
   unfamiliar terrain, none.

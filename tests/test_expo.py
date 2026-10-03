@@ -125,7 +125,8 @@ def test_follow_suit_rejection_and_current_trick_order():
 
 def test_communication_conditions_resource_and_immutable_meaning():
     assert assertions(['blue:2','blue:5','blue:8','yellow:4','submarine:4'],'blue:5')==[]
-    assert assertions(['yellow:4'],'yellow:4')==['highest','only','lowest']
+    assert assertions(['yellow:4'],'yellow:4')==['only']  # a single card is "only" and nothing else (AVR-248)
+    assert assertions(['blue:2','blue:8'],'blue:2')==['lowest'] and assertions(['blue:2','blue:8'],'blue:8')==['highest']
     assert assertions(['submarine:4'],'submarine:4')==[]
     e=playing();actor='p0'
     card,opts=next(iter(e.communication_options(actor).items()))
