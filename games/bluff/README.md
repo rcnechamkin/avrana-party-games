@@ -48,6 +48,7 @@ for an idle turn, Income (Coup only when forced at 10+ coins). Every prompt has 
 | Away > 30 s (prompts) / > 60 s (their own turn) | seat shows **away**; a **passive autopilot** answers for them: Income (Coup only at 10+), pass, allow, first card, keep hand. It never claims, challenges or blocks |
 | **Every** seated human disconnected | the table **pauses** (timers and bots frozen); anyone returning resumes it with the remaining time (at least 10 s) |
 | Paused > 60 s | a newcomer can **Start a new game** (ends the empty table) |
+| The server's clock is stepped (time sync) | nothing changes: grace, autopilot, pause, takeover and the armed deadline are measured on the monotonic clock, forward or backward (AVR-221; `tests/test_clock_jumps.py`) |
 | Paused 5 min | the game is abandoned and the room returns to the lobby |
 | **Leave game** (drawer, two taps) | autopilot at once; eliminated at the next turn boundary |
 | **End game** (drawer) | allowed when no other alive player is present |

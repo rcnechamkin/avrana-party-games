@@ -161,7 +161,10 @@ class MyGameSession(GameSession):
   `.avatar`, `.color`, `.connected`, `.is_bot`, `.pfp`, `.public()`.
 
 ### The timer pattern (memorize this)
-There is ONE `(deadline, gen)` pair. To schedule "fire in N seconds":
+There is ONE `(deadline, gen)` pair. `_bump` converts the deadline to the monotonic clock
+once, so an armed timer is not moved by a later step of the system clock; use
+`self.remaining()` for "seconds left" and `time.monotonic()` for any duration you keep
+yourself, never a difference of two `time.time()` readings. To schedule "fire in N seconds":
 `self._bump(time.time() + N)`. When it fires, the net layer calls
 `self.tick(gen)`, which (during your phases) calls `game_tick()`. A stale
 generation is ignored, so re-arming always cancels the old timer. **Every exit

@@ -50,6 +50,7 @@ class Clock:
 def clock(monkeypatch):
     c = Clock()
     monkeypatch.setattr(time, "time", c)
+    monkeypatch.setattr(time, "monotonic", c)    # time passing moves both clocks (AVR-221)
     return c
 
 

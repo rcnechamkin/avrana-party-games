@@ -9,7 +9,9 @@ for every game:
   * the lobby: ready flags, GO gating (min_players), 3-2-1 countdown
   * the phase envelope: "lobby" / "countdown" -> game phases -> "game_end"
   * timers: a single (deadline, gen) pair; the server fires tick(gen) at the
-    deadline and stale generations are ignored
+    deadline and stale generations are ignored. `deadline` is a wall-clock
+    moment for browsers; the wait itself runs on the monotonic clock
+    (`remaining()`), so a step of the system clock does not move it
   * fx: transient events (toasts, sounds, animations) returned by every
     mutating method and routed by core.net to sockets
 
@@ -38,6 +40,7 @@ import time
 from core import looks
 
 COUNTDOWN_SECONDS = 3
+CLOCK_STEP = 1.0     # a wall-clock change this large since arming is a step, not NTP slewing
 GAME_END_SECONDS = 20          # results screen, then auto back to lobby
 PARTY_ARRIVAL_SECONDS = 15     # a party round starts by then even if a seat's phone is missing
 PARTY_LOBBY_MSG = "The Party Host starts rounds from the Party."
@@ -113,7 +116,8 @@ class GameSession:
         self.phase = "lobby"
         self.settings = dict(self.DEFAULT_SETTINGS)
         self.participants: list[str] = []      # tokens locked in at game start
-        self.deadline: float | None = None
+        self.deadline: float | None = None     # wall clock, as armed: what browsers are told
+        self._deadline_mono: float | None = None   # the same moment on the monotonic clock
         self.gen = 0
         self.seq = 0            # bumps on every mutation; used by core.net to
         self._pid_counter = 0   # detect stale queued bot actions
@@ -184,8 +188,28 @@ class GameSession:
         return d
 
     def _bump(self, deadline):
+        # Callers pass a wall-clock moment (`time.time() + seconds`). It is converted once, here,
+        # to the monotonic clock, and every later duration is measured on that: a step of the
+        # system clock (timesyncd on an appliance with no RTC) then cannot shorten or stretch a
+        # timer that is already running (AVR-221).
         self.deadline = deadline
+        self._deadline_mono = (None if deadline is None
+                               else time.monotonic() + (deadline - time.time()))
         self.gen += 1
+
+    def remaining(self):
+        """Seconds until the armed deadline, unaffected by wall-clock jumps; None if unarmed."""
+        if self.deadline is None:
+            return None
+        return max(0.0, self._deadline_mono - time.monotonic())
+
+    def wall_deadline(self):
+        """The armed deadline on the wall clock as it reads NOW, for browsers (sent beside
+        `now`). It is the armed value itself unless the clock has been stepped since."""
+        if self.deadline is None:
+            return None
+        current = time.time() + (self._deadline_mono - time.monotonic())
+        return self.deadline if abs(current - self.deadline) < CLOCK_STEP else current
 
     def by_pid(self, pid):
         for p in self.players.values():
@@ -309,7 +333,7 @@ class GameSession:
         """In a party countdown: once every seat is here, shorten the wait to the usual 3-2-1."""
         if self.party_round and self.phase == "countdown" and self.participants and all(
                 self.players[t].connected for t in self.participants if t in self.players) \
-                and self.deadline and self.deadline - time.time() > COUNTDOWN_SECONDS:
+                and self.deadline and self.remaining() > COUNTDOWN_SECONDS:
             self._bump(time.time() + COUNTDOWN_SECONDS)
             return [self.fx("countdown", seconds=COUNTDOWN_SECONDS, by=None)]
         return []
@@ -415,7 +439,7 @@ class GameSession:
             "type": "state",
             "now": int(now * 1000),
             "phase": self.phase,
-            "deadline": int(self.deadline * 1000) if self.deadline else None,
+            "deadline": int(self.wall_deadline() * 1000) if self.deadline else None,
             "settings": dict(self.settings),
             "min_players": self.MIN_PLAYERS,
             "players": [p.public() for p in
