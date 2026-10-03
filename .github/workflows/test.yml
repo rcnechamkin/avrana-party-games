@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: rcnechamkin/avrana-party
-          ref: '4a3a74f74eb3add5da5de263025d5eb84190ff91'
+          ref: '9cbce3a0ba95664bbd4152025a4b7d62a55947a6'
           path: .graphify-context/toolkit
           persist-credentials: false
       - name: Derived context fixtures and configuration (no credentials)

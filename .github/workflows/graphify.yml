@@ -12,9 +12,9 @@ concurrency:
   cancel-in-progress: true
 jobs:
   derived-context:
-    uses: rcnechamkin/avrana-party/.github/workflows/graphify-refresh.yml@4a3a74f74eb3add5da5de263025d5eb84190ff91
+    uses: rcnechamkin/avrana-party/.github/workflows/graphify-refresh.yml@9cbce3a0ba95664bbd4152025a4b7d62a55947a6
     with:
-      toolkit_ref: '4a3a74f74eb3add5da5de263025d5eb84190ff91'
+      toolkit_ref: '9cbce3a0ba95664bbd4152025a4b7d62a55947a6'
       require_linear: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/chore/graphify-derived-context' }}
     secrets:
       LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}

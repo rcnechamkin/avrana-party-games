@@ -5,7 +5,7 @@ GitHub docs/ADRs own decisions and intended architecture; code/tests own actual 
 Read [AGENTS](../AGENTS.md) and [CONTRIBUTING](../CONTRIBUTING.md).
 
 The single implementation and detailed policy live in
-[Party's Graphify guide](https://github.com/rcnechamkin/avrana-party/blob/4a3a74f74eb3add5da5de263025d5eb84190ff91/docs/GRAPHIFY.md).
+[Party's Graphify guide](https://github.com/rcnechamkin/avrana-party/blob/9cbce3a0ba95664bbd4152025a4b7d62a55947a6/docs/GRAPHIFY.md).
 Games pins both the shared toolkit and reusable workflow to the same Party commit in `.graphify.json`
 and `.github/workflows/graphify.yml`. When reviewing this branch, use that pinned revision's guide;
 after integration, use main. Updating shared tooling requires deliberately updating both pins.
