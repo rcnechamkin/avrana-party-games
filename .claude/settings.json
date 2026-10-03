@@ -1,0 +1,8 @@
+{
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "Grep|Glob|Bash",
+      "hooks": [{"type": "command", "command": "python ops/graphify_context.py guard", "timeout": 10}]
+    }]
+  }
+}

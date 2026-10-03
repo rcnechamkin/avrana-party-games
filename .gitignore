@@ -32,3 +32,14 @@ dev.pid
 *.tmp
 /test-results/
 /playwright-report/
+
+# Derived context, private Linear exports, and machine-specific Graphify state
+/.graphify-context/
+/graphify-out/
+/graphify-public/
+/.claude/*
+!/.claude/settings.json
+# Graphify query/export side effects beside the reviewed shared products stay local.
+/context/graphify/*
+!/context/graphify/semantic-graph.json
+!/context/graphify/semantic-receipt.json
