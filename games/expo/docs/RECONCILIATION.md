@@ -182,8 +182,13 @@ team; where the code already behaves one way, that is stated as "Now".
 
 **Q1 (C10, AVR-243). May a player's only card of a color be declared highest or lowest?**
 Evidence: R p6 lists three conditions and requires one to be met; a single card meets all three
-literally; nothing forbids the other two. R p23's tip compares declaring an 8 "lowest" against a 9
-"highest" for a two-card holding, which does not bear on a single card. V has no validation.
+literally; nothing forbids the other two. Against that, R p7 says a declaration is not moved when
+it stops being true and gives the example that the "highest" card may later become the "only"
+card of its color. That treats "highest" and "only" as different states of a holding, which
+suggests "only" is the declaration meant for a single card (added 2026-10-04; an inference, not
+an explicit rule). R p23's tip compares declaring an 8 "lowest" against a 9 "highest" for a
+two-card holding, which does not bear on a single card. V has no validation; its help text says
+only that the card must satisfy one of the criteria.
 Now: all three accepted. If restricted to "only": the token carries less ambiguity, and the client
 must stop offering two options. If kept: a player can deliberately under-inform.
 
@@ -199,27 +204,61 @@ target is unreachable. Alternative: ask the crew. No effect on rules outcomes.
 
 **Q4 (C18, AVR-243). Keep tasks enabled that rest on the reference alone?**
 Evidence: R p18 shows the "sum less than" card with 8/12/16 and says totals can be equal to,
-greater than or less than a value. The "greater than" values 23/28/31 appear only in V's three
-snapshots. `black1`, `black2` use V's "win only" text. Now: enabled. Alternative: quarantine until
-a card face is supplied (AVR-244).
+greater than or less than a value, and that values may vary with the number of crew. The
+"greater than" values 23/28/31 appear only in V's snapshots (23 for two and three players, 28 for
+four, 31 for five). `black1`, `black2` use V's "win only" text. Now: enabled. Alternative:
+quarantine until a card face is supplied (AVR-244).
+Framing corrected 2026-10-04: this question first named only `sumAbove`, `black1` and `black2`.
+That understates the position. R describes task *families* and pictures a few cards; it does not
+list the 96 cards. For almost every enabled task the exact card, and every number on it, comes
+from V. Tasks whose specific content R or L also shows: the named-card and final-trick examples
+(p16), win with a 2, win a 5 with a 7, win the pink 7 with a submarine (p17), no 1s, first and
+only-first tricks, exact tricks, tricks in a row (p17), fewer tricks than anyone, the captain
+comparisons, sum below 8/12/16, all values above 5, both predictions, equal colors in a trick and
+overall (p18), all of a color, one of each, odd, even, never-lead (p19), and mission 32's four
+tasks (L). Everything else, including `sumAbove`, `value22or23` (22 or 23 at every player count in
+V, although R says values may vary), `allLess7`, `exactly2trickInARow`, `neverTwoTricksInARow`
+and `moreThanHalfTricks`, is V-only in its particulars. One point in favour of `black1` and
+`black2`: V's redeal footnotes for them (same hand holds 1 and 4, or 1, 2 and 3) are impossible
+deals only under the "win that submarine and no other" reading, so V is at least self-consistent.
+Singling out three tasks for quarantine would be arbitrary; the real choice is whether a
+V-derived catalog is acceptable until card faces are supplied.
 
 **Q5 (C18, AVR-243). Enable `5with7`?**
-Evidence: R p17's picture reads "a 5 with a 7"; V's values are 5 then 7; the stored definition is
+Evidence: R p17's card reads "a 5 with a 7"; V's values are 5 then 7; the stored definition is
 "win a trick with a 7 that contains a 5". Now: disabled together with `4with8` and `6with6`, which
 have no R evidence.
+Limits of this evidence (added 2026-10-04): it comes from the PDF's text layer. The card picture
+itself was not viewed, so whether the 5 and the 7 are drawn in particular colors is unconfirmed;
+the stored definition accepts any colors, as V's does. V uses the same "won card, then winning
+card" order for `4with8` (win an 8 with a 4, difficulty 3/4/5) and `6with6`, so R confirming the
+order for one card is indirect support for the other two, not proof.
 
 **Q6 (C11, AVR-243). Two players: which shared mechanics include the dummy?**
-Evidence: R p22: treat the dummy as a third crew member for tasks; setup gives a sonar token to
-each player only; distress and the shared pool are not mentioned for two. Now: distress, shared
-sonar, terrain and volunteer missions refused; mission 8 offered with the dummy counted.
+Evidence: R p22: treat the dummy as a third crew member and decide where it sits; for task cards
+the three-crew rules always apply; the captain keeps the duty to "follow any special rules for the
+missions". R p21's two-player setup gives one sonar token and one reminder card to each player
+only, **and sets out the distress signal token** (corrected 2026-10-04: the earlier text said
+distress is not mentioned for two players; the token is part of the two-player setup, so R
+expects distress to be usable, and what it does not say is how the dummy passes or receives a
+card). The shared pool and volunteering are not mentioned for two. V's two-player snapshot has no
+distress, pool or volunteer handling at all. Now: distress, shared sonar, terrain and volunteer
+missions refused; mission 8 offered with the dummy counted.
 Consequences: allowing distress needs a rule for the dummy's passed card (who chooses, from which
 cards); a three-seat shared pool has one token.
 
 **Q7 (AVR-243). Continuation cap.** L sets no limit. Now: 50. Raising it only needs the deck to
 reach the total, which is checked.
 
-**Q8 (AVR-243). Unanimity.** R says decide together. Now: every seated human must confirm. A
+**Q8 (AVR-243). Unanimity.** Now: every seated human must confirm each of six decisions. A
 majority rule would let a table move on without a slow player.
+Evidence differs by decision (corrected 2026-10-04; the earlier text said only "R says decide
+together"): distress, R p14 to p15, "decide together"; mission 6, L, "decide together"; free
+selection, R p21, discuss and allocate accordingly; retry with the same or new tasks, R p11, "you
+can choose"; begin, next mission and end have no source and are digital. **Missions 10 and 13 are
+different**: L says the captain assumes all tasks or passes them to a willing crew member. That
+is the captain's decision plus the recipient's consent. Today any other player can block either
+choice, including the captain simply keeping the tasks, which the source does not allow for.
 
 **Q9 (C20, AVR-239). The captain is the only seat left for a captain-comparison task.
 DECIDED by the owner, 2026-10-04, and implemented.**
