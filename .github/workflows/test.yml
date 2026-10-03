@@ -28,36 +28,60 @@ jobs:
             requirements-dev.txt
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
-      - name: Checkout immutable shared context toolkit
-        uses: actions/checkout@v4
-        with:
-          repository: rcnechamkin/avrana-party
-          ref: '9cbce3a0ba95664bbd4152025a4b7d62a55947a6'
-          path: .graphify-context/toolkit
-          persist-credentials: false
-      - name: Derived context fixtures and configuration (no credentials)
-        run: |
-          python -m unittest discover -s .graphify-context/toolkit/tests/context -v
-          python ops/graphify_context.py check-config
-      - name: Checkout current canonical Party docs independently of tooling
-        uses: actions/checkout@v4
-        with:
-          repository: rcnechamkin/avrana-party
-          ref: main
-          path: .graphify-context/party-docs
-          persist-credentials: false
-      - name: Deterministic Graphify AST smoke check (no model backend)
-        run: |
-          python -m pip install graphifyy==0.9.74
-          python ops/graphify_context.py --party-docs .graphify-context/party-docs refresh --architecture
-          python ops/graphify_context.py --party-docs .graphify-context/party-docs status --architecture
-          python ops/graphify_context.py --party-docs .graphify-context/party-docs check-semantic
       - name: Public-repository privacy gate
         run: python tests/test_no_private_data.py
       - name: Provider snapshot drift
         run: python ops/export_avrana_catalog.py --check provider/catalog.json
+      - name: Documentation manifest and links
+        run: python ops/check_docs.py
       - name: Rules and server test suite
-        run: python -m pytest -q
+        run: python -m pytest -q --deselect tests/test_party_session_cross_repo.py --deselect tests/test_avrana_contract.py::test_cross_repository_contract_check
+
+  # The Party <-> Games boundary (AVR-219, AVR-233): the real Party service drives this server and
+  # both contract declarations are compared. Party is checked out at the branch carrying this
+  # branch's AVR number when one exists (docs/CROSS-REPO.md in Party), otherwise main. The test may
+  # not skip here: a missing checkout fails.
+  cross-repo:
+    name: Party <-> Games contract and session protocol
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: games
+      - name: Resolve the matching Party branch
+        id: peer
+        shell: bash
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          avr=$(echo "$BRANCH" | grep -oiE 'avr-[0-9]+' | head -1 | tr 'A-Z' 'a-z' || true)
+          ref=main
+          if [ -n "$avr" ]; then
+            match=$(git ls-remote --heads https://github.com/rcnechamkin/avrana-party.git \
+              | awk '{print $2}' | sed 's#refs/heads/##' | grep -iE "(^|[/-])${avr}([-/]|$)" | head -1 || true)
+            [ -n "$match" ] && ref=$match
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "Party ref for this run: $ref (AVR id: ${avr:-none})" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@v4
+        with:
+          repository: rcnechamkin/avrana-party
+          ref: ${{ steps.peer.outputs.ref }}
+          path: party
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install -r games/requirements-dev.txt
+      - name: Contract declarations agree with both code bases and each other
+        run: python party/tools/contract_check.py --party party --games games
+      - name: Real Party service drives this server (may not skip)
+        working-directory: games
+        env:
+          AVRANA_PARTY_REPO: ${{ github.workspace }}/party
+          AVRANA_REQUIRE_PARTY: "1"
+        run: python -m pytest -q -rs tests/test_party_session_cross_repo.py tests/test_avrana_contract.py
 
   static:
     name: Static syntax

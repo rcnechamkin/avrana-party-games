@@ -1,0 +1,29 @@
+{
+  "requires": "avrana.party-games/v0",
+  "required_by": "rcnechamkin/avrana-party-games",
+  "description": "What this games server requires from Party (contracts/party-games.v0.json there). tests/test_avrana_contract.py checks this file against this repository; the Party checker (tools/contract_check.py) compares both declarations in both repositories' CI.",
+  "session_protocol": {
+    "version": "avrana.party-session/v0",
+    "vendored": "core/party_protocol.py",
+    "vendored_sha256": "50777e8ef31840218bf4e89aba0c35a9d3d692656a9126d1206a701c8ff39a5b",
+    "vectors": "tests/vectors/party-session.v0.json",
+    "vectors_sha256": "b6c7f347aa39d8d54c7df2f37a9d5fd62a41f6312dbd1377be4fee208e579245"
+  },
+  "routes": {
+    "party_ticket": "/party/api/session/ticket",
+    "party_ended": "/internal/party-session/v0/ended",
+    "game_launch": "/avrana/session/v0/launch",
+    "game_end": "/avrana/session/v0/end"
+  },
+  "launch": {
+    "integration": "avrana.lan-launch/v1",
+    "marker": "avrana=1",
+    "return_path": "/party/",
+    "advertised_at": "/api/games"
+  },
+  "environment": {
+    "keys_dir": "AVRANA_PARTY_KEYS",
+    "party_url": "AVRANA_PARTY_URL"
+  },
+  "party_side_games": ["bluff"]
+}

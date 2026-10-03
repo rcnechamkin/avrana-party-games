@@ -54,6 +54,9 @@ browser token never changes a party player's role, seat or identity by itself.
 Protocol: core/party_protocol.py, vendored UNCHANGED from avrana-party
 avrana/party/protocol.py (ADR 0006 there), with its vectors in tests/vectors/. A test pins
 both hashes; re-vendor both files together, never edit them here.
+The whole boundary (protocol digest, routes, launch integration, environment names) is declared in
+provider/avrana-contract.json; tests/test_avrana_contract.py checks it against this code, and CI's
+cross-repo job compares it with Party's contracts/party-games.v0.json (Party tools/contract_check.py).
 
 - Config (deploy/avrana-party-session.conf, a systemd drop-in for the games service):
   $AVRANA_PARTY_KEYS names a directory holding <slug>.key (32-byte hex, 0600, the same key the
