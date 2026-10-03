@@ -25,5 +25,5 @@
     "keys_dir": "AVRANA_PARTY_KEYS",
     "party_url": "AVRANA_PARTY_URL"
   },
-  "party_side_games": ["bluff"]
+  "party_side_games": ["bluff", "expo"]
 }
