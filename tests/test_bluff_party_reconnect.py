@@ -86,7 +86,8 @@ def test_a_return_inside_the_away_grace_finds_the_hand_untouched_by_autopilot(mo
         await settle()
         offset = bluff_game.AWAY_GRACE - 5
         monkeypatch.setattr(bluff_game, "time", types.SimpleNamespace(
-            time=lambda: time.time() + offset))
+            time=lambda: time.time() + offset,
+            monotonic=lambda: time.monotonic() + offset))
         due = b.session.next_bot_action()            # autopilot is not in charge of Alice yet
         assert due is None or due[0] >= 1
         await c[0].inbox.put({"t": "ping"})

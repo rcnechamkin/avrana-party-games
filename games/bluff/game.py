@@ -139,9 +139,9 @@ class BluffSession(GameSession):
             "log": [],
             "winner": None,
             "exchange_draw": None,                                    # PRIVATE
-            "away_since": {},        # token -> time its last socket closed
+            "away_since": {},        # token -> monotonic time its last socket closed
             "left": set(),           # tokens that forfeited
-            "paused": None,          # {"remaining": seconds} while the table is empty
+            "paused": None,          # {"remaining": seconds, "since": monotonic} while empty
             "due": None,             # {"step": n, "at": {token: due_at}} for bots/autopilot
         }
         self.phase = "playing"
@@ -522,7 +522,7 @@ class BluffSession(GameSession):
     def _takeover(self, tok):
         """A newcomer may end a table that has been EMPTY for PAUSE_TAKEOVER seconds
         (short phone sleeps stay protected; a really abandoned room frees up fast)."""
-        wait = self.g["paused"]["since"] + PAUSE_TAKEOVER - time.time()
+        wait = self.g["paused"]["since"] + PAUSE_TAKEOVER - time.monotonic()
         if wait > 0:
             return [self.fx("invalid", to=tok,
                             msg="The players just stepped away. Try again in %d s" % (int(wait) + 1))]
@@ -594,7 +594,7 @@ class BluffSession(GameSession):
         p = g["pending"] if g else None
         if not p or self.phase != "playing" or g["paused"]:
             return None
-        now = time.time() if now is None else now
+        now = time.monotonic() if now is None else now
         cands = [self._actor()] if p["stage"] == "turn" else list(p.get("waiting", []))
         # remember when each seat became due for this step, so repeated pushes (e.g.
         # message spam) re-schedule the SAME moment instead of pushing it back
@@ -617,7 +617,7 @@ class BluffSession(GameSession):
         if due is None:
             return None
         tok, at = due
-        return (max(0.0, at - time.time()), tok)
+        return (max(0.0, at - time.monotonic()), tok)
 
     def run_bot(self, bot_token):
         """Bots and autopilot play passively: they never claim, challenge or block."""
@@ -652,7 +652,14 @@ class BluffSession(GameSession):
 
     def _takeover_open(self):
         return bool(self.g and self.g["paused"]
-                    and time.time() >= self.g["paused"]["since"] + PAUSE_TAKEOVER)
+                    and time.monotonic() >= self.g["paused"]["since"] + PAUSE_TAKEOVER)
+
+    def _takeover_at(self, now):
+        """When takeover opens, as a wall-clock ms for browsers: the wait left (monotonic) added
+        to the wall clock as it reads now, so it stays right across a clock step."""
+        if not self.g["paused"]:
+            return None
+        return int((time.time() + self.g["paused"]["since"] + PAUSE_TAKEOVER - now) * 1000)
 
     def _prune_lobby_ghosts(self):
         if self.phase == "lobby":
@@ -721,11 +728,10 @@ class BluffSession(GameSession):
         """A seated human's last socket closed: start the grace clock, pause if empty."""
         if not self.g or self.phase != "playing":
             return []
-        self.g["away_since"].setdefault(token, time.time())
+        self.g["away_since"].setdefault(token, time.monotonic())
         self.g["due"] = None
         if self._table_empty():
-            remaining = max(0.0, (self.deadline or time.time()) - time.time())
-            self.g["paused"] = {"remaining": remaining, "since": time.time()}
+            self.g["paused"] = {"remaining": self.remaining() or 0.0, "since": time.monotonic()}
             self._bump(time.time() + EMPTY_TABLE_ABANDON)      # a real deadline, never None
             self._log("Everyone stepped away: game paused.")
         return []
@@ -801,7 +807,7 @@ class BluffSession(GameSession):
         g = self.g
         if g is None:
             return None
-        now = time.time()
+        now = time.monotonic()
         p = (g["pending"] or {}) if self.phase == "playing" else {"stage": "over"}
         stage = p.get("stage")
         pend = {                                 # PUBLIC view of the pending step
@@ -834,7 +840,7 @@ class BluffSession(GameSession):
             "deck_count": len(g["deck"]),
             "pending": pend,
             "paused": bool(g["paused"]),
-            "takeover_at": int((g["paused"]["since"] + PAUSE_TAKEOVER) * 1000) if g["paused"] else None,
+            "takeover_at": self._takeover_at(now),
             "log": list(g["log"][-15:]),
             "winner": self._pid(g["winner"]),
             "me": None,

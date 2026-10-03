@@ -134,11 +134,14 @@ class GameBinding:
         self._timer_task = None
         if self.session.deadline is not None:
             self._timer_task = asyncio.create_task(
-                self._fire(self.session.gen, self.session.deadline))
+                self._fire(self.session.gen, self.session.remaining()))
 
-    async def _fire(self, gen, deadline):
+    async def _fire(self, gen, delay):
+        # `delay` is measured on the monotonic clock (GameSession.remaining). This task is
+        # re-created on every push, so re-reading the wall clock here would let a clock step
+        # fire the deadline at once, or hold it back by the size of the step (AVR-221).
         try:
-            await asyncio.sleep(max(0.0, deadline - time.time()))
+            await asyncio.sleep(delay)
         except asyncio.CancelledError:
             return
         async with self.lock:
