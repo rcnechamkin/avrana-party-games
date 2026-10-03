@@ -43,6 +43,9 @@ log = logging.getLogger("gamehub.net")
 RATE_N, RATE_WINDOW = 30, 2.0   # generous: stepper-mashing kids must not get
                                 # throttled; realtime games send ~11Hz movement
 MAX_SOCKETS_PER_TOKEN = 4
+# Anonymous watchers per room (a TV, a passer-by). Each socket may hold up to
+# ws_limit.MAX_OUTBOUND_BACKLOG in the server, so their number is capped too (AVR-217).
+MAX_WATCHERS = 32
 
 # Lobby verbs handled here for every game; anything else goes to game_action.
 LOBBY_VERBS = ("ready", "start", "settings", "profile", "leave_table")
@@ -374,6 +377,12 @@ class GameBinding:
                     event(self.slug, "spectate_open")
                     await self._send(ws, {"type": "welcome", "watch": True, "spectator": True})
                     await self._send(ws, self.session.state_for(None, spectator=True))
+                elif len(self.watch_sockets) >= MAX_WATCHERS:
+                    event(self.slug, "watch_refused", watchers=len(self.watch_sockets))
+                    await self._send(ws, {"type": "fx", "kind": "invalid",
+                                          "msg": "Too many screens are watching this game"})
+                    await ws.close()
+                    return
                 else:
                     self.watch_sockets.add(ws)
                     event(self.slug, "watch_open")

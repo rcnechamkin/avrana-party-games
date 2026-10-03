@@ -26,7 +26,7 @@ from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from core import avatars, chatmedia, party_protocol, party_session, venue
+from core import avatars, chatmedia, party_protocol, party_session, venue, ws_limit
 from core.chat import ChatHub
 from core.net import GameBinding
 from games.registry import REGISTRY, EXTERNAL, COMING_SOON
@@ -53,7 +53,9 @@ STANDALONE_ADMISSION = os.environ.get("AVRANA_STANDALONE_ADMISSION", "1") != "0"
 
 def serve_options():
     """How this process listens: uvicorn.run(app, **serve_options())."""
-    return {"host": HOST, "port": PORT, "ws_max_size": WS_MAX_SIZE}
+    return {"host": HOST, "port": PORT, "ws_max_size": WS_MAX_SIZE,
+            # outbound: a socket that stops reading is dropped at ws_limit.MAX_OUTBOUND_BACKLOG
+            "ws": ws_limit.BoundedWebSocketProtocol}
 
 app = FastAPI(title="GAMEHUB")
 bindings: dict[str, GameBinding] = {}
