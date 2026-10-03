@@ -4,6 +4,12 @@ LAN Games is legacy MVP infrastructure undergoing assimilation. It supplies
 individual games and temporary avatar/chat transport; it does not own a second
 canonical profile, chat, library, catalog or global navigation.
 
+Status 2026-10-02: this describes the provider boundary as it is deployed. Party
+[ADR 0014](https://github.com/rcnechamkin/avrana-party/blob/main/docs/adr/0014-native-games-isolated-lan-games-retired.md) retires LAN Games as an Avrana runtime (accepted, not implemented):
+standalone play and wc-token admission below are current compatibility behaviour,
+not requirements for new design, and new Avrana-native titles are not built as
+modules here.
+
 Metadata authority: games/registry.py REGISTRY and EXTERNAL (WORDCLASH is mounted
 in this server). ops/export_avrana_catalog.py reads literal public fields without
 importing game runtimes or reading venue.json. Dynamic fields fail explicitly.
@@ -54,6 +60,9 @@ browser token never changes a party player's role, seat or identity by itself.
 Protocol: core/party_protocol.py, vendored UNCHANGED from avrana-party
 avrana/party/protocol.py (ADR 0006 there), with its vectors in tests/vectors/. A test pins
 both hashes; re-vendor both files together, never edit them here.
+The whole boundary (protocol digest, routes, launch integration, environment names) is declared in
+provider/avrana-contract.json; tests/test_avrana_contract.py checks it against this code, and CI's
+cross-repo job compares it with Party's contracts/party-games.v0.json (Party tools/contract_check.py).
 
 - Config (deploy/avrana-party-session.conf, a systemd drop-in for the games service):
   $AVRANA_PARTY_KEYS names a directory holding <slug>.key (32-byte hex, 0600, the same key the

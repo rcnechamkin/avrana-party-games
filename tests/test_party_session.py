@@ -35,11 +35,12 @@ CAROL = "participant-" + "c" * 32
 
 
 # ---- the vendored protocol ------------------------------------------------------------------
-# Copied unchanged from rcnechamkin/avrana-party: avrana/party/protocol.py at 12aaf44 (PR #16),
-# contracts/vectors/party-session.v0.json at f25d256. Update both hashes only together with a
-# re-vendor.
+# Copied unchanged from rcnechamkin/avrana-party: avrana/party/protocol.py at df401aa (PR #42:
+# single-use tickets, AVR-52; the distinct `clock` refusal, AVR-221), contracts/vectors/
+# party-session.v0.json at f25d256. Update both hashes only together with a re-vendor, and the
+# digests in provider/avrana-contract.json with them (Party's tools/contract_check.py compares).
 VENDORED = {
-    "core/party_protocol.py": "9f5db93044ecda4a9ac5f2b99ca847d1bfe8d13a93405868bd2fcd03768d8ac2",
+    "core/party_protocol.py": "50777e8ef31840218bf4e89aba0c35a9d3d692656a9126d1206a701c8ff39a5b",
     "tests/vectors/party-session.v0.json":
         "b6c7f347aa39d8d54c7df2f37a9d5fd62a41f6312dbd1377be4fee208e579245",
 }
@@ -298,6 +299,27 @@ def test_a_second_participant_gets_a_different_player():
         assert a[0].welcome()["pid"] != c[0].welcome()["pid"]
         assert sorted(p.name for p in b.session.humans()) == ["Alice", "Bob"]
         await shutdown(b, a, c)
+    run(scenario())
+
+
+def test_a_replayed_ticket_is_refused_and_the_first_admission_stands(caplog):
+    """Tickets are single-use at this server (avrana-party ADR 0006, amendment 2026-10-02, AVR-52):
+    the same ticket string presented again is refused; a reconnect fetches a fresh one (above)."""
+    async def scenario():
+        b = binding()
+        await b.party_launch(launch(b))
+        once = ticket(ALICE)
+        a = await connect(b, {"t": "hello", "ticket": once})
+        assert a[0].welcome() is not None
+        token = proto.game_token(KEY, SID, ALICE)
+        ws, task = await connect(b, {"t": "hello", "ticket": once})
+        await task
+        assert ws.closed and ws.welcome() is None
+        assert any(m.get("type") == "fx" and m.get("kind") == "invalid" for m in ws.sent)
+        assert seated_here(b) == {token} and b.session.players[token].connected   # Alice keeps her seat
+        assert once not in caplog.text
+        await shutdown(b, a)
+    caplog.set_level(logging.INFO)
     run(scenario())
 
 

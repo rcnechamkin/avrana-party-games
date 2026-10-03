@@ -26,6 +26,17 @@ party service and by that game's server only). Symmetric on purpose: one applian
 services, no PKI. Consequence (documented, accepted): a game server can mint tickets for its own
 sessions; it cannot touch another game's, whose key it does not hold. Built-in LAN Games modules
 share one process, so their keys are per process in practice (GAME-INTEGRATION.md §3.1).
+
+Clock: both ends read one wall clock, and the appliance has no RTC, so an NTP step after an
+offline boot can move it. `unseal` tolerates CLOCK_SKEW seconds of future `iat` and nothing more
+(tolerances are not widened silently). A token whose `iat` is further ahead than that means the
+clock moved BACKWARD after minting (or the ends disagree): refused as Invalid('clock'), distinct
+from Invalid('expired'), so callers can log "clock skew". A FORWARD step past `exp` is
+indistinguishable from a genuinely old token and reads 'expired'; the browser's next fetch mints
+a fresh ticket. The policy for handling steps is AVR-79, not this file.
+
+Tickets are single-use at the game side (SpentTickets, used by GameSide.admit): the second
+presentation of the same ticket string is Invalid('replay'). Reconnects fetch a fresh ticket.
 """
 import base64
 import binascii
@@ -42,6 +53,7 @@ PREFIX = 'aps0'
 TICKET_TTL = 120            # s: long enough to reach the game's hello; a reconnect fetches anew
 MESSAGE_TTL = 30            # s for server-to-server messages
 MAX_TOKEN = 8192
+CLOCK_SKEW = 5              # s: future-`iat` tolerance; beyond it the refusal is 'clock'
 TYPES = ('ticket', 'launch', 'end', 'ended')
 ROLES = ('player', 'spectator')
 OUTCOMES = ('completed', 'abandoned')
@@ -123,7 +135,11 @@ def unseal(key, token, typ, aud, now=None):
         raise Invalid('audience')
     now = time.time() if now is None else now
     iat, exp = payload.get('iat'), payload.get('exp')
-    if not (isinstance(iat, int) and isinstance(exp, int)) or iat > now + 5 or exp <= now:
+    if not (isinstance(iat, int) and isinstance(exp, int)):
+        raise Invalid('expired')
+    if iat > now + CLOCK_SKEW:
+        raise Invalid('clock')
+    if exp <= now:
         raise Invalid('expired')
     if not isinstance(payload.get('sid'), str) or not SID.match(payload['sid']):
         raise Invalid('session')
@@ -143,7 +159,10 @@ def mint_ticket(key, game, sid, participant, role, now=None, ttl=TICKET_TTL):
     if role not in ROLES or not PID.match(participant) or not GAME_ID.match(game):
         raise ValueError('bad ticket fields')
     payload = _base('ticket', 'party', game, sid, now, ttl)
-    payload.update({'pid': participant, 'role': role})
+    # `jti` makes every ticket distinct even within one second (iat has whole-second resolution),
+    # so a single-use ledger (AVR-52) never mistakes a fresh reconnect ticket for a replay. An
+    # older verifier ignores the field; the vectors (minted without it) still verify.
+    payload.update({'pid': participant, 'role': role, 'jti': secrets.token_hex(8)})
     return seal(key, payload)
 
 
@@ -216,6 +235,27 @@ class ReplayGuard:
         self.seen[nonce] = payload['exp']
 
 
+class SpentTickets:
+    """Single-use tickets for any game, with or without GameSide. Remembers the SHA-256 of each
+    spent ticket until its `exp` (after which unseal refuses it anyway), pruned on every call.
+    Call `spend(ticket, exp)` only AFTER the ticket verified; a second spend of the same
+    ticket string raises Invalid('replay')."""
+
+    def __init__(self):
+        self.spent = {}
+
+    def spend(self, ticket, exp, now=None):
+        now = time.time() if now is None else now
+        self.spent = {h: e for h, e in self.spent.items() if e > now}
+        digest = hashlib.sha256(ticket.encode('ascii')).hexdigest()
+        if digest in self.spent:
+            raise Invalid('replay')
+        self.spent[digest] = exp
+
+    def clear(self):
+        self.spent.clear()
+
+
 def open_message(key, token, typ, aud, guard, now=None):
     """Receiver side for launch/end/ended: verify, check the issuer matches the direction, and
     refuse replays. Returns the payload."""
@@ -260,10 +300,12 @@ class GameSide:
         self.sid = None                   # the party session running now, or None
         self.roster = []
         self.guard = ReplayGuard()
+        self.spent = SpentTickets()       # tickets already presented (single-use)
 
     def on_launch(self, message, now=None):
         p = open_message(self.key, message, 'launch', self.game, self.guard, now)
         self.sid, self.roster = p['sid'], p['roster']          # a newer launch replaces the old
+        self.spent.clear()                                      # new session: fresh ticket ledger
         return self.roster
 
     def on_end(self, message, now=None):
@@ -274,8 +316,11 @@ class GameSide:
         return p['sid']
 
     def admit(self, ticket, now=None):
-        """(game token, role) for a valid ticket of the running session, else raises Invalid."""
+        """(game token, role) for a valid ticket of the running session, else raises Invalid.
+        A ticket is single-use: presenting it again raises Invalid('replay')."""
         t = verify_ticket(self.key, ticket, self.game, self.sid, now)
+        exp = unseal(self.key, ticket, 'ticket', self.game, now)['exp']
+        self.spent.spend(ticket, exp, now)
         return game_token(self.key, t['sid'], t['participant']), t['role']
 
     def ended(self, outcome, now=None):

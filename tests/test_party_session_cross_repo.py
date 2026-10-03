@@ -4,7 +4,9 @@ The REAL party service from rcnechamkin/avrana-party (avrana.party.service + ses
 its launch/end GameLink and its loopback `ended` route) drives THIS game server (server.py's
 routes and core/net.py, uvicorn on an ephemeral port). Two phones play BLUFF with party tickets.
 
-Needs a party checkout: $AVRANA_PARTY_REPO, or a sibling ../avrana-party. Skipped otherwise.
+Needs a party checkout: $AVRANA_PARTY_REPO, or a sibling ../avrana-party. Skipped otherwise,
+except with AVRANA_REQUIRE_PARTY=1 (CI), where a missing checkout is a failure: this test is the
+executable Party <-> Games compatibility boundary (AVR-219) and may not skip silently there.
 """
 from __future__ import annotations
 
@@ -22,7 +24,11 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 PARTY_REPO = Path(os.environ.get("AVRANA_PARTY_REPO") or ROOT.parent / "avrana-party")
 if not (PARTY_REPO / "avrana" / "party" / "sessions.py").exists():
-    pytest.skip("no avrana-party checkout (set AVRANA_PARTY_REPO)", allow_module_level=True)
+    if os.environ.get("AVRANA_REQUIRE_PARTY") == "1":
+        pytest.fail(f"no avrana-party checkout at {PARTY_REPO} (AVRANA_REQUIRE_PARTY=1): "
+                    "the cross-repository compatibility test cannot run", pytrace=False)
+    pytest.skip("no avrana-party checkout (set AVRANA_PARTY_REPO); cross-repo compatibility NOT verified",
+                allow_module_level=True)
 sys.path.append(str(PARTY_REPO))
 
 import uvicorn                                                   # noqa: E402
@@ -170,6 +176,11 @@ def test_a_completed_bluff_game_is_reported_to_and_accepted_by_the_real_party(st
     alice.send(json.dumps({"t": "act", "action": "income"}))
     assert wait_for(lambda: s.state == "ended")
     assert s.outcome == "completed"
+    # ADR 0011: the party holds the results screen; the game keeps its room until the host goes
+    # home, which the party relays as `end` and the game answers with `party_ended` to its phones.
+    assert stack.svc.core.location()["at"] == "results"
+    assert stack.binding.party_room_sid == s.id
+    stack.svc.go_home(stack.phones["Alice"], stack.svc.core.party.version)
     assert stack.svc.core.view(stack.phones["Alice"])["state"] == "lobby"     # no active game
     end, _ = recv_until(alice, lambda m: m.get("kind") == "party_ended")
     assert end and end["outcome"] == "completed"
@@ -178,14 +189,29 @@ def test_a_completed_bluff_game_is_reported_to_and_accepted_by_the_real_party(st
         ws.close()
 
 
-def test_an_abandoned_bluff_game_is_reported_as_abandoned(stack):
+def test_a_player_cannot_end_a_party_round_only_the_host_can(stack):
+    """ADR 0011: during a Party round the game's own end_game verb is not a player's to use; the
+    Party Host ends it for everyone through the party (test below). The round keeps running."""
     s, alice, bob = playing(stack)
     bob.close()
     assert wait_for(lambda: not all(p.connected for p in stack.binding.session.humans()))
     alice.send(json.dumps({"t": "end_game"}))
+    time.sleep(0.5)
+    assert s.state == "active" and s.outcome is None
+    assert stack.binding.session.phase == "playing"
+    alice.close()
+
+
+def test_an_abandoned_bluff_game_is_reported_as_abandoned(stack, monkeypatch):
+    """The game's own rules abandon a table whose humans all left: that reaches the party as
+    `ended` with outcome `abandoned` (the party then holds a results screen like any end)."""
+    from games.bluff import game as bluff
+    monkeypatch.setattr(bluff, "EMPTY_TABLE_ABANDON", 0.2)
+    s, alice, bob = playing(stack)
+    alice.close()
+    bob.close()
     assert wait_for(lambda: s.state == "ended")
     assert s.outcome == "abandoned"
-    alice.close()
 
 
 def test_the_hosts_end_for_everyone_resets_the_real_game_and_is_confirmed(stack):

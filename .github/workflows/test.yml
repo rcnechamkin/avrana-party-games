@@ -56,8 +56,65 @@ jobs:
         run: python tests/test_no_private_data.py
       - name: Provider snapshot drift
         run: python ops/export_avrana_catalog.py --check provider/catalog.json
+      - name: Documentation manifest and links
+        run: python ops/check_docs.py
       - name: Rules and server test suite
-        run: python -m pytest -q
+        run: python -m pytest -q --deselect tests/test_party_session_cross_repo.py --deselect tests/test_avrana_contract.py::test_cross_repository_contract_check
+
+  # The Party <-> Games boundary (AVR-219, AVR-233): the real Party service drives this server and
+  # both contract declarations are compared. Party is checked out at the branch carrying this
+  # branch's AVR number when one exists (docs/CROSS-REPO.md in Party), otherwise main. The test may
+  # not skip here: a missing checkout fails.
+  cross-repo:
+    name: Party <-> Games contract and session protocol
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: games
+      - name: Resolve the matching Party branch
+        id: peer
+        shell: bash
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          # A failure to list Party's branches must fail this job: falling back to main would
+          # report compatibility that was never checked against the paired branch.
+          heads=$(git ls-remote --heads https://github.com/rcnechamkin/avrana-party.git \
+            | awk '{print $2}' | sed 's#refs/heads/##')
+          [ -n "$heads" ] || { echo "::error::could not list avrana-party branches"; exit 1; }
+          avr=$(echo "$BRANCH" | grep -oiE 'avr-[0-9]+' | head -1 | tr 'A-Z' 'a-z' || true)
+          ref=main; why='no AVR id in this branch name'
+          if [ -n "$avr" ]; then
+            why="no Party branch carries $avr"
+            if echo "$heads" | grep -qxF "$BRANCH"; then
+              ref=$BRANCH; why='same branch name'
+            else
+              match=$(echo "$heads" | grep -iE "(^|[/-])${avr}([-/]|$)" | sort | head -1 || true)
+              if [ -n "$match" ]; then ref=$match; why="first branch carrying $avr"; fi
+            fi
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "Party ref for this run: $ref ($why)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@v4
+        with:
+          repository: rcnechamkin/avrana-party
+          ref: ${{ steps.peer.outputs.ref }}
+          path: party
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install -r games/requirements-dev.txt
+      - name: Contract declarations agree with both code bases and each other
+        run: python party/tools/contract_check.py --party party --games games
+      - name: Real Party service drives this server (may not skip)
+        working-directory: games
+        env:
+          AVRANA_PARTY_REPO: ${{ github.workspace }}/party
+          AVRANA_REQUIRE_PARTY: "1"
+        run: python -m pytest -q -rs tests/test_party_session_cross_repo.py tests/test_avrana_contract.py
 
   static:
     name: Static syntax
