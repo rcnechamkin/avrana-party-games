@@ -120,10 +120,14 @@ Coverage verdict: **full** (positive, illegal and boundary paths tested), **part
 
 In order. Each item has its issue; none is started by this document.
 
-1. **Owner decisions** (AVR-243, and the questions inside AVR-240, AVR-245). Several fixes below
-   cannot be written correctly until these are answered.
+1. **Owner decisions.** AVR-243 was answered on 2026-10-04. Still open: the questions inside
+   AVR-240, AVR-245 and AVR-252.
+   **Decided behaviour changes from AVR-243**, each small and independent: a single card is
+   communicated only as "only" (AVR-248); enable `5with7` (AVR-249); one shared sonar token for
+   two players (AVR-250); captain's authority in missions 10 and 13 (AVR-251).
 2. ~~Selection stall (AVR-239, E-D1)~~: done 2026-10-04.
-3. **Ending a table while a player is away** (AVR-240, E-D2).
+3. **Ending a table while a player is away** (AVR-240, E-D2), together with the rule for routine
+   progression decisions (AVR-252).
 4. **Task completion timing and currents visibility** (AVR-241, E-D3, E-D4). No decision needed.
 5. **Test gaps** (AVR-247). Before any content is enabled.
 6. **Persistence hardening** (AVR-242, E-D5 to E-D7). Only matters where the snapshot file is used.

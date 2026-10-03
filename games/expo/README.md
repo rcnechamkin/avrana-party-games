@@ -49,9 +49,13 @@ missions.
 Fixed: E-D1, the task-selection stall when the captain was the only seat left for a
 captain-comparison task (AVR-239, 2026-10-04).
 
-**Waiting on the owner.** Four digital policies are in force without confirmation (single-card
-declarations, when the real-time clock starts, task-deck reuse, mission 8 with the dummy) and
-several others need a yes: AVR-243. Party-round setup: AVR-245. Presentation contract: AVR-246.
+**Decided, not built yet.** The owner answered the open policy questions on 2026-10-04 under a
+"fidelity first" principle (AVR-243). Four answers change behaviour: a single card is communicated
+only as "only" (AVR-248), enable the task `5with7` (AVR-249), one shared sonar token for two
+players (AVR-250), and the captain's authority in missions 10 and 13 (AVR-251).
+
+**Waiting on the owner.** The rule for routine progression decisions: AVR-252, tied to AVR-240.
+Party-round setup: AVR-245. Presentation contract: AVR-246.
 
 **Blocked on source material.** Missions 3, 4, 12, 14, 15, 19, 20, 26 and tasks
 `moreRedThanGreen`, `moreYellowThanBlue`, `4with8`, `5with7`, `6with6`: AVR-244. With two
