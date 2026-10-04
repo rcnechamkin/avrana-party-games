@@ -42,8 +42,10 @@ Environment=LANGAMES_HOST=127.0.0.1
 # The same rule enforced by the kernel for this unit's cgroup (owner decision 2026-10-04,
 # AVR-272): only loopback traffic in or out, so a listener on another address, however it came
 # about, is still unreachable from the LAN. Unix sockets are not affected. NEVER RUN: a new
-# mechanism on a unit that has not run on any host; systemd ignores it with a warning where the
-# kernel lacks cgroup-BPF support, so check `systemctl show -p IPAddressDeny` on the appliance.
+# mechanism on a unit that has not run on any host. Where the kernel lacks cgroup-BPF support
+# systemd ignores it with a warning in the journal, and `systemctl show -p IPAddressDeny` still
+# prints the configured value: on the appliance read the journal of the unit's start, do not
+# take the property as proof.
 IPAddressDeny=any
 IPAddressAllow=localhost
 # data/ (avatars, chat media, venue.json) is the only thing the server writes. It lives in this
