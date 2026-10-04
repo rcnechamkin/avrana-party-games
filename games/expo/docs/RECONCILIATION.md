@@ -17,8 +17,8 @@ Classes:
 | DEFERRED | specified or desirable, not built; nothing claims it works |
 
 Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests named here exist in
-`tests/test_expo.py`, `tests/test_expo_party.py`, `tests/test_expo_contract.py` and
-`tests/test_expo_coverage.py`;
+`tests/test_expo.py`, `tests/test_expo_party.py`, `tests/test_expo_contract.py`,
+`tests/test_expo_coverage.py` and `tests/test_expo_persistence.py`;
 `tests/test_expo_docs.py` fails if a name stops existing.
 
 ## Summary
@@ -26,10 +26,11 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 - The card rules, deal, captain, trick resolution, communication truth and timing, selection and
   pass rule, task evaluators, mission targets and modifiers of the 24 enabled missions match R
   and L.
-- Eight defects were recorded (E-D1 to E-D7 by the reconciliation, E-D8 by AVR-247). Three are fixed: E-D1, the selection stall
-  (AVR-239), and E-D3 and E-D4, late completion of the window tasks and currents visibility
-  (AVR-241). Of the five that remain, one affects play and needs an owner decision on the remedy:
-  a table cannot be ended while someone is away (AVR-240).
+- Eight defects were recorded (E-D1 to E-D7 by the reconciliation, E-D8 by AVR-247). Five are fixed: E-D1, the selection stall
+  (AVR-239), E-D3 and E-D4, late completion of the window tasks and currents visibility
+  (AVR-241), and E-D5 and E-D7, the content hash scope and the timed clock (AVR-242). E-D6 was
+  settled by amending the contract (AVR-242). Of the two that remain, one affects play and needs
+  an owner decision on the remedy: a table cannot be ended while someone is away (AVR-240).
 - Twenty-three digital policies are in force. The owner decided the open ones on 2026-10-04
   (AVR-243, questions Q1 to Q8 below). Four decisions change behaviour. All four are implemented:
   single-card communication (AVR-248), the task `5with7` (AVR-249), one shared sonar token for
@@ -108,9 +109,9 @@ updated.
 | E-D2 | No command is accepted while a seat is away, including the End table decision; a standalone table with a missing player is stranded until restart | state contract; no source | `test_defect_a_table_can_be_ended_while_a_seated_player_is_away` | AVR-240 (policy: Q10) |
 | E-D3 | **Fixed 2026-10-04.** Was: `noneFirst3Tricks`, `noneFirst4Tricks`, `noneFirst5Tricks` stayed pending after their window, so success waited for the last trick and in timed mission 16 could become a timeout. Now: each is satisfied when trick N resolves without a win by its owner, and the mission succeeds at once if it was the last open task. No other task family completes earlier than before | R p10: complete when met and unable to fail | `test_defect_none_of_the_first_three_tricks_completes_after_trick_three`, `test_a_window_task_is_pending_inside_its_window_and_satisfied_when_it_closes`, `test_only_the_three_window_tasks_complete_early_for_a_seat_that_wins_nothing`, `test_closing_the_window_on_the_last_open_task_wins_the_mission_at_once`, `test_a_window_task_does_not_finish_the_mission_while_another_task_is_open`, `test_a_timed_mission_completed_by_a_window_task_cannot_time_out_afterwards`, `test_a_timed_mission_still_times_out_while_the_window_is_open` | AVR-241 |
 | E-D4 | **Fixed 2026-10-04.** Was: in currents the declaration was withheld from its author too. Now: the author's own view carries it, including after a reload or restore; every other player, watcher and Party spectator still does not receive it | action contract; R p19 (the crew must deduce it, the author knows it) | `test_defect_currents_shows_the_communicator_their_own_assertion`, `test_currents_hides_a_declaration_from_every_viewer_but_its_author`, `test_normal_communication_still_shows_the_declaration_to_everyone`, `test_a_watcher_and_another_player_never_get_a_currents_declaration_through_the_session` | AVR-241 |
-| E-D5 | The content hash covers `tasks.json` only. A changed mission table does not invalidate a snapshot unless it is the mission in flight | state contract | none yet | AVR-242 |
-| E-D6 | Only accepted requests are remembered; a rejected request id can be reused with another payload | state contract (asked for both) | `test_a_rejected_request_is_not_remembered_and_an_accepted_one_is` pins today's behaviour | AVR-242 |
-| E-D7 | A timed snapshot is restored against the wall clock; a backward clock step grants time. The appliance has no real-time clock | state contract | none yet | AVR-242 |
+| E-D5 | **Fixed 2026-10-04.** Was: the content hash covered `tasks.json` only, so a changed mission table did not invalidate a snapshot unless it was the mission in flight. Now: the hash covers the task catalog and every mission definition, untimed and timed, a blocked mission by its reason. The hash value changed once with this fix, so a snapshot written before it is refused with the usual recovery message | state contract | `test_the_content_hash_is_the_hash_of_the_tasks_and_of_every_mission_definition`, `test_any_change_to_the_content_changes_the_hash`, `test_a_changed_modifier_timer_or_fixed_task_list_changes_the_hash`, `test_a_snapshot_taken_before_a_mission_table_change_is_refused_after_it`, `test_an_unchanged_mission_table_still_restores` | AVR-242 |
+| E-D6 | **Settled 2026-10-04 by amending the contract; no code change.** Only accepted requests are remembered, and a rejected request id used again is a new request. The earlier draft asked for both to be kept. Keeping rejections adds nothing to idempotency (every state change raises the revision), would forbid resending a request refused only because the disk failed, and would let one seated player fill the capped request memory alone and lock the table. Reasons in [GAME_STATE](GAME_STATE.md#commands-ordering-and-repeats) | state contract (amended) | `test_a_rejected_request_is_not_remembered_and_an_accepted_one_is`, `test_a_flood_of_rejected_requests_is_not_remembered_and_cannot_use_up_the_request_limit`, `test_the_same_rejected_request_sent_again_gets_the_same_answer`, `test_a_rejected_request_id_used_again_is_a_new_request_and_is_remembered_once_accepted`, `test_a_request_refused_only_because_the_disk_failed_succeeds_when_sent_again_unchanged` | AVR-242 |
+| E-D7 | **Fixed 2026-10-04.** Was: the deadline was a wall-clock moment, so a backward clock step granted time, on restore and (found while fixing it) on a live table with no restart at all. Now: the deadline runs on the monotonic clock; a restored timed attempt continues only when both clocks prove how long the server was down, and otherwise ends as a counted failure with its own reason. It never gains time. A reboot therefore always ends a running timed attempt | state contract; the appliance has no real-time clock | `test_a_timed_mission_runs_on_the_monotonic_clock_and_browsers_get_a_wall_clock_moment`, `test_a_wall_clock_step_during_a_live_timed_mission_neither_grants_nor_takes_time`, `test_a_restart_on_the_same_boot_continues_the_deadline_and_charges_the_downtime`, `test_a_timed_table_restored_after_its_deadline_has_already_failed`, `test_a_timed_table_restored_under_a_clock_that_cannot_be_trusted_ends_and_never_gains_time`, `test_a_timed_snapshot_without_a_clock_record_ends_the_attempt`, `test_a_table_with_no_running_deadline_restores_whatever_the_clocks_say`, `test_on_the_real_clocks_the_shared_timer_and_the_browsers_get_the_same_150_seconds`, `test_the_engine_expires_only_a_running_deadline` | AVR-242 |
 | E-D8 | The reason shown on an unavailable control is not the server's rejection in six places. Two state something untrue: a color card in the distress exchange after the player's own choice is sealed reads "Submarines cannot be passed", and a card that follows suit reads "You must follow the opening suit." while a crew decision is pending (the captain's off-suit Tonoja card reads "Only the captain plays for Tonoja."). Four are a second wording of the same fact: a card before the crew begins, "Take this task" for another seat and for the captain on a comparison task, "Offer all tasks" for a non-captain. The server refuses every one of these requests and nothing changes | action contract ("the client can disable it with the right reason") | `test_defect_the_reason_shown_before_play_begins_is_the_servers_rejection`; the playtest asserts the refusals | AVR-263 |
 
 Not a defect, recorded so nobody "fixes" it by guessing: other reversible tasks could be proven
@@ -692,3 +693,38 @@ at their hand (AVR-266).
 Not covered: real phones, the appliance, a Party-launched round, Linux for the playtest. The
 restore of a timed table after a backward clock step and a snapshot taken before a mission-table
 change are recorded defects (E-D7, E-D5) and belong to AVR-242.
+
+### AVR-242, 2026-10-04
+
+Scope: `games/expo/content.py`, `engine.py`, `game.py`, `tests/test_expo_persistence.py` (new) and
+these documents. No client, shared session, protocol or provider file changed. A Party round
+still neither restores nor writes a snapshot.
+
+- **Content hash (E-D5).** `content_hash()` hashes the task catalog and every mission definition.
+  The value changed once, so a snapshot written before this change is refused, as any other
+  content would be.
+- **The clock (E-D7).** The adapter gives the engine monotonic seconds and translates the deadline
+  to a wall-clock moment only for the view and the shared timer. `Engine.expire` ends a running
+  deadline. A snapshot carries the two clocks at the time of writing. Rules in
+  [GAME_STATE](GAME_STATE.md#restoration-after-a-server-restart). The live case (a wall-clock step
+  with no restart granted time) was found while doing this and has the same remedy.
+- **Request memory (E-D6).** No code change. The contract now says accepted requests only, with
+  the reasons; tests pin each reason.
+
+One behaviour is stricter than the issue asked for: a reboot always ends a running timed attempt,
+because nothing on an appliance without a real-time clock says how long it was off. The mission
+is 150 seconds and the crew may retry.
+
+Each new test was run against the code before the change: 39 of the 44 failed. The five that
+passed are the request-memory tests, which pin behaviour that did not change.
+
+| Check | Result (Windows 11) |
+|---|---|
+| `pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_coverage.py tests/test_expo_persistence.py tests/test_expo_docs.py` | @EXPO@ |
+| `pytest` (whole repository, with a sibling Party checkout present) | @WHOLE@ |
+| `ops/check_docs.py`, `tests/test_no_private_data.py`, `ops/export_avrana_catalog.py --check provider/catalog.json`, `npm run check:syntax` | @STATIC@ |
+| `tests/playtest_expo.mjs`, headless Chrome | @PLAYTEST@ |
+
+Not covered: a real reboot, a real clock correction, the appliance, real phones. The clocks in
+the tests are set by hand; one test runs on the real clocks without a step. The timed mission is
+not reachable from a Party round (E-P1) and the playtest does not play it.

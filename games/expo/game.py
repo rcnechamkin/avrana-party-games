@@ -8,6 +8,20 @@ from .content import catalog, mission
 from .engine import Engine, Invalid
 from .storage import SnapshotStore
 
+# A timed mission runs on the monotonic clock (E-D7, AVR-242): a step of the wall clock, in
+# either direction, neither grants nor takes time. Wall-clock moments exist only for browsers.
+CLOCK_TOLERANCE = 2.0
+UNTRUSTED_CLOCK = ('The server restarted and could not tell how much time had passed, '
+                   'so the timed attempt has ended.')
+
+
+def _mono():
+    return time.monotonic()
+
+
+def _wall():
+    return time.time()
+
 
 class ExpoSession(GameSession):
     MIN_PLAYERS = 2
@@ -85,7 +99,22 @@ class ExpoSession(GameSession):
         if not self.engine:
             return
         self.phase = self.engine.s['phase']
-        self._bump(self.engine.s['expiry'])
+        self._bump(self._wall_moment(self.engine.s['expiry']))
+
+    def _wall_moment(self, expiry):
+        # The engine's deadline as a wall-clock moment, for the shared timer and the browsers.
+        return None if expiry is None else _wall() + (expiry - _mono())
+
+    @staticmethod
+    def _clock_continuous(clock):
+        # After a restart the saved deadline still means something only if the monotonic clock
+        # is the one the snapshot was written under: it has not gone backward (a reboot) and it
+        # agrees with the wall clock about how long the server was down (no reboot, no step, no
+        # suspend). An appliance without a real-time clock cannot say how long it was off.
+        if not (isinstance(clock, dict) and all(type(clock.get(k)) in (int, float) for k in ('wall', 'mono'))):
+            return False
+        return (_mono() >= clock['mono']
+                and abs((_wall() - _mono()) - (clock['wall'] - clock['mono'])) <= CLOCK_TOLERANCE)
 
     def game_action(self, token, msg):
         if not isinstance(msg, dict) or not self.engine:
@@ -94,7 +123,7 @@ class ExpoSession(GameSession):
         before = self.engine.snapshot()
         before_deadline = self.deadline
         try:
-            self.engine.apply(actor, msg, time.time())
+            self.engine.apply(actor, msg, _mono())
             self._sync()
             self._save()
         except Invalid as e:
@@ -118,7 +147,7 @@ class ExpoSession(GameSession):
 
     def game_tick(self):
         if self.engine:
-            self.engine.observe_time(time.time())
+            self.engine.observe_time(_mono())
             self._sync()
             try:
                 self._save()
@@ -132,7 +161,9 @@ class ExpoSession(GameSession):
         if not self.engine:
             return None
         viewer = self.players.get(viewer_token)
-        return self.engine.view(viewer.pid if viewer and viewer_token in self.participants else None)
+        view = self.engine.view(viewer.pid if viewer and viewer_token in self.participants else None)
+        view['expiry'] = self._wall_moment(view['expiry'])
+        return view
 
     def state_for(self, viewer_token=None, spectator=False):
         # Party spectators (core/session.py) get game_state_spectator(): EXPO keeps the default,
@@ -194,6 +225,7 @@ class ExpoSession(GameSession):
 
     def snapshot(self):
         return {'version': 1, 'engine': self.engine.snapshot(), 'settings': deepcopy(self.settings),
+                'clock': {'wall': _wall(), 'mono': _mono()},
                 'participants': list(self.participants), 'pid_counter': self._pid_counter,
                 'players': [{k: getattr(p, k) for k in Player.__slots__} for p in self.players.values()
                             if p.token in self.participants]}
@@ -214,7 +246,10 @@ class ExpoSession(GameSession):
             raise ValueError('Invalid saved seat identity mapping')
         engine.s['away'] = list(engine.s['humans'])
         engine.s['revision'] += 1
-        engine.observe_time(time.time())
+        if self._clock_continuous(saved.get('clock')):
+            engine.observe_time(_mono())
+        else:
+            engine.expire(UNTRUSTED_CLOCK)
         self.engine, self.rng, self.players = engine, engine.rng, players
         self.participants, self._pid_counter = saved['participants'], saved['pid_counter']
         self.settings = saved['settings']

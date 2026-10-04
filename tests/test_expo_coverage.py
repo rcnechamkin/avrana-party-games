@@ -984,59 +984,6 @@ def test_defect_the_reason_shown_before_play_begins_is_the_servers_rejection():
     assert e.view(captain)['me']['play_reason'] == str(refused.value)
 
 
-# ---- T32 a timed table restored after its deadline ---------------------------------------------
-
-def timed_table(path, monkeypatch, begun_at):
-    """A stored, timed mission 16 table whose 150 seconds began at `begun_at`."""
-    from games.expo import game
-    monkeypatch.setattr(game.time, 'time', lambda: begun_at)
-    for seed in range(40):
-        s = ExpoSession(random.Random(seed), snapshot_path=path)
-        tokens = [f'human-{i}' for i in range(3)]
-        for t in tokens:
-            s.join(t, t)
-            s.set_ready(t, True)
-        s.set_settings(tokens[0], {'timed': True})
-        s.set_settings(tokens[0], {'mission': 16})
-        s.start(tokens[0])
-        s.tick(s.gen)
-        e, seat = s.engine, by_pid(s, tokens)
-        assert e.s['mission']['seconds'] == 150 and e.s['expiry'] is None
-        send(s, seat[e.controller(e.selector())], 'volunteer', yes=True)
-        for k, q in list(e.s['assignments'].items()):
-            if TASKS[k]['params'].get('predict'):
-                send(s, seat[q], 'predict', task=k, count=0)
-        if e.s['phase'] == 'assistance':                             # else: an ineligible volunteer
-            agree(s, tokens, 'begin')
-            return s, tokens
-        s.store.clear()
-    pytest.fail('no timed fixture')
-
-
-def test_a_timed_table_restored_after_its_deadline_has_already_failed(tmp_path, monkeypatch):
-    from games.expo import game
-    path = tmp_path / 'crew.json'
-    s, tokens = timed_table(path, monkeypatch, 1000.0)
-    assert s.engine.s['expiry'] == 1150.0 and s.deadline == 1150.0 and s.engine.s['result'] is None
-    on_disk = path.read_text(encoding='utf-8')
-    monkeypatch.setattr(game.time, 'time', lambda: 1150.0)          # the server was down until then
-    again = ExpoSession(random.Random(99), snapshot_path=path)
-    assert again.recovery_error is None
-    assert again.engine.s['result'] == {'status': 'failed', 'reason': 'Time has run out.'}
-    assert again.phase == 'mission_result' and again.engine.s['expiry'] is None and again.deadline is None
-    assert again.engine.s['hands'] == s.engine.s['hands'] and again.engine.s['history'] == []
-    assert again.engine.s['attempts'] == 1 and again.engine.s['log'] == []
-    assert path.read_text(encoding='utf-8') == on_disk               # restoring writes nothing
-    for t in tokens:
-        again.join(t, t)
-    seat = by_pid(again, tokens)
-    turn = again.engine.s['turn']
-    refused = send(again, seat[turn], 'play_card', card=again.engine.playable(turn)[0])
-    assert refused[0]['code'] == 'phase'                             # the deal is over
-    agree(again, tokens, 'retry', keep=True)                         # and the crew may dive again
-    assert again.engine.s['phase'] == 'allocation' and again.engine.s['result'] is None
-
-
 # ---- E-M42 mission 32 played through -----------------------------------------------------------
 
 @pytest.mark.parametrize('n', [2, 3, 4, 5])

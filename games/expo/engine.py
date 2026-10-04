@@ -280,11 +280,19 @@ class Engine:
             s['log'].append({'mission': s['mission']['id'], 'attempts': s['attempts'] + int(s['distress']),
                              'distress': s['distress'], 'attempt': s['attempt']})
 
+    def expire(self, reason='Time has run out.'):
+        # A running deadline ends the attempt. The adapter also calls this when it restores a
+        # timed table and cannot say how much time has passed (E-D7, AVR-242).
+        if self.s['expiry'] is None:
+            return False
+        self._finish('failed', reason)
+        self.s['revision'] += 1
+        return True
+
     def observe_time(self, now):
+        # `now` and `expiry` are seconds on whatever clock the caller keeps; the engine has none.
         if self.s['expiry'] is not None and now >= self.s['expiry']:
-            self._finish('failed', 'Time has run out.')
-            self.s['revision'] += 1
-            return True
+            return self.expire()
         return False
 
     def _outcome(self):

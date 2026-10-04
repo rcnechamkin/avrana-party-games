@@ -5,7 +5,6 @@ import json
 
 _BYTES = (Path(__file__).parent / 'content' / 'tasks.json').read_bytes()
 TASKS = {t['id']: t for t in json.loads(_BYTES)}
-CONTENT_HASH = hashlib.sha256(_BYTES + b'crew-missions-v1').hexdigest()
 BLOCKED = {3: 'C02: supplied mission difficulty conflicts with VTT',
            4: 'C03: official mission difficulty missing',
            12: 'C12: prohibited-lead outcome needs clarification',
@@ -55,6 +54,24 @@ def mission(number, timed=False):
                  seconds=150 if timed else None,
                  communication='normal' if timed else 'none')
     return m
+
+
+def content_hash():
+    # A snapshot is only meaningful under the content it was written with (E-D5, AVR-242): the
+    # task catalog and every mission as this module defines it, untimed and timed, a blocked
+    # mission by its reason. A change to a target, a modifier, a fixed task list, a timer or the
+    # blocked set changes the hash, whichever mission the saved table was playing.
+    table = []
+    for number in range(1, 51):
+        for timed in (False, True):
+            try:
+                table.append(mission(number, timed))
+            except ValueError as e:
+                table.append({'id': number, 'blocked': str(e)})
+    return hashlib.sha256(_BYTES + json.dumps(table, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+CONTENT_HASH = content_hash()
 
 
 def catalog(humans=3, timed=False):
