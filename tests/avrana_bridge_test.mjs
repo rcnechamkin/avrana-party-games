@@ -33,7 +33,7 @@ function element(tag) {
 /** A game page: /games/<slug>/?avrana=1 on `origin`, whose server answers /api/avrana with `config`:
     an object is the 200 body, a number is that status, an Error is a request that reached nothing.
     A list is one answer per request, the last repeated. `tick()` fires the timers set so far. */
-function page({ origin = GAMES, slug = "bluff", config = { partyOrigin: PARTY }, shell = true, search = "?avrana=1" } = {}) {
+function page({ origin = GAMES, slug = "bluff", config = { partyOrigin: PARTY }, shell = true, search = "?avrana=1", shimFails = 0 } = {}) {
   const imports = [], fetched = [], returns = [element("a")], answers = Array.isArray(config) ? [...config] : [config];
   let conn = null, timers = [];
   const connectParty = (opts) => {
@@ -59,6 +59,9 @@ function page({ origin = GAMES, slug = "bluff", config = { partyOrigin: PARTY },
     fetch: async (url, init) => {
       fetched.push([url, init]);
       const answer = answers.length > 1 ? answers.shift() : answers[0];
+      if (answer === "hang") {              // a server that never answers: only giving up ends it
+        return new Promise((resolve, reject) => init.signal.addEventListener("abort", () => reject(new Error("aborted"))));
+      }
       if (answer instanceof Error) throw answer;
       if (typeof answer === "number") return { ok: answer >= 200 && answer < 300, status: answer, json: async () => { throw new Error("no body"); } };
       return { ok: true, status: 200, json: async () => answer };
@@ -70,7 +73,10 @@ function page({ origin = GAMES, slug = "bluff", config = { partyOrigin: PARTY },
   // The page's two dynamic imports are answered here: Node's vm has no stable hook for them.
   ctx.importModule = async (spec) => {
     imports.push(spec);
-    if (spec === "/shared/avrana-party-bridge.js") return { connectParty };
+    if (spec.startsWith("/shared/avrana-party-bridge.js")) {
+      if (shimFails-- > 0) throw new Error("failed to fetch module");
+      return { connectParty };
+    }
     return { gameOfPath: () => slug, startPartyFollow: async () => null };
   };
   vm.createContext(ctx);
@@ -173,15 +179,30 @@ for (const [label, silence] of [["reaches nothing", new Error("offline")], ["get
   });
 }
 
-test("every request for the Party origin can be given up on (an abort signal), and the bar is never stranded", async () => {
-  const p = page({ config: [new Error("offline"), { partyOrigin: null }] });
+test("a server that never answers is given up on and asked again, and the bar is never stranded", async () => {
+  const p = page({ config: "hang" });
   await settle();
-  assert.equal(typeof p.fetched[0][1].signal.aborted, "boolean");
+  assert.equal(p.fetched.length, 1);
   const nav = p.body.children[0];
   assert.equal(nav.hidden, true);                                         // waiting for the Party's answer
-  await p.tick();                                                         // the 4 s reveal, and the retry
-  assert.equal(nav.hidden, false);
-  assert.equal(await p.integration.party, null);
+  await p.tick();                                                         // the request's own limit, and the 4 s reveal
+  assert.equal(p.fetched[0][1].signal.aborted, true);
+  assert.equal(nav.hidden, false);                                        // shown though nothing has answered
+  await p.tick();                                                         // the wait before asking again
+  assert.equal(p.fetched.length, 2);
+  assert.deepEqual(p.imports, []);                                        // still neither path
+});
+
+test("on the game origin a shim that failed to load is fetched again, never taken as no Party", async () => {
+  const p = page({ shimFails: 2 });
+  await settle();
+  assert.equal(p.conn(), null);
+  await p.tick();
+  await p.tick();
+  assert.deepEqual(p.imports, ["/shared/avrana-party-bridge.js", "/shared/avrana-party-bridge.js?retry=1",
+    "/shared/avrana-party-bridge.js?retry=2"]);                           // and never the Party's own module
+  assert.equal(await p.integration.party, p.conn());
+  assert.notEqual(p.conn(), null);
 });
 
 test("a page that is not an integrated launch asks nothing and has no Party", async () => {

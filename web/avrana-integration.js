@@ -56,7 +56,17 @@
   /* The game origin: the Party through the bridge. Publishes the same window.AvranaParty the
      Party's own module publishes on its origin, so a game's chrome is written once. */
   async function followThroughBridge(origin, nav, reveal) {
-    const { connectParty } = await import('/shared/avrana-party-bridge.js');
+    // On the game origin the shim is the only way to the Party, so an import that failed (a
+    // Wi-Fi blip) is tried again, never taken as "no Party": that would send a seated player
+    // back in without a ticket. A new address each time: a browser may remember a failed module.
+    let connectParty = null;
+    for (let i = 0; !connectParty; i += 1) {
+      try {
+        ({ connectParty } = await import('/shared/avrana-party-bridge.js' + (i ? '?retry=' + i : '')));
+      } catch (error) {
+        await new Promise((resolve) => setTimeout(resolve, CONFIG_RETRY[Math.min(i, CONFIG_RETRY.length - 1)]));
+      }
+    }
     const conn = connectParty({ partyOrigin: origin, game: slug });
     const api = {
       get active() { return conn.active(); },
