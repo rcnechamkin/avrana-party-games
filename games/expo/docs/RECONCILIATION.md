@@ -628,6 +628,8 @@ own table before exiting, while its players are still connected; E-D2 itself is 
 | Mission 10 offer at 3 humans, mission 13 offer at 5 humans, two humans on mission 11 | passed |
 | `ops/check_static.sh`, `ops/check_docs.py` | passed |
 
-Not covered: Linux. The repository's workflow installs the playtest driver but has no job that
-starts a server and a browser, and no manual trigger, so the repeated runs were not made there.
+Not covered: Linux. No repeated run has been made there yet. This change adds
+`.github/workflows/expo-playtest.yml`, a workflow started by hand only (crew size and number of
+runs as inputs; never on push or pull request) that starts one server and repeats the playtest
+against it. It can be started only once it is on `main`, so the Linux runs are still to be made.
 The notes under AVR-250 and AVR-251 above describe the playtest before this change.
