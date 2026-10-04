@@ -283,6 +283,7 @@ for a redeal. Unknown verbs are rejected by common check 3.
 - Preparation of an attempt: terrain draw, task draw, repair, deal, deal-exception redeal, captain.
 - Trick resolution, task and objective evaluation, Tonoja reveals.
 - Real-time expiry: checked on every command and on the adapter's timer tick, so it fails the
-  mission with no traffic at all.
+  mission with no traffic at all. It is measured on the monotonic clock; a restored timed attempt
+  whose elapsed time cannot be proven ends at once ([GAME_STATE](GAME_STATE.md#restoration-after-a-server-restart)).
 - Presence changes.
 - Restore from a snapshot.

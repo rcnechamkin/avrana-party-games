@@ -31,7 +31,7 @@ Table lifetime:
 
 | Key | Meaning |
 |---|---|
-| `version`, `content` | snapshot format (1) and content hash; a restore with other values is refused |
+| `version`, `content` | snapshot format (1) and content hash: the task catalog and every mission definition, untimed and timed, a blocked mission by its reason. A restore with other values is refused. Rules that live in the engine or the evaluators rather than in a mission definition (the mission 23 sonar rule, the two-player refusals, the deal exceptions, the task evaluators) are not in the hash: changing one needs a new format `version` |
 | `humans`, `seats` | the seated players in clockwise order; `seats` also contains `tonoja` for two players |
 | `timed` | the table's real-time setting |
 | `attempt` | counter of prepared deals, part of every command's scope |
@@ -63,7 +63,7 @@ Per attempt (reset by every preparation):
 | `before_first_only` | sonar allowed only before the first trick (delegated all-tasks missions) |
 | `pass_choices`, `direction` | sealed distress choices and the agreed direction |
 | `trick`, `history` | plays of the trick in progress; every resolved trick `{index, leader, winner, plays}` |
-| `expiry` | real-time deadline in seconds, or none |
+| `expiry` | real-time deadline, or none: seconds on the clock the adapter passes in, which is the monotonic clock. The view the adapter sends carries the same moment as wall-clock seconds for the browser's countdown |
 
 The random generator's state is saved beside this dictionary, so a restored table continues with
 the same future shuffles.
@@ -155,9 +155,23 @@ chosen by the client. In order:
 6. While a crew decision is pending, only a confirmation is accepted.
 7. The command runs; invariants are checked; revision increases by one.
 
-Any rejection restores the state and the random generator exactly. Only accepted requests are
-remembered (E-D6). The client sends a fresh request id for each press and blocks a second press
-until the next state arrives.
+Any rejection restores the state and the random generator exactly. The client sends a fresh
+request id for each press and blocks a second press until the next state arrives.
+
+Request memory holds accepted requests only. This is deliberate (decided in AVR-242; it was
+recorded as shortfall E-D6 when an earlier draft asked for rejected requests to be kept too):
+
+- A repeated rejected request cannot become an accepted duplicate. Every change of state raises
+  `revision`, so the repeat is either judged against the same state and rejected the same way, or
+  it is stale.
+- A request refused only because the snapshot could not be written is sent again unchanged once
+  the disk recovers, and must then succeed. Remembering the refusal would forbid that.
+- Request memory is capped at 10,000 per attempt and a full memory refuses every command. If
+  rejections counted, one seated player could fill it alone and lock the table. Accepted commands
+  need the table's cooperation.
+
+A rejected request id used again is therefore a new request, judged on its own; once accepted it
+is remembered like any other.
 
 ## Presence and reconnect
 
@@ -205,9 +219,33 @@ With the snapshot file:
   any served directory and must never be committed.
 - A Party round neither restores nor writes the file: Party tickets die with the Party session.
 
-Shortfalls: the content hash does not cover the mission table (E-D5); a real-time deadline is
-compared with the wall clock on restore, so a clock that stepped backward grants extra time
-(E-D7). Both are in AVR-242.
+A timed mission and the clock (AVR-242, was E-D7):
+
+- The deadline is kept on the monotonic clock. A step of the wall clock while the table is live,
+  in either direction, neither grants nor takes time. On a host that suspends, the monotonic
+  clock may stand still during the suspend and the deadline with it; the appliance does not
+  suspend.
+- Every snapshot records the wall clock, the monotonic clock and the kernel's identity for the
+  current boot (`/proc/sys/kernel/random/boot_id`) at the moment it was written.
+- A restored table with a running deadline continues only when all of this holds: the boot
+  identity is readable and is the one in the snapshot, the monotonic clock has not gone backward,
+  and the difference between the two clocks is what it was, within two seconds. That is a restart
+  of the service on the same boot. The downtime is charged, and a deadline that passed meanwhile
+  fails the mission.
+- Otherwise (a reboot, even one whose clocks line up as before; a wall clock that stepped either
+  way; a suspend; a host that cannot name its boot; a snapshot without the record) the timed
+  attempt ends at once as a counted failure with its own reason, and that end is written to the
+  snapshot so that no later restart finds the deadline still running. If that write fails, the
+  next restart judges the clocks again: after a reboot the attempt ends again. On the same boot
+  it ends again too, unless the clocks have come back into agreement in the meantime; it then
+  has only the time the monotonic clock says is left. A saved deadline
+  later than a full timer from the moment the snapshot was written, or a clock reading that is
+  not a plain number of seconds within a sane range, also ends the attempt as a counted failure.
+  A snapshot whose deadline is not a number, or stands beside a mission result or an untimed
+  mission, is refused like any other invalid snapshot. The table itself is kept
+  and the crew may retry. An appliance without a real-time clock cannot say how long it was off,
+  so a reboot always ends a running timed attempt.
+- A table with no running deadline restores whatever the clocks say.
 
 ## Party rounds
 

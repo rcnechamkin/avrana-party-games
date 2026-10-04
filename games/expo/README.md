@@ -43,13 +43,14 @@ missions.
 | | Defect | Issue |
 |---|---|---|
 | E-D2 | A table cannot be ended while a seated player is away; a standalone table can be stranded until the server restarts | AVR-240 |
-| E-D5 to E-D7 | Snapshot hardening: content hash scope, request memory, timed restore and the clock | AVR-242 |
 | E-D8 | Six unavailable-control reasons differ from the server's rejection; the server refuses each request | AVR-263 |
 
 Fixed: E-D1, the task-selection stall when the captain was the only seat left for a
 captain-comparison task (AVR-239, 2026-10-04). E-D3 and E-D4, late completion of the "win none of
 the first N tricks" tasks and the communicator not seeing their own declaration in currents
-(AVR-241, 2026-10-04).
+(AVR-241, 2026-10-04). E-D5 and E-D7, the content hash now covers every mission definition and a
+timed mission runs on the monotonic clock and never gains time across a restart (AVR-242,
+2026-10-04). E-D6, request memory, was settled by amending the contract: accepted requests only.
 
 **Owner decisions, built.** The owner answered the open policy questions on 2026-10-04 under a
 "fidelity first" principle (AVR-243). The four answers that change behaviour are built: a single
