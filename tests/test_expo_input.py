@@ -112,3 +112,86 @@ def test_the_request_that_froze_the_table_is_refused_and_the_table_plays_on(mid)
     assert e.s['pool'] == [] and set(e.s['assignments'].values()) == {other}
     for t in tokens:
         s.state_for(t)
+
+
+# ---- AVR-268: a request id that cannot be stored ------------------------------------------------
+# An accepted request id is kept in the request memory, which is part of the snapshot file. One
+# that cannot be written as UTF-8 stopped the table from saving, and every later command raised.
+
+UNSTORABLE = {'a lone surrogate': '\ud800', 'a surrogate inside an id': 'abc\udfffdef', 'a NUL': 'a\x00b',
+              'a newline': 'a\nb', 'an escape': '\x1b[2J', 'a delete': 'a\x7f', 'non-ASCII text': 'café',
+              'a line separator': 'a b'}
+
+
+def saved_engine(path):
+    return json.loads(path.read_text(encoding='utf-8'))['engine']
+
+
+def stored_table(path):
+    s = ExpoSession(random.Random(4), snapshot_path=path)
+    tokens = ['human-0', 'human-1', 'human-2']
+    for t in tokens:
+        s.join(t, t)
+        s.set_ready(t, True)
+    s.start(tokens[0])
+    s.tick(s.gen)
+    return s, tokens
+
+
+@pytest.mark.parametrize('case', UNSTORABLE)
+def test_a_request_id_that_is_not_plain_printable_text_is_refused(case):
+    e, cap = table(1)
+    before = frozen(e)
+    bad = dict(command(e, cap, 'propose', proposal={'kind': 'end'}), request=UNSTORABLE[case])
+    with pytest.raises(Invalid) as refusal:
+        e.apply(cap, bad, 100)
+    assert refusal.value.code == 'payload' and frozen(e) == before
+
+
+@pytest.mark.parametrize('request_id', ['1', 'x' * 80, '3f2b6c1e-8a51-4c7e-9d2a-0b1c2d3e4f5a', 'a b ~!@#$%^&*()_+{}|:"<>?'])
+def test_a_plain_request_id_is_still_accepted(request_id):
+    e, cap = table(1)
+    assert e.apply(cap, dict(command(e, cap, 'propose', proposal={'kind': 'end'}), request=request_id), 100)
+
+
+@pytest.mark.parametrize('case', UNSTORABLE)
+def test_an_unstorable_request_id_leaves_a_stored_table_saving_and_answering(case, tmp_path):
+    path = tmp_path / 'crew.json'
+    s, tokens = stored_table(path)
+    e = s.engine
+    seat = {s.players[t].pid: t for t in tokens}
+    first, other = e.s['humans'][0], e.s['humans'][1]
+    on_disk, before = saved_engine(path), frozen(e)
+    bad = dict(command(e, first, 'propose', proposal={'kind': 'end'}), request=UNSTORABLE[case])
+    assert [f['code'] for f in s.game_action(seat[first], bad)] == ['payload']
+    assert frozen(s.engine) == before and saved_engine(path) == on_disk
+    for t in tokens:
+        s.state_for(t)
+    s.game_tick()
+    # A legal command is accepted, saved, and survives a restart from the file.
+    q = e.selector()
+    task = next(k for k in e.s['pool'] if e.eligible(k, q))
+    assert s.game_action(seat[e.controller(q)], command(e, e.controller(q), 'choose_task', task=task)) == []
+    again = ExpoSession(random.Random(1), snapshot_path=path)
+    assert again.recovery_error is None and again.engine.s['assignments'] == {task: q}
+
+
+def test_a_snapshot_that_cannot_be_written_as_text_is_a_storage_failure_not_a_crash(tmp_path):
+    # Whatever reaches the snapshot (a player name comes from the platform, not from EXPO), a
+    # value the file cannot hold rolls the command back like any other failed write.
+    path = tmp_path / 'crew.json'
+    s, tokens = stored_table(path)
+    e = s.engine
+    seat = {s.players[t].pid: t for t in tokens}
+    on_disk, before = saved_engine(path), frozen(e)
+    s.players[tokens[0]].name = 'bad\ud800name'
+    q = e.selector()
+    task = next(k for k in e.s['pool'] if e.eligible(k, q))
+    msg = command(e, e.controller(q), 'choose_task', task=task)
+    assert [f['code'] for f in s.game_action(seat[e.controller(q)], msg)] == ['storage']
+    assert frozen(s.engine) == before and saved_engine(path) == on_disk
+    e = s.engine                                 # the rollback put the engine back from its snapshot
+    assert not [p for p in tmp_path.iterdir() if p.name.startswith('.crew-')]      # no temp file left
+    s.players[tokens[0]].name = 'human-0'
+    assert s.game_action(seat[e.controller(q)], msg) == []                         # the same request, sent again
+    assert ExpoSession(random.Random(1), snapshot_path=path).engine.s['assignments'] == {task: q}
