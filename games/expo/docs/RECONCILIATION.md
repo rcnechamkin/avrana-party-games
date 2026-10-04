@@ -646,11 +646,12 @@ Every matrix row that was partial is closed or says why it cannot be tested
 ([IMPLEMENTATION_PLAN](IMPLEMENTATION_PLAN.md#deterministic-test-matrix)). What the new tests
 establish, none of it by changing behaviour:
 
-- No view depends on anything its viewer may not see: every phase, every seat, a watcher, an
-  unknown id and the dummy's name, at 2 to 5 players, including sealed distress choices and the
-  card under a column Tonoja has just played from.
-- Two commands built at one revision cannot both be accepted, in the engine and through the room
-  lock on real sockets; the last shared sonar token asked for twice is spent once.
+- No view changes when what its viewer may not see changes (other hands, covered cards, sealed
+  distress choices, a committed secret prediction, a currents declaration): every phase, every
+  seat, a watcher, an unknown id and the dummy's name, at 2 to 5 players, and the card under a
+  column Tonoja has just played from.
+- Two commands built at one revision cannot both be accepted, in the engine and from two real
+  sockets; the last shared sonar token asked for twice is spent once.
 - A dropped socket returns to the same seat, hand, options and table in all seven phases through
   the real WebSocket endpoint, with a sealed choice, a live exposure and a card on the table.
 - A stored table restarts exactly at five points (sealed choice, finished exchange, live exposure,
@@ -661,21 +662,32 @@ establish, none of it by changing behaviour:
 - Boundaries for every count task, the trick comparisons and their ties, more than half,
   `value22or23`, the last trick at 13, 10 and 8, and the two color-collection tasks.
 
-The tests were checked against seven deliberate faults in a scratch copy (a sealed choice in the
+The tests were checked against ten deliberate faults in a scratch copy (a sealed choice in the
 view, a covered card in a played column's place, a value computed from another hand, no revision
 check, no rollback after a failed write, a restore that drops sealed choices, a reconnect that
-clears spent tokens). Each fault failed a test. Two tests did not catch theirs at first and were
-tightened.
+clears spent tokens, a returning phone sent an empty hand, a secret prediction shown to everyone,
+a currents declaration shown to everyone). Each fault fails a test. Three tests did not catch
+theirs at first and were tightened; the independent review found the third (the reconnect test
+compared a returning phone with its own earlier state).
 
-One defect was found and recorded, not fixed: E-D8 (AVR-263), the wording of six unavailable-control
-reasons. The server refuses each of those requests.
+A random walk outside the suite (120 tables at 2 to 5 players over every enabled mission, about
+108,000 accepted and 3.8 million rejected commands, every seat offered every kind of command at
+every step) met no stuck table, no invariant failure, no leaked card and no error other than a
+rejection, apart from the duplicate task recorded as AVR-265.
+
+One defect was found by these tests and recorded, not fixed: E-D8 (AVR-263), the wording of six
+unavailable-control reasons. The server refuses each of those requests. Three more were found by
+probing while this work was reviewed, each with its own issue and none pinned here: one malformed
+crew-decision request freezes the table (AVR-264); after mission 32 a later mission can deal the
+same task twice (AVR-265); on a phone a pending crew decision is off-screen for a player looking
+at their hand (AVR-266).
 
 | Check | Result (Windows 11) |
 |---|---|
-| `pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_coverage.py tests/test_expo_docs.py` | 430 passed, 1 skipped (distress is not offered to two players), 2 expected failures (E-D2, E-D8) |
-| `pytest` (whole repository, with a sibling Party checkout present) | 1,936 passed, 3 skipped, 2 expected failures, 0 failed |
+| `pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_coverage.py tests/test_expo_docs.py` | 457 passed, 2 skipped (distress is not offered to two players), 2 expected failures (E-D2, E-D8) |
+| `pytest` (whole repository, with a sibling Party checkout present) | 1,963 passed, 4 skipped, 2 expected failures, 0 failed |
 | `ops/check_docs.py`, `tests/test_no_private_data.py`, `ops/export_avrana_catalog.py --check provider/catalog.json`, `npm run check:syntax` | all passed |
-| `tests/playtest_expo.mjs`, headless Chrome, one server for all runs | 38 of 38 passed: 10 consecutive at five humans, 10 at four, 5 at three, 5 at two; mission 10 kept and offered, mission 13 offered, missions 5, 9, 11 and 25; a run forced to fail exited 1 and the next run passed. Every clockwise run checked all five refusals; the three runs of missions 10 and 13 checked the three that exist there |
+| `tests/playtest_expo.mjs`, headless Chrome, one server for all runs | 55 of 55 passed in two batches (38 before the review changes, 17 after): 13 at five humans, 13 at four, 8 at three, 8 at two; missions 5, 8, 9, 10 (kept and offered), 11, 13 (kept and offered) and 25; a run forced to fail exited 1 and the next run passed. Every clockwise run checked all five refusals; missions 8, 10 and 13 have no task selection and checked the other three |
 
 Not covered: real phones, the appliance, a Party-launched round, Linux for the playtest. The
 restore of a timed table after a backward clock step and a snapshot taken before a mission-table

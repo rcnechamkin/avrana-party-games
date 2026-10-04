@@ -195,6 +195,9 @@ try{
   await pages[0].screenshot({path:path.join(OUT,"result-phone.png"),fullPage:true});
   assert.deepEqual(errors,[]);
   assert.ok(checked.early&&checked.turn,"unavailable controls were checked against the server");
+  // Clockwise selection always reaches another seat's task and a seat that may not pass. An
+  // off-suit card is checked whenever the deal offers one before the mission ends.
+  if(["normal","skip_captain"].includes(opening.mission.allocation)&&opening.tasks.length)assert.ok(checked.take&&checked.pass,"task selection refusals were checked");
   await crewDecision(pages[0],"end");
   await pages[0].waitForFunction(()=>ST.phase==="game_end"||ST.phase==="lobby");
   finished=true;

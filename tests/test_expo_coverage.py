@@ -32,15 +32,19 @@ PHASES = ('allocation', 'prediction', 'assistance', 'passing', 'before_trick', '
 
 # ---- T36 privacy: every phase, every viewer ----------------------------------------------------
 
-def at_phase(n, phase):
-    """A table of n humans standing in the given phase, with something hidden in play."""
+def at_phase(n, phase, currents=False):
+    """A table of n humans standing in the given phase, with something hidden in play: other
+    hands, a committed secret prediction and, with `currents`, a declaration only its author knows."""
     humans = [f'p{i}' for i in range(n)]
     for seed in range(40):
         e = Engine(humans, random.Random(seed), 5)
-        if phase == 'prediction':
+        if currents:
+            e.s['communication'] = 'currents'
+        if phase != 'allocation':
             e.s['pool'] = ['exactlyXtrickSecret', 'blue4']
             e.s['selected'] = list(e.s['pool'])
             e.s['initial_count'] = 2
+        if phase == 'prediction':
             while e.s['pool']:
                 act(e, e.controller(e.selector()), 'choose_task', task=e.s['pool'][0])
         elif phase != 'allocation':
@@ -89,16 +93,29 @@ def with_other_secrets(e, viewer, seed):
     for q in list(s['pass_choices']):                                # a sealed choice stays legal
         if q != viewer:
             s['pass_choices'][q] = next(c for c in reversed(s['hands'][q]) if suit(c) != 'submarine')
+    if not s['result']:                                              # a result reveals predictions
+        for k in s['predictions']:
+            if TASKS[k]['params'].get('secret') and other.controller(s['assignments'][k]) != viewer:
+                s['predictions'][k] += 1
+    if s['communication'] == 'currents':                             # only its author knows it
+        for x in s['exposures']:
+            if x['seat'] != viewer:
+                x['assertion'] = {'highest': 'lowest', 'lowest': 'only', 'only': 'highest'}[x['assertion']]
     other.check()
     return other
 
 
 @pytest.mark.parametrize('n', [2, 3, 4, 5])
 @pytest.mark.parametrize('phase', PHASES)
-def test_no_view_depends_on_what_its_viewer_may_not_see(n, phase):
+@pytest.mark.parametrize('currents', [False, True])
+def test_no_view_depends_on_what_its_viewer_may_not_see(n, phase, currents):
     if phase == 'passing' and n == 2:
         pytest.skip('distress is unavailable to two players (C11)')
-    e = at_phase(n, phase)
+    e = at_phase(n, phase, currents)
+    if phase in ('assistance', 'passing', 'before_trick', 'in_trick'):
+        assert e.s['predictions'] == {'exactlyXtrickSecret': 0}      # a secret is really in play
+    if phase in ('before_trick', 'in_trick', 'mission_result'):
+        assert e.s['exposures']                                      # and so is a declaration
     viewers = list(e.s['humans']) + [None, 'tonoja', 'stranger']
     for viewer in viewers:
         view = e.view(viewer)
@@ -301,7 +318,7 @@ def test_mission_twenty_five_with_five_seats_skips_only_the_captain():
         assert order == [ring[i % 4] for i in range(len(order))] and captain not in e.s['assignments'].values()
         assert e.s['leader'] == captain
         before = e.snapshot()
-        with pytest.raises(Invalid):                                # the captain never selects
+        with pytest.raises(Invalid):                                # and allocation is over
             act(e, captain, 'choose_task', task=e.s['selected'][0])
         assert e.s['phase'] != 'allocation' and e.snapshot() == before
 
@@ -354,7 +371,7 @@ def test_an_exact_count_is_pending_until_the_end_and_fails_one_over(key, cards, 
     k = d['params']['count']
     filler = [['blue:2' if suit(cards[0]) != 'blue' else 'yellow:2']]
     assert evaluate(d, 'a', held([[c] for c in cards[:k - 1]])) == 'pending'
-    assert evaluate(d, 'a', held([[c] for c in cards[:k]])) == 'pending'          # could still win another
+    assert evaluate(d, 'a', held([[c] for c in cards[:k]])) == 'pending'          # judged at the end
     done = held([[c] for c in cards[:k]] + filler * (13 - k))
     assert evaluate(d, 'a', done) == 'satisfied'                                   # exactly k at the end
     if len(cards) > k:
@@ -714,6 +731,7 @@ class Room:
         async def go():
             async with self.binding.lock:
                 change(self.session.engine)
+                self.session.engine.s['revision'] += 1               # phones must read the new table
                 self.session._sync()
                 await self.binding.push_all([])
         asyncio.run_coroutine_threadsafe(go(), self.loop).result(10)
@@ -730,6 +748,9 @@ class Phone:
         self.open()
 
     def open(self):
+        # Nothing from an earlier socket may answer for this one: a returning phone is judged
+        # on the welcome and the state the new connection is sent.
+        self.state, self.fx, self.pid = None, [], None
         self.ws = connect(self.room.url)
         self.ws.send(json.dumps({'t': 'hello', 'token': self.token, 'name': self.name}))
         self.read(lambda p: p.pid is not None and p.state is not None)
@@ -774,9 +795,10 @@ class Phone:
 
 @pytest.fixture
 def table():
-    room = Room()
-    phones = [Phone(room, 'expo-phone-%d' % i, 'Crew %d' % i) for i in range(3)]
+    room, phones = Room(), []
     try:
+        for i in range(3):
+            phones.append(Phone(room, 'expo-phone-%d' % i, 'Crew %d' % i))
         for p in phones:
             p.plain('ready', ready=True)
         until(lambda: len(room.session._connected_ready()) == 3)
@@ -810,7 +832,7 @@ def drop_and_return(room, phones, stage):
     witness.read(lambda p: p.game['away'] == [seat])
     assert engine.s['away'] == [seat]
     marker = len(witness.fx)
-    witness.send('propose', proposal={'kind': 'end'})                # nothing is accepted meanwhile
+    witness.send('propose', proposal={'kind': 'begin'})              # nothing is accepted meanwhile
     witness.read(lambda p: len(p.fx) > marker)
     assert witness.fx[-1]['kind'] == 'invalid' and witness.fx[-1]['code'] == 'paused'
     victim.open()
