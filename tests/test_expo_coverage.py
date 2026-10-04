@@ -975,10 +975,6 @@ def test_the_reasons_the_view_gives_for_an_unplayable_card_are_the_servers_rejec
     assert e.view(e.s['turn'])['me']['play_reason'] == str(refused.value) == 'Waiting for the crew to reconnect.'
 
 
-DEFECT = dict(strict=True, raises=(AssertionError, Invalid))
-
-
-@pytest.mark.xfail(reason='E-D8 / AVR-263: before play begins the view gives a reason that is not the server’s rejection', **DEFECT)
 def test_defect_the_reason_shown_before_play_begins_is_the_servers_rejection():
     e = allocated(Engine(['p0', 'p1', 'p2'], random.Random(4)))
     assert e.s['phase'] == 'assistance'
@@ -989,6 +985,121 @@ def test_defect_the_reason_shown_before_play_begins_is_the_servers_rejection():
     assert refused.value.code == 'phase' and e.snapshot() == before  # refused either way
     assert e.view(captain)['me']['legal_cards'] == []
     assert e.view(captain)['me']['play_reason'] == str(refused.value)
+
+
+def rejection(e, actor, t, **kwargs):
+    """The server's rejection of this request, or None when it is accepted; the table is put back."""
+    before, rng = deepcopy(e.s), e.rng.getstate()
+    try:
+        act(e, actor, t, **kwargs)
+        return None
+    except Invalid as error:
+        return str(error)
+    finally:
+        e.s = before
+        e.rng.setstate(rng)
+
+
+def shown_reasons(e):
+    """Every control reason every crew member's view gives is what the server says to that very
+    request, and a control with no reason is accepted. Returns the reasons seen."""
+    seen = set()
+    for q in e.s['humans']:
+        view = e.view(q)
+        me, tops = view['me'], [c for c in view['tonoja'] if c]
+        assert set(me['card_reasons']) <= set(me['hand'] + tops)
+        for c in me['hand'] + tops:
+            t = 'pass_card' if e.s['phase'] == 'passing' and c in me['hand'] else 'play_card'
+            assert me['card_reasons'].get(c) == rejection(e, q, t, card=c), (q, c)
+        if me['play_reason'] and e.s['phase'] != 'passing':
+            assert set(me['card_reasons'].values()) == {me['play_reason']}
+            assert set(me['card_reasons']) == set(me['hand'] + tops)
+        if e.s['phase'] != 'passing':
+            assert me['legal_cards'] == [c for c in e.playable(e.s['turn']) if c not in me['card_reasons']
+                                         and not me['play_reason']]
+        if e.s['phase'] == 'allocation' and e.s['mission']['allocation'] in ('normal', 'skip_captain'):
+            assert set(me['task_reasons']) <= set(e.s['pool'])
+            for k in e.s['pool']:
+                assert me['task_reasons'].get(k) == rejection(e, q, 'choose_task', task=k), (q, k)
+        else:
+            assert me['task_reasons'] == {}
+        if e.s['phase'] == 'allocation' and e.s['mission']['allocation'] == 'captain_one':
+            owner = next(o for o in e.s['humans'] if o != e.s['captain'])
+            assert me['offer_reason'] == rejection(
+                e, q, 'propose', proposal={'kind': 'assign', 'owner': owner, 'task': 'all'})
+        else:
+            assert me['offer_reason'] is None
+        seen |= set(me['card_reasons'].values()) | set(me['task_reasons'].values()) | {me['offer_reason']}
+    return seen - {None}
+
+
+def test_every_reason_shown_on_an_unavailable_control_is_the_servers_rejection():
+    """E-D8 / AVR-263: all six places and the states around them, for every crew size."""
+    seen = set()
+    for n in (2, 3, 4, 5):
+        humans = [f'p{i}' for i in range(n)]
+        # Task selection: another seat's task, and the captain on a comparison with the captain.
+        e = Engine(humans, random.Random(n), 1)
+        e.s['pool'] = ['lessTricksThanCaptain', 'blue4']
+        e.s['selected'] = list(e.s['pool'])
+        place(e)
+        e.s['initial_count'] = 2
+        assert e.selector() == e.s['captain']
+        seen |= shown_reasons(e)
+        assert e.view(e.s['captain'])['me']['task_reasons'] == {
+            'lessTricksThanCaptain': 'The captain cannot take a captain comparison task.'}
+        allocated(e)
+        # Before the crew begins, and while its decision to begin is pending.
+        assert e.s['phase'] == 'assistance'
+        seen |= shown_reasons(e)
+        act(e, humans[0], 'propose', proposal={'kind': 'begin'})
+        seen |= shown_reasons(e)
+        act(e, humans[1], 'confirm', yes=False)
+        if n > 2:
+            # The distress exchange: before a choice, and after this player's choice is sealed.
+            d = Engine.restore(e.snapshot())
+            decide(d, humans[0], 'distress', direction='left')
+            seen |= shown_reasons(d)
+            act(d, humans[0], 'pass_card', card=next(c for c in d.playable(humans[0]) if suit(c) != 'submarine'))
+            sealed = d.view(humans[0])['me']
+            assert set(sealed['card_reasons'].values()) == {'Your pass is already locked or unavailable.'}
+            assert set(sealed['card_reasons']) == set(sealed['hand'])
+            seen |= shown_reasons(d)
+        # Play: every turn of two tricks, then a pending crew decision, then a crew member away.
+        for seed in range(40):
+            e = playing(n, seed)
+            for _ in range(2 * len(e.s['seats']) + 1):
+                if e.s['result']:
+                    break
+                seen |= shown_reasons(e)
+                q = e.s['turn']
+                act(e, e.controller(q), 'play_card', card=legal_cards(e.playable(q), e.s['trick'])[0])
+            if not e.s['result']:
+                break
+        assert e.s['trick'] and not e.s['result']
+        seen |= shown_reasons(e)
+        act(e, humans[0], 'propose', proposal={'kind': 'end'})
+        pending = e.view(e.controller(e.s['turn']))['me']
+        assert pending['legal_cards'] == [] and pending['play_reason'] == 'Confirm or decline the crew decision first.'
+        seen |= shown_reasons(e)
+        act(e, humans[1], 'confirm', yes=False)
+        e.s['away'] = [humans[1]]
+        seen |= shown_reasons(e)
+        # Missions 10 and 13: only the captain offers the tasks.
+        if n > 2:
+            e = Engine(humans, random.Random(n), 10)
+            assert e.s['mission']['allocation'] == 'captain_one'
+            seen |= shown_reasons(e)
+            assert [e.view(q)['me']['offer_reason'] for q in humans if q != e.s['captain']] \
+                == ['The captain must offer these tasks.'] * (n - 1)
+            assert e.view(e.s['captain'])['me']['offer_reason'] is None
+    assert seen == {
+        'Waiting for the crew to reconnect.', 'Confirm or decline the crew decision first.',
+        'This is not a card-play phase.', 'It is another crew member’s turn.',
+        'That card is not in the playable hand.', 'You must follow the opening suit.',
+        'Your pass is already locked or unavailable.', 'Choose one of your color cards.',
+        'It is another crew member’s task selection.', 'The captain cannot take a captain comparison task.',
+        'The captain must offer these tasks.'}
 
 
 # ---- E-M42 mission 32 played through -----------------------------------------------------------

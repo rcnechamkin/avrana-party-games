@@ -120,7 +120,7 @@ function render(st) {
     meta.append(el("span",`${name(task.owner)} · ${task.difficulty} difficulty`),el("span",task.status==="satisfied"?"✓ Complete":task.status==="failed"?"× Failed":task.status));n.append(meta,el("div",task.text));
     if(task.prediction_committed)n.append(el("div",`Prediction: ${task.prediction??"sealed"}`,"muted"));
     if(g.stage==="allocation"&&!task.owner&&!spectator&&!g.proposal&&!g.away.length){
-      if(["normal","skip_captain"].includes(g.mission.allocation))n.append(button("Take this task",()=>send("choose_task",{task:task.id}),"task:"+task.id,g.controller!==g.me.seat||!task.eligible_owners.includes(g.selector),"Another crew member must select this task."));
+      if(["normal","skip_captain"].includes(g.mission.allocation))n.append(button("Take this task",()=>send("choose_task",{task:task.id}),"task:"+task.id,Boolean(g.me.task_reasons[task.id]),g.me.task_reasons[task.id]||""));
       else if(g.mission.allocation==="free"){
         const sel=ownerSelect("owner:"+task.id,task.eligible_owners);
         n.append(sel,button("Propose owner",()=>propose("assign",{task:task.id,owner:sel.value}),"assign:"+task.id));
@@ -138,7 +138,7 @@ function render(st) {
     if(g.stage==="allocation"){
       if(["normal","skip_captain"].includes(g.mission.allocation)&&g.controller===g.me.seat)actions.append(button("Pass selection",()=>send("pass_task"),"pass-task",!g.me.may_pass_task,"The remaining tasks must be assigned this round."));
       if(["one","captain_one"].includes(g.mission.allocation)){
-        const owner=ownerSelect("all-owner",g.seats);actions.append(owner,button("Offer all tasks",()=>propose("assign",{owner:owner.value,task:"all"}),"all-tasks",g.mission.allocation==="captain_one"&&g.me.seat!==g.captain,"The captain decides who takes the tasks."));
+        const owner=ownerSelect("all-owner",g.seats);actions.append(owner,button("Offer all tasks",()=>propose("assign",{owner:owner.value,task:"all"}),"all-tasks",Boolean(g.me.offer_reason),g.me.offer_reason||""));
       }
       if(g.mission.allocation==="volunteer"&&g.controller===g.me.seat)actions.append(button("Yes · take the tasks",()=>send("volunteer",{yes:true}),"volunteer-yes"),button("No",()=>send("volunteer",{yes:false}),"volunteer-no",!g.me.may_decline_volunteer,"The remaining crew must take the tasks."));
     }
@@ -158,10 +158,11 @@ function render(st) {
   $("hand-panel").hidden=spectator;$("hand").replaceChildren();$("tonoja").replaceChildren();
   if(g.me){
     $("hand-reason").textContent=g.stage==="passing"?g.me.pass_locked?"Your pass is sealed":"Choose one color card":g.me.play_reason||"Follow the opening suit when possible";
-    for(const c of g.me.hand){const passing=g.stage==="passing";const enabled=!g.away.length&&!g.proposal&&(passing?(!g.me.pass_locked&&!c.startsWith("submarine")):g.turn===g.me.seat&&g.me.legal_cards.includes(c));$("hand").append(cardNode(c,()=>send(passing?"pass_card":"play_card",{card:c}),enabled,passing?"Submarines cannot be passed":g.me.play_reason||"You must follow the opening suit."));}
+    // A card is unavailable exactly when the view gives the server's reason for it (AVR-263).
+    for(const c of g.me.hand){const passing=g.stage==="passing",why=g.me.card_reasons[c]||"";$("hand").append(cardNode(c,()=>send(passing?"pass_card":"play_card",{card:c}),!why,why));}
   }
   $("tonoja-panel").hidden=!g.tonoja.length;
-  for(const c of g.tonoja.filter(Boolean))$("tonoja").append(cardNode(c,()=>send("play_card",{card:c}),Boolean(g.me&&g.turn==="tonoja"&&g.captain===g.me.seat&&g.me.legal_cards.includes(c)&&!g.proposal),g.me?.play_reason||"Only the captain plays for Tonoja."));
+  for(const c of g.tonoja.filter(Boolean)){const why=g.me?.card_reasons[c]||"";$("tonoja").append(cardNode(c,()=>send("play_card",{card:c}),Boolean(g.me&&!why),why));}
   renderSonar(g,values);
   $("result").hidden=!g.result;$("result").replaceChildren();
   if(g.result){$("result").append(el("div",g.result.status==="success"?"MISSION COMPLETE":"MISSION ENDED","eyebrow"),el("h2",g.result.status==="success"?"Together, you did it.":"Dive again."),el("p",g.result.reason));const controls=el("div",undefined,"actions");if(g.me&&!g.proposal&&!g.away.length){if(g.result.status==="failed")controls.append(button("Retry · same tasks",()=>propose("retry",{keep:true}),"retry-same"),button("Retry · new tasks",()=>propose("retry",{keep:false}),"retry-new"));if(g.result.status==="success"){const next=ownerSelect("next-mission",[]);choices(next,(st.missions||[]).filter(m=>m.enabled).map(m=>({value:m.id,text:`Mission ${m.id}`})),(st.missions||[]).find(m=>m.enabled&&m.id>g.mission.id)?.id||g.mission.id);controls.append(next,button("Next expedition",()=>propose("next",{mission:Number(next.value)}),"next"));if(window.Brag)controls.append(Brag.button(()=>({title:"EXPO",icon:"🌊",winner:{name:"The crew",avatar:"🌊"},headline:`Mission ${g.mission.id} completed together`,beaten:[]})));}}$("result").append(controls);}

@@ -113,10 +113,10 @@ try{
     const own=(await state(pg)).game;
     const idle=pages.find(p=>p!==pg),open=own.tasks.find(t=>!t.owner);
     if(!checked.take&&open&&(await control(idle,"task:"+open.id))){
-      // Another seat's selection: the button is disabled and the request is refused (the two
-      // sentences differ, AVR-263, so only the refusal is asserted).
-      assert.equal((await control(idle,"task:"+open.id)).disabled,true);
-      await refusal(idle,{t:"choose_task",task:open.id});checked.take=true;
+      // Another seat's selection: the button is disabled with the server's own rejection (AVR-263).
+      const shown=await control(idle,"task:"+open.id);
+      assert.equal(shown.disabled,true);
+      assert.equal(shown.title,await refusal(idle,{t:"choose_task",task:open.id}));checked.take=true;
     }
     // Pass while passing is allowed, so the run reaches a seat that may not pass.
     const pass=await control(pg,"pass-task");
@@ -129,11 +129,11 @@ try{
   await settle();
   for(const pg of pages){const s=await state(pg);for(const t of s.game.tasks){if(t.prediction_required&&!t.prediction_committed&&(t.owner===s.you.pid||(t.owner==="tonoja"&&s.game.captain===s.you.pid))){const rev=(await state(pg)).game.revision;await clickKey(pg,"lock:"+t.id);await waitRevision(pg,rev);}}}
   {
-    // Before the crew begins, every hand card is disabled with the view's reason and the server
-    // refuses a play (the two sentences differ: E-D8, AVR-263).
+    // Before the crew begins, every hand card is disabled with the server's own rejection of a
+    // play (E-D8, AVR-263).
     const early=(await settle()).game,card=early.me.hand[0],shown=await control(pages[0],"card:"+card);
     assert.equal(early.stage,"assistance");assert.equal(shown.disabled,true);assert.equal(shown.title,early.me.play_reason);
-    await refusal(pages[0],{t:"play_card",card});checked.early=true;
+    assert.equal(shown.title,await refusal(pages[0],{t:"play_card",card}));checked.early=true;
   }
   await crewDecision(pages[0],"begin");
   // Select a non-default sonar card, commit it, then verify its public exposure.
