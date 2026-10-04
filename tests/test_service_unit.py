@@ -51,6 +51,15 @@ def test_it_is_handed_exactly_the_keys_of_the_party_games_it_hosts():
     assert not re.search(r'(?im)^(Set|Import)Credential|^LoadCredentialEncrypted', UNIT + DROP_IN)
 
 
+def test_the_listener_is_loopback_and_no_drop_in_widens_it():
+    """AVR-272: port 8096 is reached through nginx only, never from the LAN."""
+    env = [v for v in directives(UNIT)['Environment'] if v.startswith('LANGAMES_HOST=')]
+    assert env == ['LANGAMES_HOST=127.0.0.1']
+    for path in sorted((ROOT / 'deploy').glob('*.conf')):
+        for value in directives(path.read_text(encoding='utf-8')).get('Environment', []):
+            assert 'LANGAMES_HOST' not in value, path.name
+
+
 def test_the_header_says_what_was_not_confirmed():
     assert 'RECONSTRUCTED, NOT COPIED' in UNIT
     assert UNIT.count('# not confirmed from the records') == 3
