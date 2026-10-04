@@ -66,10 +66,66 @@ def test_the_vendored_checker_decides_every_shared_case_as_recorded(case):
         assert str(refused.value) == case["reason"]
 
 
-def test_the_build_id_names_the_rules_code_and_is_stable():
+def test_the_build_id_is_stable_well_formed_and_per_game():
     a = party_session.build_id("bluff")
     assert a == party_session.build_id("bluff") and party_result.TAG.match(a)
     assert a.startswith("sha256:") and a != party_session.build_id("expo")
+
+
+def test_the_build_id_covers_the_shared_runtime_that_produces_the_result():
+    names = {p.relative_to(ROOT).as_posix() for p in party_session.build_files("bluff")}
+    assert {"server.py", "requirements.txt", "core/net.py", "core/session.py",
+            "core/party_result.py", "core/party_protocol.py", "core/party_session.py",
+            "games/registry.py", "games/bluff/game.py"} <= names
+    assert not any(n.startswith(("games/bluff/web/", "games/bluff/art/", "games/expo/")) for n in names)
+    assert not any(n.endswith((".md", ".pyc")) for n in names)
+    assert "games/expo/content/tasks.json" in {
+        p.relative_to(ROOT).as_posix() for p in party_session.build_files("expo")}
+
+
+def _tree(root):
+    for rel, text in (("server.py", "app = 1\n"), ("requirements.txt", "fastapi==1\n"),
+                      ("core/net.py", "x = 1\n"), ("core/party_result.py", "y = 1\n"),
+                      ("games/registry.py", "r = 1\n"), ("games/__init__.py", ""),
+                      ("games/alpha/game.py", "a = 1\n"), ("games/alpha/content/set.json", "{}\n"),
+                      ("games/alpha/web/client.js", "1\n"), ("games/alpha/README.md", "a\n"),
+                      ("games/beta/game.py", "b = 1\n")):
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(text.encode("utf-8"))
+
+
+@pytest.mark.parametrize("rel,changes", (
+    ("core/net.py", True),                     # the code that builds and sends the result
+    ("core/party_result.py", True),            # the vendored envelope
+    ("server.py", True),
+    ("requirements.txt", True),                # pinned dependencies
+    ("games/registry.py", True),
+    ("games/alpha/game.py", True),             # the rules
+    ("games/alpha/content/set.json", True),    # server-side content
+    ("games/alpha/web/client.js", False),      # the browser's files decide nothing
+    ("games/alpha/README.md", False),
+    ("games/beta/game.py", False),             # another game
+))
+def test_the_build_id_changes_exactly_when_the_implementation_does(tmp_path, rel, changes):
+    _tree(tmp_path)
+    before = party_session.build_id("alpha", tmp_path)
+    copy = tmp_path.parent / (tmp_path.name + "-copy")
+    _tree(copy)
+    assert party_session.build_id("alpha", copy) == before          # same content, same id
+    with open(copy / rel, "a", encoding="utf-8") as f:
+        f.write("# changed\n")
+    party_session._builds.pop((str(copy), "alpha"))
+    assert (party_session.build_id("alpha", copy) != before) is changes
+
+
+def test_line_endings_do_not_change_the_build_id(tmp_path):
+    _tree(tmp_path)
+    before = party_session.build_id("alpha", tmp_path)
+    path = tmp_path / "core/net.py"
+    path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+    party_session._builds.clear()
+    assert party_session.build_id("alpha", tmp_path) == before
 
 
 # ---- BLUFF's real result --------------------------------------------------------------------

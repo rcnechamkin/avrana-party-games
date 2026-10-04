@@ -59,21 +59,50 @@ ENDED_PATH = "/internal/party-session/v0/ended"
 POST_TIMEOUT = 3.0                      # s per attempt
 RETRY_DELAYS = (1.0, 2.0, 4.0)          # s; worst case ~19 s, inside the 30 s message lifetime
 _warned: set = set()                    # log-once keys
-_builds: dict = {}                      # slug -> build id
+_builds: dict = {}                      # (root, slug) -> build id
+
+ROOT = Path(__file__).resolve().parent.parent
+# Everything in this server that can change what a game reports, relative to the repository
+# root. The game's own directory is added per game, minus what only a browser or a reader uses.
+BUILD_SHARED = ("server.py", "requirements.txt", "core/**/*.py", "games/__init__.py",
+                "games/registry.py")
+BUILD_GAME_SKIP = ("web", "art", "docs", "__pycache__")
 
 
-def build_id(slug):
-    """Provenance for a result (`game.build`): which implementation produced it. A digest of the
-    game's own Python sources (games/<slug>/**/*.py, line endings normalized), so it changes
-    exactly when the rules code does and needs no release discipline to stay true."""
-    if slug not in _builds:
-        root = Path(__file__).resolve().parent.parent / "games" / slug
+def build_files(slug, root=ROOT):
+    """The files whose content is the implementation behind `slug`'s results, sorted."""
+    files = set()
+    for pattern in BUILD_SHARED:
+        files.update(p for p in root.glob(pattern) if p.is_file())
+    game = root / "games" / slug
+    for p in game.rglob("*"):
+        rel = p.relative_to(game)
+        if p.is_file() and rel.parts[0] not in BUILD_GAME_SKIP and "__pycache__" not in rel.parts \
+                and p.suffix not in (".md", ".pyc"):
+            files.add(p)
+    return sorted(files, key=lambda p: p.relative_to(root).as_posix())
+
+
+def build_id(slug, root=ROOT):
+    """Provenance for a result (`game.build`): which implementation produced it.
+
+    A result is produced by the game's rules AND by this server around them (core/, server.py,
+    the vendored protocol and result code, the pinned dependencies), so the id is a digest of
+    all of it: the shared runtime plus the game's own sources and server-side content. It is
+    the same for every checkout of one commit, differs when any of those files differs, and can
+    be recomputed from the repository at any commit, which is how a stored id is traced back.
+
+    A commit id would be the natural name, but the running server cannot know it: a deployed
+    tree is an rsync copy with no trustworthy .git (ops/deploy.sh keeps the commit in the
+    release backup, not in the tree). A digest of what is actually loaded cannot be stale."""
+    key = (str(root), slug)
+    if key not in _builds:
         digest = hashlib.sha256()
-        for path in sorted(root.rglob("*.py")):
+        for path in build_files(slug, root):
             digest.update(path.relative_to(root).as_posix().encode() + b"\0")
             digest.update(path.read_bytes().replace(b"\r\n", b"\n") + b"\0")
-        _builds[slug] = "sha256:" + digest.hexdigest()[:16]
-    return _builds[slug]
+        _builds[key] = "sha256:" + digest.hexdigest()[:16]
+    return _builds[key]
 
 
 def load_side(slug, keys_dir):
