@@ -57,7 +57,12 @@ class Engine:
     def _generate(self, m):
         s = self.s
         if m.get('fixed'):
-            return list(m['fixed'])
+            # The named tasks are taken out of the piles like any drawn card (AVR-265): left in
+            # the deck they came back from the used pile as a second copy.
+            fixed = list(m['fixed'])
+            s['deck'] = [k for k in s['deck'] if k not in fixed]
+            s['used'] = [k for k in s['used'] if k not in fixed]
+            return fixed
         remaining = m['target']
         selected, skipped = [], []
         if not s['deck']:
@@ -636,6 +641,14 @@ class Engine:
             order = s['seats'][s['seats'].index(s['leader']):] + s['seats'][:s['seats'].index(s['leader'])]
             require([p['seat'] for p in s['trick']] == order[:len(s['trick'])]
                     and s['turn'] == order[len(s['trick'])], 'snapshot', 'Current trick check failed.')
+        # A task card is in one place: the deck, the used pile or the mission in play. The tasks
+        # of a mission that has ended are in the used pile and still shown as its tasks.
+        piles = (s['deck'], s['used'], s['selected'])
+        require(all(type(p) is list and all(isinstance(k, str) and k in TASKS for k in p)
+                    and len(set(p)) == len(p) for p in piles)
+                and not set(s['deck']) & (set(s['used']) | set(s['selected']))
+                and (s['result'] is not None or not set(s['used']) & set(s['selected'])),
+                'snapshot', 'Task pile check failed.')
         require(all(k in TASKS and TASKS[k]['enabled'] for k in s['selected'])
                 and all(owner in s['seats'] and self.eligible(k, owner) for k, owner in s['assignments'].items()),
                 'snapshot', 'Task definition check failed.')

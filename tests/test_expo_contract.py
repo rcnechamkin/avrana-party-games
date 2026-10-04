@@ -21,7 +21,7 @@ from games.expo.game import ExpoSession
 from games.expo.rules import DECK, assertions, legal_cards, rank, suit
 from games.expo.tasks import evaluate
 
-from test_expo import act, allocated, command, decide, playing, session, task_state
+from test_expo import act, allocated, command, decide, place, playing, session, task_state
 
 DEFECT = dict(strict=True, raises=(AssertionError, Invalid))
 
@@ -138,6 +138,7 @@ def test_named_submarine_alignments_are_deal_exceptions(task, held, expected):
 def test_a_deal_exception_is_redealt_before_the_attempt_is_counted():
     for seed in range(40):
         e = Engine(['a', 'b', 'c'], random.Random(seed))
+        e.s['deck'] = [k for k in e.s['deck'] if k not in ('black1', '2black')]   # kept tasks are in play
         e.prepare(1, keep=['black1', '2black'])
         assert not e._deal_exception(e.s['pool'])
         assert e.s['attempts'] == 0 and not e.s['counted']
@@ -208,6 +209,7 @@ def test_only_the_captain_may_offer_the_tasks_in_missions_ten_and_thirteen():
     e = Engine(['a', 'b', 'c'], random.Random(9), 13)
     other = next(q for q in e.s['humans'] if q != e.s['captain'])
     e.s['pool'] = ['blue4']; e.s['selected'] = ['blue4']
+    place(e)
     with pytest.raises(Invalid):
         act(e, other, 'propose', proposal={'kind': 'assign', 'owner': other, 'task': 'all'})
     act(e, e.s['captain'], 'propose', proposal={'kind': 'assign', 'owner': e.s['captain'], 'task': 'all'})
@@ -222,6 +224,7 @@ def captain_one(humans=('a', 'b', 'c'), mid=10, pool=('blue4',), seed=9):
     """A `captain_one` table at allocation: the engine, the captain and the other humans."""
     e = Engine(list(humans), random.Random(seed), mid)
     e.s['pool'] = list(pool); e.s['selected'] = list(pool)
+    place(e)
     cap = e.s['captain']
     return e, cap, [q for q in e.s['humans'] if q != cap]
 
@@ -360,6 +363,7 @@ def test_a_pending_offer_survives_a_snapshot_and_blocks_other_commands():
 def test_every_other_crew_decision_still_needs_every_seated_human():
     e = Engine(['a', 'b', 'c'], random.Random(9), 6)                 # `one`: the crew decides together
     e.s['pool'] = ['blue4']; e.s['selected'] = ['blue4']
+    place(e)
     act(e, 'a', 'propose', proposal={'kind': 'assign', 'owner': 'b', 'task': 'all'})
     assert 'recipient' not in e.s['proposal']
     act(e, 'b', 'confirm', yes=True)
@@ -379,6 +383,7 @@ def test_every_other_crew_decision_still_needs_every_seated_human():
 def test_collective_and_free_allocation_refuse_a_captain_comparison_task_for_the_captain(mid):
     e = Engine(['a', 'b', 'c'], random.Random(9), mid)
     e.s['pool'] = ['moreTricksThanCaptain']; e.s['selected'] = list(e.s['pool'])
+    place(e)
     cap = e.s['captain']
     task = 'all' if mid == 6 else 'moreTricksThanCaptain'
     with pytest.raises(Invalid):
@@ -863,6 +868,7 @@ def test_defect_captain_left_with_a_comparison_task_ends_the_attempt_instead_of_
     e = Engine(['p0', 'p1', 'p2', 'p3'], random.Random(2), 1)
     pool = ['green6', 'yellow1', 'red3', 'blue4', 'lessTricksThanCaptain']
     e.s.update(pool=list(pool), selected=list(pool), initial_count=5, assignments={}, progress={}, pick_index=0)
+    place(e)
     for k in pool[:4]:
         act(e, e.selector(), 'choose_task', task=k)
     assert e.selector() == e.s['captain']
@@ -877,6 +883,7 @@ def misplayed(humans=('p0', 'p1', 'p2', 'p3'), seed=2):
     ordinary = ['green6', 'yellow1', 'red3', 'blue4', 'black3']
     pool = ordinary[:len(e.s['seats'])] + ['lessTricksThanCaptain']
     e.s.update(pool=list(pool), selected=list(pool), initial_count=len(pool), assignments={}, progress={}, pick_index=0)
+    place(e)
     assert e._captain_conflict(pool, e.s['mission']) is None           # the crew could have avoided it
     for k in pool[:-1]:
         assert e.s['result'] is None
@@ -930,6 +937,7 @@ def test_selection_never_fails_while_the_next_seat_can_take_or_pass():
     e = Engine(['a', 'b', 'c'], random.Random(4))
     e.s['pool'] = ['moreTricksThanCaptain']
     e.s['selected'] = ['moreTricksThanCaptain']
+    place(e)
     e.s['initial_count'] = 1
     act(e, e.s['captain'], 'pass_task')                               # fewer tasks than seats: a legal pass
     assert e.s['result'] is None and e.s['phase'] == 'allocation'
@@ -987,6 +995,7 @@ def test_only_the_three_window_tasks_complete_early_for_a_seat_that_wins_nothing
 
 def with_single_task(e, key, owner):
     e.s.update(pool=[], selected=[key], assignments={key: owner}, progress={key: 'pending'})
+    place(e)
     e.check()
     return e
 
@@ -1027,6 +1036,7 @@ def test_a_window_task_does_not_finish_the_mission_while_another_task_is_open():
         e.s.update(pool=[], selected=['noneFirst3Tricks', '0tricks'],
                    assignments={'noneFirst3Tricks': 'p1', '0tricks': 'p1'},
                    progress={'noneFirst3Tricks': 'pending', '0tricks': 'pending'})
+        place(e)
         play_tricks(e, 3)
         if 'p1' not in [h['winner'] for h in e.s['history']]:
             assert e.s['progress'] == {'noneFirst3Tricks': 'satisfied', '0tricks': 'pending'}
@@ -1040,6 +1050,7 @@ def timed_window_table(seed):
     e = Engine(['p0', 'p1', 'p2'], random.Random(seed), 16, timed=True)
     e.s['pool'] = ['noneFirst3Tricks']
     e.s['selected'] = ['noneFirst3Tricks']
+    place(e)
     volunteer = e.selector()
     act(e, volunteer, 'volunteer', yes=True)
     decide(e, 'p0', 'begin')                           # act() supplies now=100

@@ -24,7 +24,7 @@ from games.expo.game import ExpoSession
 from games.expo.rules import legal_cards, suit
 from games.expo.tasks import evaluate
 
-from test_expo import act, allocated, command, decide, playing, session, task_state
+from test_expo import act, allocated, command, decide, place, playing, session, task_state
 from test_expo_contract import play_trick, two_humans
 
 PHASES = ('allocation', 'prediction', 'assistance', 'passing', 'before_trick', 'in_trick', 'mission_result')
@@ -43,6 +43,7 @@ def at_phase(n, phase, currents=False):
         if phase != 'allocation':
             e.s['pool'] = ['exactlyXtrickSecret', 'blue4']
             e.s['selected'] = list(e.s['pool'])
+            place(e)
             e.s['initial_count'] = 2
         if phase == 'prediction':
             while e.s['pool']:
@@ -289,6 +290,7 @@ def test_mission_six_lets_the_crew_name_tonoja_and_the_captain_predicts_for_it()
     e = Engine(['a', 'b'], random.Random(9), 6)
     e.s['pool'] = ['blue4', 'exactlyXtrick']
     e.s['selected'] = list(e.s['pool'])
+    place(e)
     captain = e.s['captain']
     other = next(q for q in e.s['humans'] if q != captain)
     act(e, other, 'propose', proposal={'kind': 'assign', 'owner': 'tonoja', 'task': 'all'})
@@ -516,6 +518,7 @@ def test_a_mission_succeeds_as_soon_as_its_last_task_is_complete():
         e = Engine(['a', 'b', 'c'], random.Random(seed))
         e.s['pool'] = ['firstTrick']
         e.s['selected'] = ['firstTrick']
+        place(e)
         act(e, e.s['captain'], 'choose_task', task='firstTrick')
         decide(e, 'a', 'begin')
         first = play_trick(e)
@@ -858,6 +861,7 @@ def test_a_dropped_phone_returns_to_its_seat_in_every_phase_through_the_websocke
     def with_a_prediction(e):
         e.s['pool'] = ['exactlyXtrick', 'blue4']
         e.s['selected'] = list(e.s['pool'])
+        place(e)
         e.s['initial_count'] = 2
     room.on_table(with_a_prediction)
     drop_and_return(room, phones, 'allocation')
