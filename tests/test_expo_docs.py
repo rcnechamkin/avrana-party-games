@@ -82,8 +82,9 @@ def test_the_mission_table_matches_the_content():
 def test_the_two_player_availability_matches_the_catalog():
     text = read('MISSION_MODEL.md')
     off = sorted(m['id'] for m in content.catalog(2) if not m['enabled'] and m['id'] not in content.BLOCKED)
-    assert off == [11, 16, 21, 22, 23, 24, 25, 27]
-    assert 'every `terrain` and `rapture`\nmission (11, 21 to 25, 27), the `volunteer` mission (16)' in text
+    assert off == [16]
+    assert 'the following are refused (DEFERRED C11): the `volunteer`\nmission (16) and distress in any mission.' in text
+    assert 'with one shared token: missions 11, 21 to 25 and 27' in text
 
 
 def test_the_task_catalog_matches_the_content():

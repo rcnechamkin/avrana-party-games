@@ -8,6 +8,7 @@ import { puppeteer, CHROME_PATH } from "./_resolve.mjs";
 const BASE=process.argv[2]||"http://127.0.0.1:8196";
 const OUT=process.argv[3]||path.join(os.tmpdir(),"expo-playtest");
 const HUMANS=Number(process.env.EXPO_HUMANS||3);
+const MISSION=Number(process.env.EXPO_MISSION||0); // optional: play this mission instead of the default
 fs.mkdirSync(OUT,{recursive:true});
 const errors=[];
 const browser=await puppeteer.launch({executablePath:CHROME_PATH,headless:"new",
@@ -29,8 +30,11 @@ try{
     pages.push(pg);await pg.click("#ready");await pg.waitForFunction(()=>ST.you.ready);
   }
   await pages[0].screenshot({path:path.join(OUT,"lobby-phone.png"),fullPage:true});
+  if(MISSION){await pages[0].select("#mission",String(MISSION));await pages[0].waitForFunction(m=>ST.settings.mission===m,{},MISSION);}
   await pages[0].click("#start");
-  await pages[0].waitForFunction(()=>ST?.game?.stage==="allocation",{timeout:12000});
+  // A mission with an objective and no tasks opens on the assistance stage.
+  await pages[0].waitForFunction(()=>["allocation","assistance"].includes(ST?.game?.stage),{timeout:12000});
+  if(MISSION)assert.equal((await state(pages[0])).game.mission.id,MISSION);
   for(let i=0;i<25;i++){
     const s=await state(pages[0]);if(s.game.stage!=="allocation")break;
     let pg;
@@ -41,7 +45,7 @@ try{
     if(task){const rev=own.revision;await clickKey(pg,"task:"+task.id);await waitRevision(pg,rev);}
     else{const rev=own.revision;await clickKey(pg,"pass-task");await waitRevision(pg,rev);}
   }
-  for(const pg of pages){const s=await state(pg);for(const t of s.game.tasks){if(t.prediction_required&&!t.prediction_committed&&t.owner===s.you.pid){const rev=(await state(pg)).game.revision;await clickKey(pg,"lock:"+t.id);await waitRevision(pg,rev);}}}
+  for(const pg of pages){const s=await state(pg);for(const t of s.game.tasks){if(t.prediction_required&&!t.prediction_committed&&(t.owner===s.you.pid||(t.owner==="tonoja"&&s.game.captain===s.you.pid))){const rev=(await state(pg)).game.revision;await clickKey(pg,"lock:"+t.id);await waitRevision(pg,rev);}}}
   await crewDecision(pages[0],"begin");
   // Select a non-default sonar card, commit it, then verify its public exposure.
   const sonar=await state(pages[0]),opts=sonar.game.me.communication_options;
@@ -50,6 +54,8 @@ try{
     await pages[0].select('select[data-key="sonar-card"]',card);
     await clickKey(pages[0],"communicate");await waitRevision(pages[0],rev);
     assert.ok((await state(pages[0])).game.exposures.some(e=>e.card===card&&e.seat===sonar.you.pid));
+    // A shared pool loses one token for everyone; an empty pool leaves nobody any option.
+    if(sonar.game.shared_sonar!==null)for(const pg of pages){await waitRevision(pg,rev);const g=(await state(pg)).game;assert.equal(g.shared_sonar,sonar.game.shared_sonar-1);if(!g.shared_sonar)assert.deepEqual(g.me.communication_options,{});}
   }
   await pages[0].screenshot({path:path.join(OUT,"table-phone.png"),fullPage:true});
   for(const pg of pages){const s=await state(pg);assert.equal(s.game.me.hand.length,s.game.hand_counts[s.you.pid]);assert.equal(s.game.planned_tricks,HUMANS===2?13:Math.floor(40/HUMANS));assert.equal(Object.hasOwn(s.game,"hands"),false);}

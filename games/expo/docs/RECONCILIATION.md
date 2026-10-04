@@ -30,9 +30,9 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
   (AVR-241). Of the four that remain, one affects play and needs an owner decision on the remedy:
   a table cannot be ended while someone is away (AVR-240).
 - Twenty-three digital policies are in force. The owner decided the open ones on 2026-10-04
-  (AVR-243, questions Q1 to Q8 below). Four decisions change behaviour. Two are implemented:
-  single-card communication (AVR-248) and the task `5with7` (AVR-249). Two are not yet: AVR-250,
-  AVR-251. One more needs a further decision: AVR-252.
+  (AVR-243, questions Q1 to Q8 below). Four decisions change behaviour. Three are implemented:
+  single-card communication (AVR-248), the task `5with7` (AVR-249) and one shared sonar token for
+  two players (AVR-250). One is not yet: AVR-251. One more needs a further decision: AVR-252.
 - Eight missions and four tasks stay blocked on source material (AVR-244).
 - The earlier specification was wrong or stale in eleven places (E-S1 to E-S11).
 
@@ -71,7 +71,7 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 |---|---|---|---|---|
 | E-M30 | Targets of missions 1, 2, 5 to 11, 13, 16 to 18, 21 to 25, 27 to 31 (L; R p8 for mission 5) | `content.TARGETS` | `test_difficulty_generation_and_no_pass_in_second_circuit`, `tests/test_expo_docs.py` | MATCH |
 | E-M31 | Currents: declaration hidden from the crew (R p19, L M9) | `view` strips `assertion` | `test_currents_masks_assertion_and_shared_pool_is_atomic`, `test_currents_hides_a_declaration_from_every_viewer_but_its_author` | MATCH |
-| E-M32 | Rapture: pool of seats minus two; several uses allowed (R p19 to p20, L M11) | `shared`, `communicate` | `test_currents_masks_assertion_and_shared_pool_is_atomic` | MATCH |
+| E-M32 | Rapture: pool of seats minus two; several uses allowed (R p19 to p20, L M11) | `shared`, `communicate` | `test_currents_masks_assertion_and_shared_pool_is_atomic`, `test_the_shared_pool_for_three_to_five_players_is_unchanged`; two humans and the dummy, one token: `test_either_human_may_spend_the_shared_token_and_then_nobody_can_communicate` | MATCH |
 | E-M33 | Terrain: color card before the deal, 1-3 / 4-6 / 7-9, submarine redrawn, per attempt (R p20) | `prepare` | `test_terrain_card_maps_to_the_communication_mode_and_returns_to_the_deck`, `test_skip_captain_and_terrain_draws_are_frozen_on_restore` | MATCH |
 | E-M34 | Mission 6: one seat takes all, chosen together (L M6) | allocation `one` | `test_collective_and_free_allocation_refuse_a_captain_comparison_task_for_the_captain` | MATCH |
 | E-M35 | Missions 10, 13: captain takes all or passes all to a willing member; then sonar only before the first trick (L) | `captain_one`, `before_first_only` | `test_single_owner_delegation_free_allocation_and_volunteers`, `test_only_the_captain_may_offer_the_tasks_in_missions_ten_and_thirteen` | MATCH |
@@ -145,7 +145,7 @@ a source's wording makes the choice non-obvious and the owner has not confirmed 
 | P20 | A secret prediction is revealed to everyone at the mission result | R is silent | `test_prediction_zero_is_locked_and_secret_is_private` (privacy before the result only) | uncontested |
 | P21 | Ending the table is `abandoned` unless a mission result already stood, in which case the outcome reported to Party is `completed` | Party protocol vocabulary | `test_ending_the_table_is_abandoned`, `test_ending_the_table_after_a_decided_mission_is_completed` | uncontested |
 | P22 | The dummy's seat is a lobby setting, default after both players | R p22: the players decide where it sits | `test_deals_conserve_and_captain` | uncontested standalone; unavailable in Party (Q11) |
-| P23 | Mission 8 is offered to two players and counts the dummy in the balance | C11 | none specific | confirmed 2026-10-04 (Q6): the dummy is the third crew member for crew-count mechanics |
+| P23 | Mission 8 is offered to two players and counts the dummy in the balance | C11 | the same evaluator on mission 21: `test_mission_twenty_one_counts_tonoja_in_the_balance_of_color_ones` | confirmed 2026-10-04 (Q6): the dummy is the third crew member for crew-count mechanics |
 
 ## Stale or incorrect earlier specification
 
@@ -174,7 +174,7 @@ they were wrong or have been overtaken; the committed documents carry the correc
 | E-X2 | Showing cards won toward an unfinished task (R p16, optional) | DEFERRED |
 | E-X3 | Missions 3, 4, 12, 14, 15, 19, 20, 26 and their special rules (lead restriction, hardest-to-captain, two volunteers, other timers) | not implemented; blocked on sources, AVR-244 |
 | E-X4 | Tasks `moreRedThanGreen`, `moreYellowThanBlue`, `4with8`, `6with6` | definitions stored, disabled. `5with7` left this list on 2026-10-04 (Q5, AVR-249) |
-| E-X5 | Two players with distress, shared sonar or volunteers | all refused today. Decided 2026-10-04 (Q6): shared sonar is to be allowed with one token (AVR-250); distress and volunteer missions stay deferred |
+| E-X5 | Two players with distress or volunteers | refused. Decided 2026-10-04 (Q6): distress and volunteer missions stay deferred. Shared sonar left this list on 2026-10-04 (AVR-250): one token, humans only |
 | E-X6 | A TV presentation, bots, solo play | not planned in this scope |
 | E-X7 | Campaign history across tables | Party owns durable history; EXPO keeps none |
 | E-P1 | In a Party round the starting mission, timed mode and the dummy's seat cannot be chosen | AVR-245 (Q11); `test_a_party_round_locks_settings_so_the_table_opens_on_mission_one` |
@@ -203,7 +203,7 @@ something more distinctly Avrana is a later phase, not this one.
 | Q3 | Keep automatic task-deck replenishment, no crew confirmation | Avrana policy, confirmed | no | |
 | Q4 | Keep the reference-derived catalog enabled where no higher source contradicts it; document provenance | reference-derived, accepted | no | AVR-244 for stronger evidence |
 | Q5 | Enable `5with7`; keep `4with8` and `6with6` quarantined | source-backed (text layer) | yes | AVR-249, implemented |
-| Q6 | Mission 8 stays for two players with the dummy counted; shared sonar uses one token for two players; distress and volunteer missions stay unavailable for two | source-leaning for the first two; deferred for the rest | yes, shared sonar only | AVR-250 |
+| Q6 | Mission 8 stays for two players with the dummy counted; shared sonar uses one token for two players; distress and volunteer missions stay unavailable for two | source-leaning for the first two; deferred for the rest | yes, shared sonar only | AVR-250, implemented |
 | Q7 | Keep the cap at mission 50, difficulty 35 | Avrana product limit | no | |
 | Q8 | Follow source-specific authority: in missions 10 and 13 the captain decides and only the recipient consents. Keep unanimity for strategic decisions; routine progression should not be frozen by one player | source-backed for 10 and 13; Avrana policy otherwise | yes, missions 10 and 13 | AVR-251; AVR-252 for progression |
 
@@ -306,11 +306,29 @@ cards); a three-seat shared pool has one token.
 mechanics.
 - Mission 8 stays available for two players with the dummy counted. Confirmed; already built.
 - Shared sonar uses one token in a two-player game (three seats minus two). This opens the
-  shared-sonar mission and the terrain missions to two players. Not implemented yet: AVR-250.
+  shared-sonar mission and the terrain missions to two players. Implemented 2026-10-04 (AVR-250).
 - Distress stays disabled for two players. The rules set out the token but do not define how the
   dummy gives or receives the exchanged card; that mechanic is not to be invented now.
 - Volunteer missions stay unavailable for two players unless stronger source material defines how
   the dummy takes part.
+
+Implemented 2026-10-04 (AVR-250): the two-player refusal of `rapture` and `terrain` missions is
+removed from `content.catalog` and `Engine.prepare`; nothing else changed, because the pool was
+already computed as seats minus two and only seated humans could ever communicate. Missions 11,
+21, 22, 23, 24, 25 and 27 are offered to two players. The "Now" line above describes the state
+before this change. Tests: `test_two_humans_can_prepare_every_shared_sonar_and_terrain_mission`,
+`test_two_humans_on_mission_eleven_begin_with_exactly_one_shared_token`,
+`test_either_human_may_spend_the_shared_token_and_then_nobody_can_communicate`,
+`test_tonoja_never_communicates_and_the_captain_cannot_communicate_for_it`,
+`test_two_humans_cannot_use_distress_or_volunteer_missions`.
+
+Checked while building it, and left as the sources have them (see
+[MISSION_MODEL](MISSION_MODEL.md#two-players)): mission 21 counts the dummy in the balance;
+mission 23 lets the dummy be the first winner; in mission 25 the captain takes no task and still
+chooses the dummy's. Mission 27: yellow 5 can be one of the dummy's fourteen cards, even covered,
+and if it is the card the dummy never plays the mission fails at the end of the deal
+(`test_mission_twenty_seven_with_tonoja_holding_yellow_five`). UNKNOWN: whether a deal exists
+that no play can win. No source gives a redeal or a forced choice for it, so none was added.
 
 **Q7 (AVR-243). Continuation cap.** L sets no limit. Now: 50. Raising it only needs the deck to
 reach the total, which is checked.
@@ -512,3 +530,32 @@ run was in progress. They passed on the rerun recorded above and do not touch EX
 
 Not covered: the task was not played through a browser. Real phones and the appliance remain
 unverified.
+
+### AVR-250, 2026-10-04
+
+Scope: the two-human refusal of `rapture` and `terrain` missions, removed from `catalog` in
+`games/expo/content.py` and from `Engine.prepare` in `games/expo/engine.py`. No task content,
+client, adapter, snapshot-format or content-hash change. The pool size (seats minus two) and the
+rule that only seated humans communicate were already in the engine. The browser playtest gained
+an optional `EXPO_MISSION` setting, a check of the shared pool after a communication, and the
+captain locking a prediction for the dummy.
+
+| Check | Result |
+|---|---|
+| The new and updated tests against the engine before the change | 33 failed, as they should |
+| `pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_docs.py` | 294 passed, 1 expected failure (E-D2) |
+| `pytest` (whole repository, with a sibling Party checkout present) | 1,772 passed, 1 expected failure, 0 failed |
+| `ops/check_docs.py`, `tests/test_no_private_data.py`, catalog drift check, `ops/check_static.sh` | all passed |
+| `tests/playtest_expo.mjs`, headless Chrome, two humans on missions 11, 21, 22, 23, 24, 25 and 27 | passed |
+| `tests/playtest_expo.mjs`, headless Chrome, 2, 3, 4 and 5 humans on the default mission; 3 and 4 humans on mission 11; 5 humans on mission 24 | passed, see the note below |
+| `ops/test_release_safety.sh` | not run locally (needs rsync; GitHub Actions runs it) |
+
+Playtest note: repeated runs at four and five humans failed now and then, on a task button or a
+legal card the script expected on a page that had not yet drawn the newest state. The playtest as
+it stands on `main` fails the same way when repeated, at five humans, so this is a timing fault in
+the script and not in this change. A run that fails leaves its standalone table stranded (E-D2),
+and every later run against that server then times out until the server is restarted.
+
+Not covered: the browser runs use the first legal card, so they show that the two-player missions
+start, communicate and reach a result, not that they can be won. Real phones, the appliance and a
+Party-launched round remain unverified.

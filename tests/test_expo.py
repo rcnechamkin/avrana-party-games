@@ -357,7 +357,8 @@ def test_blocked_content_and_types():
         with pytest.raises(ValueError):Engine(['a','b','c'],random.Random(1),mid)
     assert len(TASKS)==96 and sum(d['enabled'] for d in TASKS.values())==92
     assert sorted(k for k,d in TASKS.items() if not d['enabled'])==['4with8','6with6','moreRedThanGreen','moreYellowThanBlue']
-    assert not next(m for m in catalog(2) if m['id']==11)['enabled']
+    assert next(m for m in catalog(2) if m['id']==11)['enabled']  # one shared token for two (AVR-250)
+    assert not next(m for m in catalog(2) if m['id']==16)['enabled']
     e=playing();msg=command(e,'p0','predict',task='exactlyXtrick',count=True)
     with pytest.raises(Invalid):e.apply('p0',msg,100)
 
