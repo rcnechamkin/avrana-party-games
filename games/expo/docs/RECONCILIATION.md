@@ -647,9 +647,9 @@ Every matrix row that was partial is closed or says why it cannot be tested
 ([IMPLEMENTATION_PLAN](IMPLEMENTATION_PLAN.md#deterministic-test-matrix)). What the new tests
 establish, none of it by changing behaviour:
 
-- No view changes when what its viewer may not see changes (other hands, covered cards, sealed
-  distress choices, a committed secret prediction, a currents declaration): every phase, every
-  seat, a watcher, an unknown id and the dummy's name, at 2 to 5 players, and the card under a
+- No view changes when what its viewer may not see changes (other hands and covered cards in
+  every phase; sealed distress choices, a committed secret prediction and a currents declaration
+  wherever one exists): every seat, a watcher, an unknown id and the dummy's name, at 2 to 5 players, and the card under a
   column Tonoja has just played from.
 - Two commands built at one revision cannot both be accepted, in the engine and from two real
   sockets; the last shared sonar token asked for twice is spent once.

@@ -62,7 +62,9 @@ def at_phase(n, phase, currents=False):
                     act(e, humans[0], 'communicate', card=card, assertion=opts[0])
                 if phase in ('in_trick', 'mission_result'):
                     q = e.s['turn']
-                    act(e, e.controller(q), 'play_card', card=legal_cards(e.playable(q), e.s['trick'])[0])
+                    shown = {x['card'] for x in e.s['exposures']}        # keep the shown card in hand
+                    legal = legal_cards(e.playable(q), e.s['trick'])
+                    act(e, e.controller(q), 'play_card', card=next((c for c in legal if c not in shown), legal[0]))
                 if phase == 'mission_result':
                     e._finish('failed', 'fixture')
         if e.s['phase'] == phase:
@@ -71,8 +73,9 @@ def at_phase(n, phase, currents=False):
 
 
 def with_other_secrets(e, viewer, seed):
-    """The same table with everything the viewer may not see dealt differently: the other
-    players' hands, Tonoja's covered cards and the other players' sealed distress choices."""
+    """The same table with everything the viewer may not see changed: the other players' hands,
+    Tonoja's covered cards, the other players' sealed distress choices, a secret prediction the
+    viewer does not own and, in currents, a declaration the viewer did not make."""
     other = Engine.restore(deepcopy(e.snapshot()))
     s = other.s
     fixed = {x['card'] for x in s['exposures'] if x['active']} | {'submarine:4'}
@@ -115,7 +118,7 @@ def test_no_view_depends_on_what_its_viewer_may_not_see(n, phase, currents):
     if phase in ('assistance', 'passing', 'before_trick', 'in_trick'):
         assert e.s['predictions'] == {'exactlyXtrickSecret': 0}      # a secret is really in play
     if phase in ('before_trick', 'in_trick', 'mission_result'):
-        assert e.s['exposures']                                      # and so is a declaration
+        assert any(x['active'] for x in e.s['exposures'])            # and so is a live declaration
     viewers = list(e.s['humans']) + [None, 'tonoja', 'stranger']
     for viewer in viewers:
         view = e.view(viewer)
@@ -693,7 +696,7 @@ def test_the_completed_distress_exchange_survives_a_restart_with_the_cards_in_th
     assert final.engine.s['hands'] == e.s['hands'] and final.engine.s['distress']
 
 
-# ---- T39 reconnect in every phase, and T38 through the room lock: the real WebSocket binding ---
+# ---- T39 reconnect in every phase, and T38 from two sockets: the real WebSocket binding --------
 
 def until(cond, limit=10.0):
     end = time.time() + limit
