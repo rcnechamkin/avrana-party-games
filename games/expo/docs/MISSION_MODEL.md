@@ -256,11 +256,11 @@ selected.
 
 ## Catalog
 
-96 task definitions, ids and difficulties identical to the reference; 91 enabled, 5 blocked. The
+96 task definitions, ids and difficulties identical to the reference; 92 enabled, 4 blocked. The
 full list with family and status is in
 [VTT_REFERENCE](VTT_REFERENCE.md#task-catalog). No complete readable set of the publisher's task
 cards was supplied, so the catalog is reference-derived: R corroborates the families and some
 individual cards, but not every card face (C18). The owner decided on 2026-10-04 to keep it enabled
 where no higher source contradicts it and to record provenance per task: the catalog's Evidence
-column marks each task `corroborated`, `reference` or `quarantined`. `5with7` is to be enabled
-(AVR-249), which will make 92 enabled.
+column marks each task `corroborated`, `reference` or `quarantined`. `5with7` was enabled on
+2026-10-04 (AVR-249); `4with8`, `6with6` and the two "more of one color" tasks stay blocked.

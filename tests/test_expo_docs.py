@@ -95,7 +95,7 @@ def test_the_task_catalog_matches_the_content():
         status = 'enabled' if task['enabled'] else 'blocked ' + task['blocked'][:3]
         assert row[:4] == ['`%s`' % task['id'], '%s / %s / %s' % (d['3'], d['4'], d['5']),
                            '`%s`' % task['family'], status], task['id']
-    assert sum(t['enabled'] for t in tasks) == 91
+    assert sum(t['enabled'] for t in tasks) == 92
 
 
 def test_every_task_has_a_recorded_provenance_class():
@@ -113,9 +113,9 @@ def test_every_task_has_a_recorded_provenance_class():
         assert (kind == 'reference') <= tasks[task_id]['enabled'], task_id
         classes[kind] = classes.get(kind, 0) + 1
     assert classes == {'corroborated': 22, 'reference': 70, 'quarantined': 4}
-    # The one corroborated task that is still disabled is the one the owner decided to enable.
+    # Every corroborated task is enabled (5with7 since AVR-249); only quarantined ones are not.
     pending = [i for i, *_rest, e in rows if e.startswith('corroborated') and not tasks[i]['enabled']]
-    assert pending == ['`5with7`']
+    assert pending == []
 
 
 def test_every_blocking_conflict_is_in_the_register():

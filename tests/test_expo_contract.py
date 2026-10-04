@@ -801,3 +801,107 @@ def test_every_offered_declaration_is_true_and_single_cards_are_always_only():
                     else:
                         assert offered == (['highest'] if rank(card) == max(map(rank, same)) else ['lowest'])
 
+
+# ---- AVR-249: the task "win a 5 with a 7" is enabled (C18, owner decision Q5) --------------------
+# The owner wins a trick with their own color 7, and that trick also contains a color 5. Any colors.
+# 4with8 and 6with6 stay quarantined.
+
+# The content hash of the catalog before 5with7 was enabled (main at 42ee69b).
+HASH_BEFORE_5WITH7 = '9fa0f27a6f6b080b00cfb44e23268f7d47d82769e965204f9da1531cce47df99'
+FIVE_WITH_SEVEN = TASKS['5with7']
+
+
+def one_trick(winner, cards, planned=13):
+    """One resolved trick; seat a plays cards[0], b cards[1], c cards[2]."""
+    return history_state([trick(1, winner, cards, leader='a')], planned=planned)
+
+
+def test_five_with_seven_is_enabled_with_its_stored_definition_and_the_others_stay_off():
+    assert FIVE_WITH_SEVEN['enabled'] and 'blocked' not in FIVE_WITH_SEVEN
+    colors = ['blue', 'green', 'pink', 'yellow']
+    assert FIVE_WITH_SEVEN['family'] == 'win_with'
+    assert FIVE_WITH_SEVEN['params'] == {'instrument': {'suits': colors, 'ranks': [7]},
+                                         'target': {'suits': colors, 'ranks': [5]}}
+    assert FIVE_WITH_SEVEN['difficulty'] == {'3': 1, '4': 2, '5': 2}
+    for key in ('4with8', '6with6'):
+        assert not TASKS[key]['enabled'] and TASKS[key]['blocked'].startswith('C18')
+    assert sum(d['enabled'] for d in TASKS.values()) == 92
+
+
+@pytest.mark.parametrize('cards', [
+    ['blue:7', 'blue:5', 'blue:3'],                                    # same color
+    ['green:7', 'pink:5', 'green:2'],                                  # the 5 was discarded by a void seat
+    ['yellow:7', 'yellow:1', 'blue:5'],                                # the 5 can be anywhere in the trick
+])
+def test_winning_a_trick_with_a_seven_that_contains_a_five_satisfies_at_once(cards):
+    assert evaluate(FIVE_WITH_SEVEN, 'a', one_trick('a', cards)) == 'satisfied'
+
+
+@pytest.mark.parametrize('winner,cards,why', [
+    ('a', ['blue:9', 'blue:7', 'blue:5'], 'the owner won with a 9; the 7 was another seat\'s'),
+    ('a', ['submarine:1', 'blue:5', 'blue:7'], 'the owner won with a submarine'),
+    ('b', ['blue:5', 'submarine:2', 'blue:7'], 'another seat\'s submarine won the trick'),
+    ('b', ['blue:5', 'blue:7', 'blue:3'], 'another seat won with the 7'),
+    ('c', ['blue:7', 'blue:5', 'blue:9'], 'the owner played the 7 and lost the trick'),
+    ('a', ['blue:7', 'blue:4', 'blue:6'], 'no 5 in the trick'),
+    ('a', ['green:7', 'blue:7', 'pink:7'], 'a 7 is not a 5: the two cards are distinct'),
+    ('a', ['pink:5', 'pink:4', 'pink:3'], 'the owner won with the 5 itself'),
+])
+def test_other_ways_of_winning_or_losing_the_trick_do_not_satisfy_five_with_seven(winner, cards, why):
+    assert evaluate(FIVE_WITH_SEVEN, 'a', one_trick(winner, cards)) == 'pending', why
+    assert evaluate(FIVE_WITH_SEVEN, 'a', one_trick(winner, cards, planned=1)) == 'failed', why
+
+
+def test_the_seven_and_the_five_are_always_two_different_cards():
+    for seven in (c for c in DECK if rank(c) == 7 and suit(c) != 'submarine'):
+        for five in (c for c in DECK if rank(c) == 5 and suit(c) != 'submarine'):
+            assert seven != five
+            lead_color = [seven, five, suit(seven) + ':1']             # a wins with the 7
+            assert evaluate(FIVE_WITH_SEVEN, 'a', one_trick('a', lead_color)) == 'satisfied'
+    # The task is for whoever owns it: seat b winning with the 7 satisfies b, not a.
+    s = one_trick('b', ['blue:5', 'blue:7', 'blue:3'])
+    assert evaluate(FIVE_WITH_SEVEN, 'b', s) == 'satisfied' and evaluate(FIVE_WITH_SEVEN, 'a', s) == 'pending'
+
+
+def test_five_with_seven_can_be_drawn_selected_and_completes_a_mission():
+    e = Engine(['p0', 'p1', 'p2'], random.Random(1))
+    pool_and_deck = set(e.s['deck']) | set(e.s['pool'])
+    assert '5with7' in pool_and_deck and not {'4with8', '6with6'} & pool_and_deck
+    e = drawn(['p0', 'p1', 'p2'], 1, ['5with7'])                       # difficulty 1 at three seats
+    assert e.s['pool'] == ['5with7']
+    owner = e.s['captain']
+    act(e, owner, 'choose_task', task='5with7')
+    decide(e, 'p0', 'begin')
+    seats = e.s['seats']
+    order = seats[seats.index(owner):] + seats[:seats.index(owner)]
+    e.s['history'] = [{'index': 1, 'leader': owner, 'winner': owner, 'plays': [
+        {'seat': order[0], 'card': 'green:7'}, {'seat': order[1], 'card': 'green:5'}, {'seat': order[2], 'card': 'green:2'}]}]
+    e._outcome()
+    assert e.s['progress'] == {'5with7': 'satisfied'} and e.s['result']['status'] == 'success'
+    assert [t['text'] for t in e.view(None)['tasks']] == ['Win a trick by playing a color 7 and capture a color 5 in that trick.']
+
+
+def test_enabling_the_task_changed_the_content_hash_and_old_snapshots_are_refused(tmp_path):
+    assert content.CONTENT_HASH != HASH_BEFORE_5WITH7
+    snap = json.loads(json.dumps(playing().snapshot()))
+    assert Engine.restore(json.loads(json.dumps(snap))).s['content'] == content.CONTENT_HASH
+    snap['state']['content'] = HASH_BEFORE_5WITH7                      # a table saved before this change
+    with pytest.raises(Invalid) as refused:
+        Engine.restore(snap)
+    assert refused.value.code == 'snapshot'
+    # Through the adapter: the old file is not restored, not replaced, and no new table may start.
+    path = tmp_path / 'expo.json'
+    s, tokens = session(path=path)
+    saved = json.loads(path.read_text(encoding='utf-8'))
+    saved['engine']['state']['content'] = HASH_BEFORE_5WITH7
+    path.write_text(json.dumps(saved), encoding='utf-8')
+    before = path.read_bytes()
+    room = ExpoSession(random.Random(9), snapshot_path=path)
+    assert room.engine is None and room.recovery_error
+    for t in tokens:
+        room.join(t, t)
+        room.set_ready(t, True)
+    fx = room.start(tokens[0])
+    assert room.phase == 'lobby' and fx and fx[0]['kind'] == 'invalid'
+    assert path.read_bytes() == before
+

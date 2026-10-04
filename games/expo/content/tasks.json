@@ -932,9 +932,8 @@
       "5": 2
     },
     "source": "The Team II/2.json taskDeck.cardTypes.5with7",
-    "enabled": false,
-    "text": "Win a trick by playing a color 7 and capture a color 5 in that trick.",
-    "blocked": "C18: win-with illustration orientation"
+    "enabled": true,
+    "text": "Win a trick by playing a color 7 and capture a color 5 in that trick."
   },
   {
     "id": "6with6",

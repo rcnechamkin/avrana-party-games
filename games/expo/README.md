@@ -29,7 +29,7 @@ specification, deferred) and an issue.
 
 **Playable.** Two to five humans; two humans play with a captain-controlled dummy hand (Tonoja).
 24 of the 32 numbered missions and a continuation (33 to 50) are enabled for three to five
-players, fewer for two. 91 of 96 tasks are enabled.
+players, fewer for two. 92 of 96 tasks are enabled.
 
 **Verified against the sources.** Deal, captain, turn order, following suit, submarines, trick
 resolution, truthful communication and its timing, task drawing, selection and passing, task
@@ -50,16 +50,16 @@ the first N tricks" tasks and the communicator not seeing their own declaration 
 (AVR-241, 2026-10-04).
 
 **Decided, not built yet.** The owner answered the open policy questions on 2026-10-04 under a
-"fidelity first" principle (AVR-243). Three answers that change behaviour are still to build:
-enable the task `5with7` (AVR-249), one shared sonar token for two players (AVR-250), and the
-captain's authority in missions 10 and 13 (AVR-251). Built: a single card of a color is
-communicated only as "only" (AVR-248, 2026-10-04).
+"fidelity first" principle (AVR-243). Two answers that change behaviour are still to build: one
+shared sonar token for two players (AVR-250), and the captain's authority in missions 10 and 13
+(AVR-251). Built on 2026-10-04: a single card of a color is communicated only as "only"
+(AVR-248), and the task `5with7` is enabled (AVR-249).
 
 **Waiting on the owner.** The rule for routine progression decisions: AVR-252, tied to AVR-240.
 Party-round setup: AVR-245. Presentation contract: AVR-246.
 
 **Blocked on source material.** Missions 3, 4, 12, 14, 15, 19, 20, 26 and tasks
-`moreRedThanGreen`, `moreYellowThanBlue`, `4with8`, `5with7`, `6with6`: AVR-244. With two
+`moreRedThanGreen`, `moreYellowThanBlue`, `4with8`, `6with6`: AVR-244. With two
 players, distress, volunteer missions and shared-sonar or terrain missions are refused.
 
 **Not done.** No deployment, no appliance key, no real-phone acceptance. No TV view, bots or

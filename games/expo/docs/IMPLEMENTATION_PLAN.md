@@ -37,7 +37,7 @@ engine depends on the module host.
 |---|---|---|
 | 1 | Source reconciliation and content audit | Done for the supplied sources by this reconciliation. Eight missions and five tasks remain blocked on material nobody has supplied (AVR-244). Four policies await confirmation (AVR-243) |
 | 2 | Pure engine | Built. One defect affects play (E-D2); E-D1 was fixed on 2026-10-04 (AVR-239) |
-| 3 | Task and mission evaluators | Built for 91 tasks and 24 numbered missions plus the continuation. The window-task timing defect (E-D3) was fixed on 2026-10-04 (AVR-241) |
+| 3 | Task and mission evaluators | Built for 92 tasks and 24 numbered missions plus the continuation. The window-task timing defect (E-D3) was fixed on 2026-10-04 (AVR-241) |
 | 4 | Session adapter and reliability | Built. Persistence shortfalls E-D5 to E-D7 |
 | 5 | Phone client | Built and playable; draft presentation specs not implemented (E-X1). No dedicated TV view |
 | 6 | Integration | Registered, catalogued, Party contract and grant merged. Not deployed; no appliance key; no real-phone acceptance |
@@ -93,7 +93,7 @@ Coverage verdict: **full** (positive, illegal and boundary paths tested), **part
 | T19 | First, last, final-trick tasks | `test_every_enabled_task_has_deterministic_success_fixture` | `test_exact_atleast_exclusions_and_final_semantics` (card used early) | last = planned trick | | | partial: planned 10 and 8 not exercised for "last" |
 | T20 | Trick comparisons | `test_every_enabled_task_has_deterministic_success_fixture` | same (failure fixture) | ties | | | partial: ties and "equal to captain" boundaries |
 | T21 | Sums and parity | `test_sum_threshold_boundaries_and_submarine_exclusion` | boundary equals threshold fails; submarine disqualifies | 3, 4, 5 seats | | | full for `sumBelow`, `sumAbove`, parity; `value22or23` has the generic pair only |
-| T22 | Win-with | `test_win_with_uses_the_owners_own_winning_card` | wrong instrument, target lost | `6with6` distinct card: blocked | | | full for enabled tasks |
+| T22 | Win-with | `test_win_with_uses_the_owners_own_winning_card` | wrong instrument, target lost | `5with7`: `test_other_ways_of_winning_or_losing_the_trick_do_not_satisfy_five_with_seven`, `test_the_seven_and_the_five_are_always_two_different_cards`; `6with6` distinct card: blocked | | drawn and completed in a mission: `test_five_with_seven_can_be_drawn_selected_and_completes_a_mission` | full for enabled tasks |
 | T23 | Color tasks | `test_every_enabled_task_has_deterministic_success_fixture` | `test_equal_counts_need_at_least_one_of_each_and_never_lead_fails_on_the_lead_itself` | zero each is not equal | | | partial: `each_color`, `all_color` failure only at end |
 | T24 | Never-lead tasks | generic fixture | `test_equal_counts_need_at_least_one_of_each_and_never_lead_fails_on_the_lead_itself` | another seat's lead is irrelevant | | | full |
 | T25 | Feasibility (R08) | `test_explicit_feasibility_and_used_deck_replenishment`, `test_named_submarine_alignments_are_deal_exceptions`, `test_a_deal_exception_is_redealt_before_the_attempt_is_counted` | no repair when one seat can hold both | every listed alignment and a near miss | | | full for the three recognised cases (fixed-trick pair, submarine alignments, captain comparison: `test_the_comparison_repair_is_deterministic_and_survives_a_snapshot`) |
@@ -113,7 +113,7 @@ Coverage verdict: **full** (positive, illegal and boundary paths tested), **part
 | T39 | Reconnect | `test_session_reconnect_all_away_and_again_cannot_erase`, `test_a_dropped_crew_member_returns_by_fresh_ticket_to_the_same_seat_and_hand` | another credential cannot take the seat: `test_nobody_else_sees_or_takes_an_empty_seat` | all away | same seat, hand, table | ending while away: **defect E-D2**, `test_defect_a_table_can_be_ended_while_a_seated_player_is_away` | partial: allocation phase only |
 | T40 | Restart | `test_atomic_store_session_restart_and_fail_closed`, `test_closed_snapshot_restores_shared_lobby_reset_and_rejects_corrupt_phase` | corrupt file, forged phase, other content: `test_a_snapshot_from_other_content_or_rules_is_refused`; write failure: `test_storage_failure_rejects_action_without_losing_table` | | byte-identical replay: `test_privacy_differential_and_snapshot_json_replay` | Party rounds do not persist: `test_a_party_round_never_inherits_or_writes_a_standalone_snapshot` | partial: mid-trick, mid-exchange, timed (E-D5, E-D7) |
 | T41 | Platform lifecycle | `test_ending_the_table_is_abandoned`, `test_ending_the_table_after_a_decided_mission_is_completed` | "again" cannot reset: `test_session_reconnect_all_away_and_again_cannot_erase` | | | Party roster: `test_the_roster_seats_the_crew_under_party_names`, `test_expo_is_a_party_session_game`, `test_a_party_round_locks_settings_so_the_table_opens_on_mission_one` | full |
-| T42 | Catalog and blocked content | `test_blocked_content_and_types` | blocked missions refuse to start | 96 ids, 91 enabled | | documents equal data: `tests/test_expo_docs.py` | full |
+| T42 | Catalog and blocked content | `test_blocked_content_and_types` | blocked missions refuse to start | 96 ids, 92 enabled | | documents equal data: `tests/test_expo_docs.py` | full |
 | T43 | Client | `tests/playtest_expo.mjs` (2 to 5 browsers: a live mission, a forged request, masked frames, reload, four widths) | forged request refused | 360, 390, 820, 1440 px | reload mid-table | | partial: runs by hand, not in CI; disabled-control reasons not asserted against server messages |
 
 ## What to implement next
@@ -123,7 +123,7 @@ In order. Each item has its issue; none is started by this document.
 1. **Owner decisions.** AVR-243 was answered on 2026-10-04. Still open: the questions inside
    AVR-240, AVR-245 and AVR-252.
    **Decided behaviour changes from AVR-243**, each small and independent: ~~a single card is
-   communicated only as "only" (AVR-248)~~ done 2026-10-04; enable `5with7` (AVR-249); one shared
+   communicated only as "only" (AVR-248)~~ done 2026-10-04; ~~enable `5with7` (AVR-249)~~ done 2026-10-04; one shared
    sonar token for two players (AVR-250); captain's authority in missions 10 and 13 (AVR-251).
 2. ~~Selection stall (AVR-239, E-D1)~~: done 2026-10-04.
 3. **Ending a table while a player is away** (AVR-240, E-D2), together with the rule for routine

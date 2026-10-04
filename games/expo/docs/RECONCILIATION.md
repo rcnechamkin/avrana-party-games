@@ -30,10 +30,10 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
   (AVR-241). Of the four that remain, one affects play and needs an owner decision on the remedy:
   a table cannot be ended while someone is away (AVR-240).
 - Twenty-three digital policies are in force. The owner decided the open ones on 2026-10-04
-  (AVR-243, questions Q1 to Q8 below). Four decisions change behaviour. One is implemented:
-  single-card communication (AVR-248). Three are not yet: AVR-249, AVR-250, AVR-251. One more
-  needs a further decision: AVR-252.
-- Eight missions and five tasks stay blocked on source material (AVR-244).
+  (AVR-243, questions Q1 to Q8 below). Four decisions change behaviour. Two are implemented:
+  single-card communication (AVR-248) and the task `5with7` (AVR-249). Two are not yet: AVR-250,
+  AVR-251. One more needs a further decision: AVR-252.
+- Eight missions and four tasks stay blocked on source material (AVR-244).
 - The earlier specification was wrong or stale in eleven places (E-S1 to E-S11).
 
 ## Rule-by-rule comparison
@@ -92,7 +92,7 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 | E-M50 | 96 ids and 288 difficulty values equal the reference (V) | `tests/test_expo_docs.py` pins the documented table to the data; the comparison with V was run by hand on 2026-10-03 | MATCH |
 | E-M51 | Named-card, final-trick, exact and at-least counts, exclusions, first/last/only tricks, trick totals, runs, comparisons, sums, parity, equal colors, each color, all of a color, never-lead (R p16 to p19) | `test_every_enabled_task_has_deterministic_success_fixture` (one success and one failure per enabled task), `test_exact_atleast_exclusions_and_final_semantics`, `test_sum_threshold_boundaries_and_submarine_exclusion`, `test_a_named_card_captured_by_someone_else_fails_at_once`, `test_win_with_uses_the_owners_own_winning_card`, `test_exact_streak_fails_once_the_wins_are_split_and_at_least_streak_allows_more`, `test_equal_counts_need_at_least_one_of_each_and_never_lead_fails_on_the_lead_itself` | MATCH for the families R describes |
 | E-M52 | Public and secret predictions, fixed before play (R p18) | `test_prediction_zero_is_locked_and_secret_is_private` | MATCH; range and immutability are P05 |
-| E-A01 | 91 enabled tasks rest on the reference's decoding, not on verified card faces (C18) | as E-M51 | AMBIGUITY for `sumAbove` (upper thresholds), `black1`, `black2` ("win only"), `exactly2trickInARow`, `majority`, `never_streak` (Q4) |
+| E-A01 | 92 enabled tasks rest on the reference's decoding, not on verified card faces (C18) | as E-M51 | AMBIGUITY for `sumAbove` (upper thresholds), `black1`, `black2` ("win only"), `exactly2trickInARow`, `majority`, `never_streak` (Q4) |
 
 ## Defects
 
@@ -173,7 +173,7 @@ they were wrong or have been overtaken; the committed documents carry the correc
 | E-X1 | Presentation and causality events from the two draft presentation specifications (who triggered a failure, "impossible" state, synchronized events, cinematic client). The drafts are not in the repository | DEFERRED, AVR-246 (Q12) |
 | E-X2 | Showing cards won toward an unfinished task (R p16, optional) | DEFERRED |
 | E-X3 | Missions 3, 4, 12, 14, 15, 19, 20, 26 and their special rules (lead restriction, hardest-to-captain, two volunteers, other timers) | not implemented; blocked on sources, AVR-244 |
-| E-X4 | Tasks `moreRedThanGreen`, `moreYellowThanBlue`, `4with8`, `5with7`, `6with6` | definitions stored, disabled. `5with7` is to be enabled (Q5, AVR-249); the other four stay quarantined |
+| E-X4 | Tasks `moreRedThanGreen`, `moreYellowThanBlue`, `4with8`, `6with6` | definitions stored, disabled. `5with7` left this list on 2026-10-04 (Q5, AVR-249) |
 | E-X5 | Two players with distress, shared sonar or volunteers | all refused today. Decided 2026-10-04 (Q6): shared sonar is to be allowed with one token (AVR-250); distress and volunteer missions stay deferred |
 | E-X6 | A TV presentation, bots, solo play | not planned in this scope |
 | E-X7 | Campaign history across tables | Party owns durable history; EXPO keeps none |
@@ -202,7 +202,7 @@ something more distinctly Avrana is a later phase, not this one.
 | Q2 | Keep: mission 16's clock starts at the crew's unanimous Begin | Avrana policy, confirmed | no | |
 | Q3 | Keep automatic task-deck replenishment, no crew confirmation | Avrana policy, confirmed | no | |
 | Q4 | Keep the reference-derived catalog enabled where no higher source contradicts it; document provenance | reference-derived, accepted | no | AVR-244 for stronger evidence |
-| Q5 | Enable `5with7`; keep `4with8` and `6with6` quarantined | source-backed (text layer) | yes | AVR-249 |
+| Q5 | Enable `5with7`; keep `4with8` and `6with6` quarantined | source-backed (text layer) | yes | AVR-249, implemented |
 | Q6 | Mission 8 stays for two players with the dummy counted; shared sonar uses one token for two players; distress and volunteer missions stay unavailable for two | source-leaning for the first two; deferred for the rest | yes, shared sonar only | AVR-250 |
 | Q7 | Keep the cap at mission 50, difficulty 35 | Avrana product limit | no | |
 | Q8 | Follow source-specific authority: in missions 10 and 13 the captain decides and only the recipient consents. Keep unanimity for strategic decisions; routine progression should not be frozen by one player | source-backed for 10 and 13; Avrana policy otherwise | yes, missions 10 and 13 | AVR-251; AVR-252 for progression |
@@ -284,8 +284,10 @@ card" order for `4with8` (win an 8 with a 4, difficulty 3/4/5) and `6with6`, so 
 order for one card is indirect support for the other two, not proof.
 
 **Decision (owner, 2026-10-04):** enable `5with7`; the rulebook text is sufficient at the current
-fidelity stage. Keep `4with8` and `6with6` quarantined until better evidence exists. Not
-implemented yet: AVR-249.
+fidelity stage. Keep `4with8` and `6with6` quarantined until better evidence exists.
+Implemented 2026-10-04 (AVR-249): `5with7` is enabled with its stored definition unchanged (the
+owner wins a trick with their own color 7 and the trick also contains a color 5, any colors).
+Tests: `test_five_with_seven_is_enabled_with_its_stored_definition_and_the_others_stay_off`, `test_winning_a_trick_with_a_seven_that_contains_a_five_satisfies_at_once`, `test_other_ways_of_winning_or_losing_the_trick_do_not_satisfy_five_with_seven`, `test_the_seven_and_the_five_are_always_two_different_cards`, `test_five_with_seven_can_be_drawn_selected_and_completes_a_mission`. The "Now" line above describes the state before this change.
 
 **Q6 (C11, AVR-243). Two players: which shared mechanics include the dummy?**
 Evidence: R p22: treat the dummy as a third crew member and decide where it sits; for task cards
@@ -483,3 +485,30 @@ snapshot-format or content-hash change. Policy P03 is replaced as the owner deci
 
 Not covered: the refusal itself was not exercised through a browser, because the client only
 offers the declarations the server lists. Real phones and the appliance remain unverified.
+
+### AVR-249, 2026-10-04
+
+Scope: one entry in `games/expo/content/tasks.json` (`5with7`: `enabled` true, `blocked` removed;
+every other byte of the file unchanged). No engine, evaluator, client or adapter change.
+
+Content hash: it changed, as intended, because the hash covers the task file. A table saved by
+the opt-in snapshot store before this change carries the old hash and is refused on restore: the
+file is left as it was and the lobby shows the recovery message until it is removed
+(`test_enabling_the_task_changed_the_content_hash_and_old_snapshots_are_refused`). Tables that
+live only in memory are unaffected. Snapshot behaviour itself was not changed.
+
+| Check | Result |
+|---|---|
+| The new and updated tests against the unchanged content | 6 failed, as they should (the evaluator cases already passed: the stored definition did not change) |
+| `pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_docs.py` | 260 passed, 1 expected failure (E-D2) |
+| `pytest` (whole repository, with a sibling Party checkout present) | 1,726 passed, 1 expected failure, 0 failed |
+| `ops/check_docs.py`, `tests/test_no_private_data.py`, catalog drift check, `ops/check_static.sh` | all passed |
+| `tests/playtest_expo.mjs`, headless Chrome, 2, 3, 4 and 5 humans | passed |
+| `ops/test_release_safety.sh` | not run locally (needs rsync; GitHub Actions runs it) |
+
+One earlier whole-repository run showed 5 failures in `tests/test_party_session_cross_repo.py`.
+Those tests read the sibling Party checkout, which was being moved to a newer `main` while that
+run was in progress. They passed on the rerun recorded above and do not touch EXPO.
+
+Not covered: the task was not played through a browser. Real phones and the appliance remain
+unverified.

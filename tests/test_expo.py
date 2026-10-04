@@ -355,7 +355,8 @@ def test_single_owner_delegation_free_allocation_and_volunteers():
 def test_blocked_content_and_types():
     for mid in BLOCKED:
         with pytest.raises(ValueError):Engine(['a','b','c'],random.Random(1),mid)
-    assert len(TASKS)==96 and sum(d['enabled'] for d in TASKS.values())==91
+    assert len(TASKS)==96 and sum(d['enabled'] for d in TASKS.values())==92
+    assert sorted(k for k,d in TASKS.items() if not d['enabled'])==['4with8','6with6','moreRedThanGreen','moreYellowThanBlue']
     assert not next(m for m in catalog(2) if m['id']==11)['enabled']
     e=playing();msg=command(e,'p0','predict',task='exactlyXtrick',count=True)
     with pytest.raises(Invalid):e.apply('p0',msg,100)
@@ -492,8 +493,11 @@ def test_every_enabled_task_has_deterministic_success_fixture(key):
         own(values[p['op']])
     elif family=='parity':own(['blue:1','green:3','yellow:5'] if p['parity'] else ['blue:2','green:4','yellow:6'])
     elif family=='win_with':
+        from games.expo.rules import matches
         ins=p['instrument'];instrument=ins.get('card') or ins.get('suits',['blue'])[0]+':'+str(ins.get('ranks',[4])[0])
-        own([instrument]+([p['target']['card']] if p.get('target') else []))
+        # A target may name one card or a rank (5with7): take the first matching card that is not the instrument.
+        target=[next(c for c in DECK if matches(c,p['target']) and c!=instrument)] if p.get('target') else []
+        own([instrument]+target)
     elif family in ('equal','equal_trick'):own([p['suits'][0]+':1',p['suits'][1]+':2'])
     elif family=='each_color':own(['blue:1','green:1','pink:1','yellow:1'])
     elif family=='all_color':own([f'blue:{r}' for r in range(1,10)])
