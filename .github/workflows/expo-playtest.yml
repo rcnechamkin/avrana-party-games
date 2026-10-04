@@ -1,0 +1,65 @@
+name: EXPO browser playtest (manual)
+
+# Started by hand only. It repeats tests/playtest_expo.mjs against one server to show the script
+# is repeatable on Linux (AVR-254). It never runs on push or pull_request.
+on:
+  workflow_dispatch:
+    inputs:
+      humans:
+        description: Crew size
+        type: choice
+        options: ["2", "3", "4", "5"]
+        default: "5"
+      runs:
+        description: Consecutive runs against one server (1 to 40)
+        type: string
+        default: "20"
+
+permissions:
+  contents: read
+
+jobs:
+  playtest:
+    name: Repeat the EXPO playtest
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install server dependencies
+        run: python -m pip install -r requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install browser-playtest driver
+        run: npm ci --ignore-scripts
+      - name: Start one games server
+        run: |
+          LANGAMES_PORT=8196 python server.py > "$RUNNER_TEMP/server.log" 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -fsS -o /dev/null http://127.0.0.1:8196/games/expo/ && exit 0
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/server.log"
+          exit 1
+      - name: Repeat the playtest against that server
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+          EXPO_HUMANS: ${{ inputs.humans }}
+          RUNS: ${{ inputs.runs }}
+        run: |
+          case "$RUNS" in ''|*[!0-9]*) echo "runs must be a number"; exit 2 ;; esac
+          [ "$RUNS" -ge 1 ] && [ "$RUNS" -le 40 ] || { echo "runs must be 1 to 40"; exit 2; }
+          for i in $(seq 1 "$RUNS"); do
+            echo "::group::run $i of $RUNS with $EXPO_HUMANS humans"
+            node tests/playtest_expo.mjs http://127.0.0.1:8196 "$RUNNER_TEMP/expo-playtest"
+            echo "::endgroup::"
+          done
+      - name: Server log
+        if: failure()
+        run: cat "$RUNNER_TEMP/server.log"

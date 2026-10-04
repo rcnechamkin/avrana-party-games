@@ -606,3 +606,30 @@ those tests pass on their own and the run recorded above completed normally.
 Not covered: the offer panel was checked in headless Chrome only, where the playtest asserts
 that only the recipient's page has the answer buttons. Real phones, the appliance and a
 Party-launched round remain unverified.
+
+### AVR-254, 2026-10-04
+
+Scope: `tests/playtest_expo.mjs` only. No engine, content, client or server change.
+
+Cause, confirmed by the fix: the script read whose turn it was from one page and acted on another
+page that was a revision behind, or that still showed a reloading player as away (its buttons are
+withheld then). The same lag let the closing End decision skip a page, so a run could print PASS
+and still leave its table open, which made the next run wait in the lobby. Now the script waits
+until every page has drawn the newest revision with nobody away before it reads or acts, checks
+that each crew decision took effect, and waits for the table to close. A run that fails ends its
+own table before exiting, while its players are still connected; E-D2 itself is unchanged.
+
+| Check | Result (Windows 11, headless Chrome, one server for all runs) |
+|---|---|
+| 20 consecutive runs at five humans | 20 passed |
+| 20 consecutive runs at four humans | 20 passed |
+| A run forced to fail mid-round (`EXPO_FORCE_FAIL=1`) at 2, 3, 4 and 5 humans, each followed by a clean run on the same server | each forced run exited 1; each following run passed without a restart |
+| 2 and 3 humans, default mission | passed |
+| Mission 10 offer at 3 humans, mission 13 offer at 5 humans, two humans on mission 11 | passed |
+| `ops/check_static.sh`, `ops/check_docs.py` | passed |
+
+Not covered: Linux. No repeated run has been made there yet. This change adds
+`.github/workflows/expo-playtest.yml`, a workflow started by hand only (crew size and number of
+runs as inputs; never on push or pull request) that starts one server and repeats the playtest
+against it. It can be started only once it is on `main`, so the Linux runs are still to be made.
+The notes under AVR-250 and AVR-251 above describe the playtest before this change.

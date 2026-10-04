@@ -62,6 +62,11 @@ $env:LANGAMES_PORT='8196'; python server.py
 $env:EXPO_HUMANS='3'; node tests/playtest_expo.mjs http://127.0.0.1:8196
 ```
 
+Optional settings: `EXPO_MISSION` plays that mission instead of the default (clockwise selection
+and missions 10 and 13 only), `EXPO_OFFER=offer` makes the captain offer the tasks in missions 10
+and 13, and `EXPO_FORCE_FAIL=1` fails the run mid-round to check that it ends its own table. Runs
+may be repeated against one server; a run that fails ends its table before it exits (AVR-254).
+
 ## Deterministic test matrix
 
 One row per major rule. Columns answer the six questions AVR-215 asks. "Reconnect / restore" says
@@ -114,7 +119,7 @@ Coverage verdict: **full** (positive, illegal and boundary paths tested), **part
 | T40 | Restart | `test_atomic_store_session_restart_and_fail_closed`, `test_closed_snapshot_restores_shared_lobby_reset_and_rejects_corrupt_phase` | corrupt file, forged phase, other content: `test_a_snapshot_from_other_content_or_rules_is_refused`; write failure: `test_storage_failure_rejects_action_without_losing_table` | | byte-identical replay: `test_privacy_differential_and_snapshot_json_replay` | Party rounds do not persist: `test_a_party_round_never_inherits_or_writes_a_standalone_snapshot` | partial: mid-trick, mid-exchange, timed (E-D5, E-D7) |
 | T41 | Platform lifecycle | `test_ending_the_table_is_abandoned`, `test_ending_the_table_after_a_decided_mission_is_completed` | "again" cannot reset: `test_session_reconnect_all_away_and_again_cannot_erase` | | | Party roster: `test_the_roster_seats_the_crew_under_party_names`, `test_expo_is_a_party_session_game`, `test_a_party_round_locks_settings_so_the_table_opens_on_mission_one` | full |
 | T42 | Catalog and blocked content | `test_blocked_content_and_types` | blocked missions refuse to start | 96 ids, 92 enabled | | documents equal data: `tests/test_expo_docs.py` | full |
-| T43 | Client | `tests/playtest_expo.mjs` (2 to 5 browsers: a live mission, a forged request, masked frames, reload, four widths) | forged request refused | 360, 390, 820, 1440 px | reload mid-table | | partial: runs by hand, not in CI; disabled-control reasons not asserted against server messages |
+| T43 | Client | `tests/playtest_expo.mjs` (2 to 5 browsers: a live mission, a forged request, masked frames, reload, four widths) | forged request refused | 360, 390, 820, 1440 px | reload mid-table | | partial: runs by hand, not in CI (repeatable since AVR-254: 20 consecutive runs at four and at five humans on Windows; on Linux only by the hand-started workflow `expo-playtest.yml`, not yet run); disabled-control reasons not asserted against server messages |
 
 ## What to implement next
 

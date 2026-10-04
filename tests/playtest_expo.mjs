@@ -19,7 +19,43 @@ const pause=ms=>new Promise(r=>setTimeout(r,ms));
 async function state(pg){return pg.evaluate(()=>ST);}
 async function waitRevision(pg,old){await pg.waitForFunction(r=>ST?.game?.revision>r,{},old);}
 async function clickKey(pg,key){await pg.evaluate(k=>{const n=k==="end"?document.getElementById("end"):[...document.querySelectorAll("[data-key]")].find(x=>x.dataset.key===k);if(!n||n.disabled)throw Error("Unavailable "+k);n.click();},key);}
-async function crewDecision(pg,key){const old=(await state(pg)).game.revision;await clickKey(pg,key);await waitRevision(pg,old);for(const p of pages){const s=await state(p);if(s.game.proposal&&!s.game.proposal.votes.includes(s.you.pid)){const rev=s.game.revision;await clickKey(p,"agree");await waitRevision(p,rev);}}}
+// Every page has drawn the newest revision any page has seen, and nobody is shown as away.
+// The script reads whose turn it is from one page and acts on another, so it must never act on
+// a page that is a revision behind or still shows a reloading player as away (AVR-254).
+async function settle(){
+  let rev=-1;
+  for(const p of pages)rev=Math.max(rev,(await state(p)).game?.revision??-1);
+  for(const p of pages)await p.waitForFunction(r=>ST?.game&&ST.game.revision>=r&&!ST.game.away.length,{},rev);
+  return state(pages[0]);
+}
+async function crewDecision(pg,key){
+  await settle();const old=(await state(pg)).game.revision;await clickKey(pg,key);await waitRevision(pg,old);
+  for(const p of pages){
+    await settle();const s=await state(p);
+    if(s.game.proposal&&!s.game.proposal.votes.includes(s.you.pid)){const rev=s.game.revision;await clickKey(p,"agree");await waitRevision(p,rev);}
+  }
+  assert.equal((await settle()).game.proposal,null,"the crew decision took effect");
+}
+// A failed run must not leave its table behind: with every player gone the table could not be
+// ended (E-D2) and each later run against this server would wait in the lobby for ever.
+async function endTable(){
+  const seated=[];
+  for(const p of pages){const s=await state(p).catch(()=>null);if(s?.game?.me&&s.phase!=="game_end")seated.push(p);}
+  const answer=(p,msg)=>p.evaluate(m=>{const g=ST.game;conn.send({...m,attempt:g.attempt,revision:g.revision,request:crypto.randomUUID()});},msg).catch(()=>{});
+  for(let i=0;i<40&&seated.length;i++){
+    const s=await state(seated[0]).catch(()=>null);
+    if(!s?.game||s.phase==="game_end"||s.phase==="lobby")return;
+    const proposal=s.game.proposal;
+    if(!proposal)await answer(seated[0],{t:"propose",proposal:{kind:"end"}});
+    else for(const p of seated){
+      const me=(await state(p).catch(()=>null))?.you?.pid;
+      if(me&&!proposal.votes.includes(me)&&(!proposal.recipient||proposal.recipient===me))await answer(p,{t:"confirm",yes:proposal.payload.kind==="end"});
+    }
+    await pause(250);
+  }
+  throw new Error("the failed run could not end its table; restart the server before the next run");
+}
+let finished=false;
 try{
   for(let i=0;i<HUMANS;i++){
     const context=await browser.createBrowserContext(),pg=await context.newPage();
@@ -57,7 +93,7 @@ try{
     assert.equal(after.proposal,null);assert.ok(after.tasks.every(t=>t.owner===target));
   }
   for(let i=0;i<25;i++){
-    const s=await state(pages[0]);if(s.game.stage!=="allocation")break;
+    const s=await settle();if(s.game.stage!=="allocation")break;
     let pg;
     for(const p of pages){if((await state(p)).you.pid===s.game.controller)pg=p;}
     assert.ok(pg,"task selector has a browser");
@@ -66,10 +102,11 @@ try{
     if(task){const rev=own.revision;await clickKey(pg,"task:"+task.id);await waitRevision(pg,rev);}
     else{const rev=own.revision;await clickKey(pg,"pass-task");await waitRevision(pg,rev);}
   }
+  await settle();
   for(const pg of pages){const s=await state(pg);for(const t of s.game.tasks){if(t.prediction_required&&!t.prediction_committed&&(t.owner===s.you.pid||(t.owner==="tonoja"&&s.game.captain===s.you.pid))){const rev=(await state(pg)).game.revision;await clickKey(pg,"lock:"+t.id);await waitRevision(pg,rev);}}}
   await crewDecision(pages[0],"begin");
   // Select a non-default sonar card, commit it, then verify its public exposure.
-  const sonar=await state(pages[0]),opts=sonar.game.me.communication_options;
+  const sonar=await settle(),opts=sonar.game.me.communication_options;
   if(Object.keys(opts).length){
     const card=Object.keys(opts).at(-1),rev=sonar.game.revision;
     await pages[0].select('select[data-key="sonar-card"]',card);
@@ -79,9 +116,10 @@ try{
     if(sonar.game.shared_sonar!==null)for(const pg of pages){await waitRevision(pg,rev);const g=(await state(pg)).game;assert.equal(g.shared_sonar,sonar.game.shared_sonar-1);if(!g.shared_sonar)assert.deepEqual(g.me.communication_options,{});}
   }
   await pages[0].screenshot({path:path.join(OUT,"table-phone.png"),fullPage:true});
+  await settle();
   for(const pg of pages){const s=await state(pg);assert.equal(s.game.me.hand.length,s.game.hand_counts[s.you.pid]);assert.equal(s.game.planned_tricks,HUMANS===2?13:Math.floor(40/HUMANS));assert.equal(Object.hasOwn(s.game,"hands"),false);}
   // Forged card request must be rejected without changing the domain revision.
-  const s=await state(pages[0]);
+  const s=await settle();
   await pages[0].evaluate(()=>{const g=ST.game;conn.send({t:"play_card",card:"not-a-card",attempt:g.attempt,revision:g.revision,request:crypto.randomUUID()});});
   await pause(150);assert.equal((await state(pages[0])).game.revision,s.game.revision);
   let pg=pages[0],pre=(await state(pg)).game.me.hand;
@@ -93,7 +131,8 @@ try{
     await pg.screenshot({path:path.join(OUT,`table-${size.width}.png`),fullPage:true});
   }
   for(let i=0;i<70;i++){
-    const s=await state(pages[0]);if(s.game.result)break;
+    const s=await settle();if(s.game.result)break;
+    if(i===2&&process.env.EXPO_FORCE_FAIL)throw new Error("forced failure mid-round (EXPO_FORCE_FAIL)");
     const actor=s.game.turn==="tonoja"?s.game.captain:s.game.turn;
     let player;for(const p of pages)if((await state(p)).you.pid===actor)player=p;
     assert.ok(player);const g=(await state(player)).game;assert.ok(g.me.legal_cards.length);
@@ -111,5 +150,10 @@ try{
   await pages[0].screenshot({path:path.join(OUT,"result-phone.png"),fullPage:true});
   assert.deepEqual(errors,[]);
   await crewDecision(pages[0],"end");
+  await pages[0].waitForFunction(()=>ST.phase==="game_end"||ST.phase==="lobby");
+  finished=true;
   console.log(`PASS: live ${HUMANS}-player mission, hostile request, masked frames, reload and four viewports`,OUT);
-}finally{await browser.close();}
+}finally{
+  try{if(!finished)await endTable();}
+  finally{await browser.close();}
+}
