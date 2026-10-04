@@ -166,7 +166,8 @@ everyone (AVR-252).
   type (a number, a list, an object, null; a boolean is not an integer) is rejected with
   `payload` Invalid crew decision. in every phase and every allocation mode, before the proposal
   itself is looked at. The checks common to every action come first (a seated actor, nobody
-  away, a known action). Nothing is stored and the request is not remembered.
+  away, a known action, the action's own fields and scope: a `proposal` that is not an object is
+  `payload` Invalid action fields or types.). Nothing is stored and the request is not remembered.
 - **`task`**: in mode `free` it is the id of one task in the pool. In modes `one` and
   `captain_one` the tasks go together and it is the word `all`; any other string is rejected
   with `task` These tasks go together.

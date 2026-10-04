@@ -40,7 +40,7 @@ Table lifetime:
 | `distress` | distress is active for the current mission |
 | `attempts`, `counted` | attempts counted for the current mission; whether the current one is already counted |
 | `log` | one entry per completed mission: mission, recorded attempts (with the distress surcharge), distress flag |
-| `deck`, `used` | the private task deck order and the used pile. A task id is in one place at a time: the deck, the used pile or the mission in play (`selected`); no pile holds an id twice. The tasks of a mission that has ended are in the used pile and stay in `selected` until the next mission is prepared. A fixed mission (32) takes its named tasks out of both piles. A snapshot that breaks this is refused |
+| `deck`, `used` | the private task deck order and the used pile. A task id is in one place at a time: the deck, the used pile or the mission in play (`selected`); no pile holds an id twice, the `pool` neither, and every id in them is an enabled task. The tasks of a mission that has ended are in the used pile and stay in `selected` until the next mission is prepared. A fixed mission (32) takes its named tasks out of both piles. A snapshot that breaks this is refused |
 | `away` | seated players without a connection |
 | `dedup` | accepted request ids of the current attempt with their fingerprints |
 | `proposal` | the pending crew decision and who has confirmed it; a captain's offer in missions 10 and 13 also names its `recipient`, the only seat that may answer |
