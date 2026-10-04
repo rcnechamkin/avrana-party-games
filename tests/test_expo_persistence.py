@@ -309,6 +309,7 @@ def test_a_timed_snapshot_without_a_clock_record_ends_the_attempt(tmp_path, monk
     clock = Clock(monkeypatch, wall=1000.0, mono=5000.0)
     timed_table(path, clock)
     huge = 10 ** 400
+    running = path.read_text(encoding='utf-8')
     ok = {'wall': 1000.0, 'mono': 5000.0, 'boot': 'boot-a'}
     assert restart(path).engine.s['result'] is None                  # the record as written is trusted
     for bad in (None, {}, {'wall': 1000.0}, [1000.0, 5000.0], dict(ok, wall='1000'), dict(ok, wall=True),
@@ -325,10 +326,7 @@ def test_a_timed_snapshot_without_a_clock_record_ends_the_attempt(tmp_path, monk
         again = restart(path)
         assert again.recovery_error is None
         assert again.engine.s['result'] == {'status': 'failed', 'reason': game.UNTRUSTED_CLOCK}, bad
-        saved = json.loads(path.read_text(encoding='utf-8'))         # put the running table back
-        saved['engine']['state'].update(result=None, expiry=5150.0, phase='before_trick')
-        saved['engine']['state']['revision'] -= 2
-        path.write_text(json.dumps(saved), encoding='utf-8')
+        path.write_text(running, encoding='utf-8')                   # put the running table back
 
 
 @pytest.mark.parametrize('case', UNTRUSTED)

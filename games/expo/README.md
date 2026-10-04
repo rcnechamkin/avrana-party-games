@@ -51,6 +51,10 @@ the first N tricks" tasks and the communicator not seeing their own declaration 
 (AVR-241, 2026-10-04). E-D5 and E-D7, the content hash now covers every mission definition and a
 timed mission runs on the monotonic clock and never gains time across a restart (AVR-242,
 2026-10-04). E-D6, request memory, was settled by amending the contract: accepted requests only.
+E-D9, a malformed crew decision that froze the table: every field of a crew decision is now
+checked for its type before anything is stored (AVR-264, 2026-10-04). E-D10, a task dealt twice
+in a mission played after mission 32: a task card is now in one place at a time (AVR-265,
+2026-10-04).
 
 **Owner decisions, built.** The owner answered the open policy questions on 2026-10-04 under a
 "fidelity first" principle (AVR-243). The four answers that change behaviour are built: a single

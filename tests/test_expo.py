@@ -32,6 +32,12 @@ def decide(e, actor, kind, **kwargs):
             act(e, q, 'confirm', yes=True)
 
 
+def place(e):
+    """After a test lays tasks out by hand: the same cards are no longer in the deck or used."""
+    for pile in ('deck', 'used'):
+        e.s[pile] = [k for k in e.s[pile] if k not in e.s['selected']]
+
+
 def allocated(e):
     while e.s['pool']:
         seat = e.selector()
@@ -164,6 +170,7 @@ def test_difficulty_generation_and_no_pass_in_second_circuit():
             assert sum(TASKS[k]['difficulty'][str(len(e.s['seats']))] for k in e.s['pool']) == e.s['mission']['target']
     e=Engine(['a','b','c'],random.Random(4))
     e.s['pool']=['green6','yellow1','red3','blue4'];e.s['selected']=list(e.s['pool']);e.s['initial_count']=4
+    place(e)
     for _ in range(3):act(e,e.controller(e.selector()),'choose_task',task=e.s['pool'][0])
     before=e.snapshot()
     with pytest.raises(Invalid):act(e,e.controller(e.selector()),'pass_task')
@@ -176,6 +183,7 @@ def test_pass_capacity_and_captain_comparison():
     act(e,e.controller(e.selector()),'pass_task')
     with pytest.raises(Invalid):act(e,e.controller(e.selector()),'pass_task')
     e=Engine(['a','b','c'],random.Random(4));e.s['pool']=['moreTricksThanCaptain'];e.s['selected']=list(e.s['pool'])
+    place(e)
     with pytest.raises(Invalid):act(e,e.s['captain'],'choose_task',task='moreTricksThanCaptain')
 
 
@@ -201,6 +209,7 @@ def test_prediction_zero_is_locked_and_secret_is_private():
     e=Engine(['a','b','c'],random.Random(4))
     k='exactlyXtrickSecret';q=e.s['captain']
     e.s.update(pool=[],selected=[k],assignments={k:q},progress={k:'pending'},phase='prediction')
+    place(e)
     act(e,q,'predict',task=k,count=0)
     assert e.s['phase']=='assistance'
     other=next(p for p in e.s['humans'] if p!=q)
@@ -316,6 +325,7 @@ def test_explicit_feasibility_and_used_deck_replenishment():
 def test_timed_start_barrier_and_volunteer_eligibility_failure():
     e=Engine(['a','b','c'],random.Random(4),16,timed=True)
     e.s['pool']=['blue4'];e.s['selected']=list(e.s['pool'])
+    place(e)
     assert e.s['expiry'] is None
     act(e,e.selector(),'volunteer',yes=True)
     assert e.s['expiry'] is None
@@ -326,6 +336,7 @@ def test_timed_start_barrier_and_volunteer_eligibility_failure():
     assert e.s['result']['status']=='failed' and e.s['revision']==rev+1
     e=Engine(['a','b','c'],random.Random(4),16)
     e.s['pool']=['moreTricksThanCaptain'];e.s['selected']=list(e.s['pool'])
+    place(e)
     for _ in range(2):act(e,e.selector(),'volunteer',yes=False)
     assert e.selector()==e.s['captain']
     act(e,e.selector(),'volunteer',yes=True)
@@ -337,6 +348,7 @@ def test_single_owner_delegation_free_allocation_and_volunteers():
     cap=e.s['captain'];target=next(q for q in e.s['humans'] if q!=cap)
     # Select a non-comparison fixture so every task is eligible for the delegate.
     e.s['pool']=['blue4'];e.s['selected']=list(e.s['pool'])
+    place(e)
     act(e,cap,'propose',proposal={'kind':'assign','owner':target,'task':'all'})
     act(e,target,'confirm',yes=True)  # only the recipient consents (AVR-251)
     assert e.s['before_first_only'] and set(e.s['assignments'].values())=={target}
@@ -347,6 +359,7 @@ def test_single_owner_delegation_free_allocation_and_volunteers():
     assert e.s['phase'] in ('prediction','assistance')
     e=Engine(['a','b','c'],random.Random(9),16)
     e.s['pool']=['blue4'];e.s['selected']=list(e.s['pool'])
+    place(e)
     for _ in range(2):act(e,e.controller(e.selector()),'volunteer',yes=False)
     with pytest.raises(Invalid):act(e,e.controller(e.selector()),'volunteer',yes=False)
     act(e,e.controller(e.selector()),'volunteer',yes=True)

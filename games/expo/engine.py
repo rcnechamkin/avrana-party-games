@@ -57,7 +57,12 @@ class Engine:
     def _generate(self, m):
         s = self.s
         if m.get('fixed'):
-            return list(m['fixed'])
+            # The named tasks are taken out of the piles like any drawn card (AVR-265): left in
+            # the deck they came back from the used pile as a second copy.
+            fixed = list(m['fixed'])
+            s['deck'] = [k for k in s['deck'] if k not in fixed]
+            s['used'] = [k for k in s['used'] if k not in fixed]
+            return fixed
         remaining = m['target']
         selected, skipped = [], []
         if not s['deck']:
@@ -392,7 +397,11 @@ class Engine:
             require(isinstance(owner, str) and owner in s['seats'], 'owner', 'Choose a crew member.')
             if s['mission']['allocation'] == 'captain_one':
                 require(actor == s['captain'], 'captain', 'The captain must offer these tasks.')
-            keys = [payload.get('task')] if s['mission']['allocation'] == 'free' else list(s['pool'])
+            if s['mission']['allocation'] == 'free':
+                keys = [payload.get('task')]
+            else:
+                require(payload.get('task') == 'all', 'task', 'These tasks go together.')
+                keys = list(s['pool'])
             require(all(isinstance(k, str) and k in s['pool'] and self.eligible(k, owner) for k in keys),
                     'task', 'Every task needs an eligible owner.')
         elif kind == 'retry':
@@ -569,7 +578,11 @@ class Engine:
             keys = {'begin': {'kind'}, 'end': {'kind'}, 'retry': {'kind', 'keep'},
                     'next': {'kind', 'mission'}, 'distress': {'kind', 'direction'},
                     'assign': {'kind', 'owner', 'task'}}
-            require(isinstance(p.get('kind'), str) and p['kind'] in keys and set(p) == keys[p['kind']],
+            # Every field is a plain value of its own type (AVR-264): what is accepted here is
+            # stored in the pending decision, copied and sent to every viewer.
+            types = {'kind': str, 'keep': bool, 'mission': int, 'direction': str, 'owner': str, 'task': str}
+            require(isinstance(p.get('kind'), str) and p['kind'] in keys and set(p) == keys[p['kind']]
+                    and all(type(p[k]) is types[k] for k in p),
                     'payload', 'Invalid crew decision.')
         identity = actor + ':' + str(msg['attempt']) + ':' + msg['request']
         fingerprint = json.dumps(msg, sort_keys=True)
@@ -628,6 +641,14 @@ class Engine:
             order = s['seats'][s['seats'].index(s['leader']):] + s['seats'][:s['seats'].index(s['leader'])]
             require([p['seat'] for p in s['trick']] == order[:len(s['trick'])]
                     and s['turn'] == order[len(s['trick'])], 'snapshot', 'Current trick check failed.')
+        # A task card is in one place: the deck, the used pile or the mission in play. The tasks
+        # of a mission that has ended are in the used pile and still shown as its tasks.
+        piles = (s['deck'], s['used'], s['selected'], s['pool'])
+        require(all(type(p) is list and all(isinstance(k, str) and k in TASKS and TASKS[k]['enabled'] for k in p)
+                    and len(set(p)) == len(p) for p in piles)
+                and not set(s['deck']) & (set(s['used']) | set(s['selected']))
+                and (s['result'] is not None or not set(s['used']) & set(s['selected'])),
+                'snapshot', 'Task pile check failed.')
         require(all(k in TASKS and TASKS[k]['enabled'] for k in s['selected'])
                 and all(owner in s['seats'] and self.eligible(k, owner) for k, owner in s['assignments'].items()),
                 'snapshot', 'Task definition check failed.')
