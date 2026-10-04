@@ -475,9 +475,26 @@ def test_a_saved_deadline_later_than_a_full_timer_is_not_resumed(expiry, tmp_pat
     path.write_text(json.dumps(saved), encoding='utf-8')
     clock.pass_time(5)
     again = restart(path)
-    running = again.engine is not None and again.engine.s['result'] is None and again.engine.s['expiry'] is not None
-    assert not running
-    assert again.recovery_error or again.engine.s['result'] == {'status': 'failed', 'reason': game.UNTRUSTED_CLOCK}
+    if again.recovery_error:                                         # not a deadline at all: refused
+        assert again.engine is None
+    else:
+        assert again.engine.s['result'] == {'status': 'failed', 'reason': game.UNTRUSTED_CLOCK}
+        assert again.engine.s['expiry'] is None
+
+
+@pytest.mark.parametrize('expiry', [5100.0, 10 ** 400, float('nan'), float('inf'), '5150', True])
+@pytest.mark.parametrize('boot', ['boot-a', 'boot-b', None])
+def test_a_snapshot_with_a_deadline_beside_a_result_is_refused_not_raised(expiry, boot, tmp_path, monkeypatch):
+    path = tmp_path / 'crew.json'
+    clock = Clock(monkeypatch, wall=1000.0, mono=5000.0)
+    timed_table(path, clock)
+    saved = json.loads(path.read_text(encoding='utf-8'))
+    saved['engine']['state'].update(result={'status': 'failed', 'reason': 'x'}, phase='mission_result', expiry=expiry)
+    path.write_text(json.dumps(saved), encoding='utf-8')
+    clock.boot = boot
+    again = restart(path)
+    assert again.recovery_error and again.engine is None and again.deadline is None
+    again.game_tick()
 
 
 def test_an_end_that_could_not_be_written_is_judged_again_and_a_reboot_still_ends_it(tmp_path, monkeypatch):

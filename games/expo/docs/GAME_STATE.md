@@ -239,7 +239,9 @@ A timed mission and the clock (AVR-242, was E-D7):
   next restart judges the clocks again: after a reboot the attempt ends again, and on the same
   boot it can continue only with the time the monotonic clock says is left. A saved deadline
   later than a full timer from the moment the snapshot was written, or a clock reading that is
-  not a finite number of seconds, is treated the same way. The table itself is kept
+  not a plain number of seconds within a sane range, also ends the attempt as a counted failure.
+  A snapshot whose deadline is not a number, or stands beside a mission result or an untimed
+  mission, is refused like any other invalid snapshot. The table itself is kept
   and the crew may retry. An appliance without a real-time clock cannot say how long it was off,
   so a reboot always ends a running timed attempt.
 - A table with no running deadline restores whatever the clocks say.

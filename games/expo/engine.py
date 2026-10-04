@@ -601,6 +601,10 @@ class Engine:
                 and type(s['revision']) is int and s['revision'] >= 0
                 and set(s['away']) <= set(s['humans']),
                 'snapshot', 'Phase and mission check failed.')
+        # A deadline is a finite number of seconds, and only a timed attempt still in play has one.
+        require(s['expiry'] is None or (type(s['expiry']) in (int, float) and -1e12 < s['expiry'] < 1e12
+                                        and s['result'] is None and bool(s['mission']['seconds'])),
+                'snapshot', 'Deadline check failed.')
         require(len(s['humans']) in (2, 3, 4, 5) and len(set(s['humans'])) == len(s['humans'])
                 and set(s['seats']) == set(s['humans']) | ({'tonoja'} if len(s['humans']) == 2 else set())
                 and len(s['seats']) == len(set(s['seats'])) and set(s['hands']) == set(s['humans']),
