@@ -30,9 +30,10 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
   (AVR-241). Of the four that remain, one affects play and needs an owner decision on the remedy:
   a table cannot be ended while someone is away (AVR-240).
 - Twenty-three digital policies are in force. The owner decided the open ones on 2026-10-04
-  (AVR-243, questions Q1 to Q8 below). Four decisions change behaviour. Three are implemented:
-  single-card communication (AVR-248), the task `5with7` (AVR-249) and one shared sonar token for
-  two players (AVR-250). One is not yet: AVR-251. One more needs a further decision: AVR-252.
+  (AVR-243, questions Q1 to Q8 below). Four decisions change behaviour. All four are implemented:
+  single-card communication (AVR-248), the task `5with7` (AVR-249), one shared sonar token for
+  two players (AVR-250) and the captain's authority in missions 10 and 13 (AVR-251). One more
+  needs a further decision: AVR-252.
 - Eight missions and four tasks stay blocked on source material (AVR-244).
 - The earlier specification was wrong or stale in eleven places (E-S1 to E-S11).
 
@@ -131,7 +132,7 @@ a source's wording makes the choice non-obvious and the owner has not confirmed 
 | P06 | An attempt is counted at the crew's begin; setup corrections are free; an avoidable selection failure is counted | R p13 gives the principle, not the bookkeeping | `test_a_deal_exception_is_redealt_before_the_attempt_is_counted`, `test_timed_start_barrier_and_volunteer_eligibility_failure` | uncontested |
 | P07 | Distress choices are sealed and exchanged at once | R says pass a card; simultaneity avoids leaking | `test_distress_sealed_exchange_and_persistence` | uncontested |
 | P08 | The dummy follows suit from its face-up cards only | R p22 says only face-up cards may be played | `test_tonoja_only_ever_offers_face_up_cards_and_follows_suit_from_them` | uncontested |
-| P09 | Begin, distress, collective assignment, retry, next and end need every seated human's confirmation | R says "decide together" | `test_distress_sealed_exchange_and_persistence`, `test_ending_the_table_is_abandoned` | decided 2026-10-04 (Q8): unanimity stays for strategic decisions; missions 10 and 13 follow the source instead (AVR-251); routine progression should become less fragile (AVR-252) |
+| P09 | Begin, distress, collective assignment, retry, next and end need every seated human's confirmation | R says "decide together" | `test_distress_sealed_exchange_and_persistence`, `test_ending_the_table_is_abandoned`, `test_every_other_crew_decision_still_needs_every_seated_human` | decided 2026-10-04 (Q8): unanimity stays for strategic decisions; missions 10 and 13 follow the source instead (AVR-251, built 2026-10-04); routine progression should become less fragile (AVR-252) |
 | P10 | The real-time clock starts at the unanimous begin, after predictions and the distress decision | C13 | `test_timed_start_barrier_and_volunteer_eligibility_failure` | confirmed 2026-10-04 (Q2): Begin is the crew starting the timer |
 | P11 | The continuation stops at mission 50 (difficulty 35) | L sets no limit | `test_difficulty_generation_and_no_pass_in_second_circuit` | confirmed 2026-10-04 (Q7) as an Avrana product limit, not a source rule |
 | P12 | A seat is held for the whole table; every command pauses while a seated player is away; no autoplay, no bots | no source | `test_session_reconnect_all_away_and_again_cannot_erase`, `test_a_dropped_crew_member_returns_by_fresh_ticket_to_the_same_seat_and_hand` | Q10 (see E-D2) |
@@ -205,7 +206,7 @@ something more distinctly Avrana is a later phase, not this one.
 | Q5 | Enable `5with7`; keep `4with8` and `6with6` quarantined | source-backed (text layer) | yes | AVR-249, implemented |
 | Q6 | Mission 8 stays for two players with the dummy counted; shared sonar uses one token for two players; distress and volunteer missions stay unavailable for two | source-leaning for the first two; deferred for the rest | yes, shared sonar only | AVR-250, implemented |
 | Q7 | Keep the cap at mission 50, difficulty 35 | Avrana product limit | no | |
-| Q8 | Follow source-specific authority: in missions 10 and 13 the captain decides and only the recipient consents. Keep unanimity for strategic decisions; routine progression should not be frozen by one player | source-backed for 10 and 13; Avrana policy otherwise | yes, missions 10 and 13 | AVR-251; AVR-252 for progression |
+| Q8 | Follow source-specific authority: in missions 10 and 13 the captain decides and only the recipient consents. Keep unanimity for strategic decisions; routine progression should not be frozen by one player | source-backed for 10 and 13; Avrana policy otherwise | yes, missions 10 and 13 | AVR-251, implemented; AVR-252 for progression |
 
 Until the listed issues are implemented, the code behaves as each question's "Now" line says.
 
@@ -349,19 +350,38 @@ choice, including the captain simply keeping the tasks, which the source does no
 
 **Decision (owner, 2026-10-04):** follow source-specific authority where the supplied material
 defines it. In missions 10 and 13 the captain may keep the tasks without approval from unrelated
-players; passing them on requires the willing recipient; unrelated players have no veto. Not
-implemented yet: AVR-251. For Avrana's own crew decisions, keep unanimity where the crew genuinely
+players; passing them on requires the willing recipient; unrelated players have no veto.
+Implemented 2026-10-04 (AVR-251), see below. For Avrana's own crew decisions, keep unanimity where the crew genuinely
 decides together, and do not use it merely for routine progression or administrative actions where
 one disconnected, inactive or stubborn player could freeze the table.
 
-Classification of today's crew decisions (all are unanimous in the code today):
+Implemented 2026-10-04 (AVR-251), for allocation mode `captain_one` only. The captain naming
+themself assigns the tasks in the same command. The captain naming Tonoja does the same, because
+the captain decides for Tonoja (R p22); the hand-over rule for sonar still applies. The captain
+naming another human leaves an offer that only that human can accept or decline; anyone else's
+answer, the captain's included, is refused with no change. A declined offer leaves the pool intact
+and the captain chooses again. Still only the captain may offer, and the owner must be eligible
+for every task. Every other crew decision is unchanged. The "Now" and "Today" lines above describe
+the state before this change. Tests:
+`test_the_captain_keeping_the_tasks_takes_effect_in_the_same_command`,
+`test_an_offer_is_accepted_by_the_recipient_alone`,
+`test_a_third_player_can_neither_confirm_nor_decline_an_offer`,
+`test_a_declined_offer_returns_to_the_captain_with_the_pool_intact`,
+`test_tonoja_as_recipient_takes_effect_at_once_because_the_captain_decides_for_it`,
+`test_a_non_captain_still_cannot_offer_or_keep_the_tasks`,
+`test_every_other_crew_decision_still_needs_every_seated_human`.
+
+Not decided by any source and left as it was: the captain cannot withdraw an offer; it stands
+until the recipient answers.
+
+Classification of the crew decisions (all unanimous in the code except missions 10 and 13, since AVR-251):
 
 | Decision | Class | Basis | Follow-up |
 |---|---|---|---|
 | Activate distress and choose its direction | strategic, unanimous | R p14 to p15: decide together | none |
 | Mission 6: which seat takes every task | strategic, unanimous | L M6: decide together | none |
 | Free selection: each assignment | strategic, unanimous | R p21: discuss and allocate | none |
-| Missions 10 and 13 | source-specific | L: the captain decides, a willing recipient consents | AVR-251 |
+| Missions 10 and 13 | source-specific | L: the captain decides, a willing recipient consents | AVR-251, done |
 | Begin in the timed mission | strategic, unanimous | it starts the clock (Q2) | none |
 | Begin in an untimed mission | progression | no source; it also declines distress for the attempt, so a less fragile rule must still let a player ask for distress first | AVR-252 |
 | Retry, with the same or new tasks | progression | R p11: you can choose | AVR-252 |
@@ -558,4 +578,31 @@ and every later run against that server then times out until the server is resta
 
 Not covered: the browser runs use the first legal card, so they show that the two-player missions
 start, communicate and reach a result, not that they can be won. Real phones, the appliance and a
+Party-launched round remain unverified.
+
+### AVR-251, 2026-10-04
+
+Scope: allocation mode `captain_one` (missions 10 and 13) in `games/expo/engine.py`, and the
+decision panel in `games/expo/web/client.js`. A pending offer carries a `recipient`; no other
+state, content, adapter or content-hash change. Every other crew decision is unchanged. The
+browser playtest gained an `EXPO_OFFER` setting and plays the `captain_one` missions.
+
+| Check | Result |
+|---|---|
+| The new and updated tests against the engine before the change | 20 failed, as they should |
+| `pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_docs.py` | 314 passed, 1 expected failure (E-D2) |
+| `pytest` (whole repository, with a sibling Party checkout present) | 1,816 passed, 2 skipped, 1 expected failure, 0 failed |
+| `ops/check_docs.py`, `tests/test_no_private_data.py`, catalog drift check, `ops/check_static.sh` | all passed |
+| `tests/playtest_expo.mjs`, headless Chrome, mission 10: keep at 3 and 4 humans, offer at 2, 3 and 5 humans; mission 13: keep at 2 and 3 humans, offer at 3 and 4 humans | passed |
+| `tests/playtest_expo.mjs`, default mission at 2, 3, 4 and 5 humans; two humans on missions 11 and 25 | passed, see the note below |
+| `ops/test_release_safety.sh` | not run locally (needs rsync; GitHub Actions runs it) |
+
+Notes. One playtest run (two humans, mission 11, straight after a five-human run on the same
+server) timed out waiting for the lobby and passed on a fresh server: the playtest timing fault
+recorded in AVR-254, not this change. Two earlier whole-repository runs stalled in the Party
+session tests while other work was loading the machine and moving the sibling Party checkout;
+those tests pass on their own and the run recorded above completed normally.
+
+Not covered: the offer panel was checked in headless Chrome only, where the playtest asserts
+that only the recipient's page has the answer buttons. Real phones, the appliance and a
 Party-launched round remain unverified.

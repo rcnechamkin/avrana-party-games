@@ -368,7 +368,7 @@ class Engine:
         return {c: assertions(self.playable(actor), c) for c in self.playable(actor)
                 if c not in active and assertions(self.playable(actor), c)}
 
-    def _proposal(self, actor, payload):
+    def _proposal(self, actor, payload, now):
         s = self.s
         kind = payload['kind']
         if kind == 'begin':
@@ -403,6 +403,20 @@ class Engine:
         else:
             raise Invalid('action', 'Unknown crew decision.')
         s['proposal'] = {'payload': payload, 'votes': [actor]}
+        if kind == 'assign' and s['mission']['allocation'] == 'captain_one':
+            # Q8 (AVR-251), L M10 and M13: the captain decides. Keeping the tasks, or giving
+            # them to Tonoja, whom the captain controls (R10), needs nobody's consent. An offer
+            # to another human needs that human's consent and nobody else's.
+            if self.controller(payload['owner']) == actor:
+                self._commit_proposal(now)
+            else:
+                s['proposal']['recipient'] = payload['owner']
+
+    def _voters(self):
+        # Who must answer the pending decision: every seated human, or the one recipient
+        # of the captain's offer in missions 10 and 13.
+        recipient = self.s['proposal'].get('recipient')
+        return [recipient] if recipient else self.s['humans']
 
     def _commit_proposal(self, now):
         s = self.s
@@ -436,13 +450,14 @@ class Engine:
         t = msg['t']
         if t == 'propose':
             require(s['proposal'] is None, 'vote', 'Confirm or decline the current crew decision first.')
-            self._proposal(actor, msg['proposal'])
+            self._proposal(actor, msg['proposal'], now)
         elif t == 'confirm':
-            require(s['proposal'] is not None and actor not in s['proposal']['votes'],
+            require(s['proposal'] is not None and actor in self._voters()
+                    and actor not in s['proposal']['votes'],
                     'vote', 'There is no pending decision for you.')
             if msg['yes']:
                 s['proposal']['votes'].append(actor)
-                if all(q in s['proposal']['votes'] for q in s['humans']):
+                if all(q in s['proposal']['votes'] for q in self._voters()):
                     self._commit_proposal(now)
             else:
                 s['proposal'] = None

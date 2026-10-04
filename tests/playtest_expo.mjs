@@ -9,6 +9,7 @@ const BASE=process.argv[2]||"http://127.0.0.1:8196";
 const OUT=process.argv[3]||path.join(os.tmpdir(),"expo-playtest");
 const HUMANS=Number(process.env.EXPO_HUMANS||3);
 const MISSION=Number(process.env.EXPO_MISSION||0); // optional: play this mission instead of the default
+const OFFER=process.env.EXPO_OFFER==="offer"; // missions 10 and 13: the captain offers the tasks instead of keeping them
 fs.mkdirSync(OUT,{recursive:true});
 const errors=[];
 const browser=await puppeteer.launch({executablePath:CHROME_PATH,headless:"new",
@@ -35,6 +36,26 @@ try{
   // A mission with an objective and no tasks opens on the assistance stage.
   await pages[0].waitForFunction(()=>["allocation","assistance"].includes(ST?.game?.stage),{timeout:12000});
   if(MISSION)assert.equal((await state(pages[0])).game.mission.id,MISSION);
+  const opening=(await state(pages[0])).game;
+  if(opening.mission.allocation==="captain_one"){
+    // The captain keeps the tasks at once, or offers them and only the recipient answers.
+    let cap;const others=[];
+    for(const p of pages){if((await state(p)).you.pid===opening.captain)cap=p;else others.push(p);}
+    const keep=!OFFER&&opening.tasks.every(t=>t.eligible_owners.includes(opening.captain));
+    const target=keep?opening.captain:(await state(others[0])).you.pid;
+    await cap.select('select[data-key="all-owner"]',target);
+    await clickKey(cap,"all-tasks");
+    for(const p of pages)await waitRevision(p,opening.revision);
+    if(!keep){
+      const asked=(await state(cap)).game.proposal;
+      assert.equal(asked.recipient,target);
+      for(const p of [cap,...others.slice(1)])assert.equal(await p.evaluate(()=>Boolean(document.querySelector('[data-key="agree"],[data-key="decline"]'))),false,"only the recipient may answer an offer");
+      const rev=(await state(others[0])).game.revision;await clickKey(others[0],"agree");
+      for(const p of pages)await waitRevision(p,rev);
+    }
+    const after=(await state(pages[0])).game;
+    assert.equal(after.proposal,null);assert.ok(after.tasks.every(t=>t.owner===target));
+  }
   for(let i=0;i<25;i++){
     const s=await state(pages[0]);if(s.game.stage!=="allocation")break;
     let pg;
