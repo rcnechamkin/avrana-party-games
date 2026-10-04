@@ -142,11 +142,16 @@ class Engine:
             if conflict is None:
                 return pool
             difficulty = TASKS[conflict]['difficulty'][crew]
-            candidates = [k for k in self.s['deck'] if TASKS[k]['difficulty'][crew] == difficulty
-                          and not (forced and TASKS[k]['params'].get('other') == 'captain')]
+            # The deck first; when it holds no such task, the used pile (AVR-270), which the
+            # draw itself falls back on. The replacement leaves the pile it came from.
+            for source in (self.s['deck'], self.s['used']):
+                candidates = [k for k in source if TASKS[k]['difficulty'][crew] == difficulty
+                              and not (forced and TASKS[k]['params'].get('other') == 'captain')]
+                if candidates:
+                    break
             require(bool(candidates), 'feasibility', 'No same-difficulty replacement is available for this setup.')
             replacement = self.rng.choice(candidates)
-            self.s['deck'].remove(replacement)
+            source.remove(replacement)
             self.s['deck'].append(conflict)
             pool[pool.index(conflict)] = replacement
         raise Invalid('feasibility', 'Task combination needs a fresh task deck.')

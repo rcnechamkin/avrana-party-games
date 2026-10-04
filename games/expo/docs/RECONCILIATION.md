@@ -887,3 +887,32 @@ before that merge and not repeated.
 
 Not covered: a live socket carrying the request (the tests call the adapter), real phones, the
 appliance, a Party-launched round, the playtest on Linux.
+
+### AVR-270, 2026-10-04
+
+- **Cause.** `Engine._repair_tasks` exchanges a task that makes an unavoidable combination for
+  another of the same difficulty, and looked for it in the task deck only. Late in a long table
+  the deck is small and held none, so `prepare` refused with `feasibility`. The last confirmation
+  of a `next` decision (or a `retry` with new tasks) was rolled back, every time it was tried.
+- **Fix.** When the deck holds no such task the replacement is taken from the used pile, and
+  removed from it; the conflicting task goes to the deck as before. `feasibility` remains for a
+  combination that no task in either pile can repair. Which tasks conflict is unchanged.
+- **Assumption.** The rulebook is not cited for taking a replacement from the used pile. This is
+  the mechanical remedy the draw already uses (it refills the deck from the used pile when it
+  cannot reach the difficulty), not a rule decision.
+- **Tests** (`tests/test_expo_repair.py`, 606 cases):
+  `test_the_recorded_tables_reach_the_mission_that_was_refused` (3),
+  `test_a_long_table_is_never_refused_its_next_mission_and_keeps_its_piles_apart` (150 seeds at
+  2, 3, 4 and 5 humans, 40 missions each, piles and `Engine.check` after every step),
+  `test_a_replacement_taken_from_the_used_pile_leaves_it`,
+  `test_a_replacement_in_the_deck_is_preferred_and_the_used_pile_is_untouched`,
+  `test_no_replacement_in_either_pile_is_still_refused`.
+
+Before the fix 7 of the 606 failed (the three recorded tables, the same three seeds in the walk,
+and the used-pile test). After it, on Windows 11, `pytest tests/test_expo.py
+tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_coverage.py
+tests/test_expo_persistence.py tests/test_expo_input.py tests/test_expo_deck.py
+tests/test_expo_repair.py tests/test_expo_docs.py`: 1,630 passed, 2 skipped, 2 expected failures.
+
+Not covered: the whole repository suite, the browser playtest, a live socket, a Party round,
+real phones, the timed variant, tables longer than 40 missions, a `retry` decision.

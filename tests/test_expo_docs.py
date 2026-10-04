@@ -24,7 +24,8 @@ DOCS = ROOT / 'games' / 'expo' / 'docs'
 REQUIRED = ('RULES_SPEC.md', 'GAME_STATE.md', 'ACTIONS.md', 'MISSION_MODEL.md', 'VTT_REFERENCE.md',
             'IMPLEMENTATION_PLAN.md', 'RECONCILIATION.md')
 TEST_FILES = ('test_expo.py', 'test_expo_party.py', 'test_expo_contract.py', 'test_expo_coverage.py',
-              'test_expo_persistence.py', 'test_expo_input.py', 'test_expo_deck.py')
+              'test_expo_persistence.py', 'test_expo_input.py', 'test_expo_deck.py',
+              'test_expo_repair.py')
 
 
 def read(name):
