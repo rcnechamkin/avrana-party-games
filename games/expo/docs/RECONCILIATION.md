@@ -720,10 +720,10 @@ passed are the request-memory tests, which pin behaviour that did not change.
 
 | Check | Result (Windows 11) |
 |---|---|
-| `pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_coverage.py tests/test_expo_persistence.py tests/test_expo_docs.py` | @EXPO@ |
-| `pytest` (whole repository, with a sibling Party checkout present) | @WHOLE@ |
-| `ops/check_docs.py`, `tests/test_no_private_data.py`, `ops/export_avrana_catalog.py --check provider/catalog.json`, `npm run check:syntax` | @STATIC@ |
-| `tests/playtest_expo.mjs`, headless Chrome | @PLAYTEST@ |
+| `pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_coverage.py tests/test_expo_persistence.py tests/test_expo_docs.py` | 500 passed, 2 skipped, 2 expected failures (E-D2, E-D8) |
+| `pytest` (whole repository, with a sibling Party checkout present) | 2,006 passed, 4 skipped, 2 expected failures, 0 failed |
+| `ops/check_docs.py`, `tests/test_no_private_data.py`, `ops/export_avrana_catalog.py --check provider/catalog.json`, `npm run check:syntax` | all passed |
+| `tests/playtest_expo.mjs`, headless Chrome | passed once each at 5, 4, 3 and 2 humans (default mission, untimed) |
 
 Not covered: a real reboot, a real clock correction, the appliance, real phones. The clocks in
 the tests are set by hand; one test runs on the real clocks without a step. The timed mission is
