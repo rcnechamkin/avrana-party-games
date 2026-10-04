@@ -136,5 +136,7 @@ jobs:
         run: |
           node tests/hubnet_reconnect_test.mjs
           node tests/hubnet_party_ticket_test.mjs
+      - name: Party bridge on the game origin (vendored shim, launch integration)
+        run: node --test tests/avrana_bridge_test.mjs
       - name: Prove deployment preserves runtime state
         run: bash ops/test_release_safety.sh
