@@ -195,3 +195,18 @@ def test_a_snapshot_that_cannot_be_written_as_text_is_a_storage_failure_not_a_cr
     s.players[tokens[0]].name = 'human-0'
     assert s.game_action(seat[e.controller(q)], msg) == []                         # the same request, sent again
     assert ExpoSession(random.Random(1), snapshot_path=path).engine.s['assignments'] == {task: q}
+
+
+@pytest.mark.parametrize('value', [object(), b'bytes', {1, 2}, nested(100000), 'bad\ud800name', float('nan')],
+                         ids=['an object', 'bytes', 'a set', 'nested too deep', 'a lone surrogate', 'not a number'])
+def test_the_store_reports_any_snapshot_it_cannot_write_as_a_failed_write(value, tmp_path):
+    from games.expo.storage import SnapshotStore
+    store = SnapshotStore(tmp_path / 'crew.json')
+    store.write({'kept': 1})
+    if isinstance(value, float):                 # JSON as Python writes it can hold this one
+        store.write({'value': value})
+        return
+    with pytest.raises(OSError):
+        store.write({'value': value})
+    assert store.read() == {'kept': 1}
+    assert [p.name for p in tmp_path.iterdir()] == ['crew.json']

@@ -115,7 +115,7 @@ updated.
 | E-D8 | The reason shown on an unavailable control is not the server's rejection in six places. Two state something untrue: a color card in the distress exchange after the player's own choice is sealed reads "Submarines cannot be passed", and a card that follows suit reads "You must follow the opening suit." while a crew decision is pending (the captain's off-suit Tonoja card reads "Only the captain plays for Tonoja."). Four are a second wording of the same fact: a card before the crew begins, "Take this task" for another seat and for the captain on a comparison task, "Offer all tasks" for a non-captain. The server refuses every one of these requests and nothing changes | action contract ("the client can disable it with the right reason") | `test_defect_the_reason_shown_before_play_begins_is_the_servers_rejection`; the playtest asserts the refusals | AVR-263 |
 | E-D9 | **Fixed 2026-10-04.** Was: a crew decision was checked for its keys but not for the type of every value. In missions 6, 10 and 13 the `task` of an `assign` decision was never read, so any JSON value was stored in the pending decision and sent to every viewer; a value nested about 500 lists deep (one socket message) then made every view, snapshot and command raise, and one seated player could freeze the table. Now: every field of a crew decision must be a plain value of its own type and, where all tasks go together, `task` must be `all`; anything else is rejected before it is stored or remembered | action contract (a rejected request changes nothing) | `test_an_assign_field_of_the_wrong_type_is_refused_in_every_allocation_mode`, `test_every_other_decision_field_of_the_wrong_type_is_refused`, `test_where_all_tasks_go_together_the_task_field_is_the_word_all`, `test_the_request_that_froze_the_table_is_refused_and_the_table_plays_on` | AVR-264 |
 | E-D10 | **Fixed 2026-10-04.** Was: mission 32 took its four named tasks without removing them from the task deck; after it ended they were in the used pile too, and once the deck was refilled from the used pile a later mission could deal the same task twice. Assigning the second copy overwrote the first copy's owner, so one task disappeared and the mission was easier than its difficulty. Now: a fixed mission takes its tasks out of the deck and the used pile, and the engine's invariant refuses any state with a task id twice in a pile or in two piles | no source involved: a task card cannot be in two piles | `test_no_task_is_dealt_twice_in_the_missions_after_mission_thirty_two`, `test_no_task_is_dealt_twice_for_any_crew_size`, `test_retries_before_and_after_mission_thirty_two_keep_every_task_in_one_place`, `test_mission_thirty_two_takes_its_four_tasks_out_of_the_deck_and_the_used_pile`, `test_a_table_that_opens_on_mission_thirty_two_deals_its_four_tasks`, `test_the_reported_table_reaches_mission_forty_seven_with_distinct_tasks`, `test_a_snapshot_with_a_task_in_two_places_is_refused` | AVR-265 |
-| E-D11 | **Fixed 2026-10-04.** Was: a request id was checked only for its length; one that cannot be written as UTF-8 (a lone surrogate) on an otherwise legal command was accepted and remembered, the snapshot write then raised, and every later command on a table with a snapshot file raised too. Now: a request id is 1 to 80 printable ASCII characters, and a snapshot that cannot be written as text is a failed write: the command is rolled back and answered `storage` | action contract (a rejected request changes nothing); state contract (a failed write rolls back) | `test_a_request_id_that_is_not_plain_printable_text_is_refused`, `test_a_plain_request_id_is_still_accepted`, `test_an_unstorable_request_id_leaves_a_stored_table_saving_and_answering`, `test_a_snapshot_that_cannot_be_written_as_text_is_a_storage_failure_not_a_crash` | AVR-268 |
+| E-D11 | **Fixed 2026-10-04.** Was: a request id was checked only for its length; one that cannot be written as UTF-8 (a lone surrogate) on an otherwise legal command was accepted and remembered, the snapshot write then raised, and every later command on a table with a snapshot file raised too. Now: a request id is 1 to 80 printable ASCII characters, and a snapshot that cannot be written as text is a failed write: the command is rolled back and answered `storage` | action contract (a rejected request changes nothing); state contract (a failed write rolls back) | `test_a_request_id_that_is_not_plain_printable_text_is_refused`, `test_a_plain_request_id_is_still_accepted`, `test_an_unstorable_request_id_leaves_a_stored_table_saving_and_answering`, `test_a_snapshot_that_cannot_be_written_as_text_is_a_storage_failure_not_a_crash`, `test_the_store_reports_any_snapshot_it_cannot_write_as_a_failed_write` | AVR-268 |
 
 Not a defect, recorded so nobody "fixes" it by guessing: other reversible tasks could be proven
 safe early from public cards (a "win no pink" task after all nine pink cards are gone). The
@@ -866,10 +866,24 @@ failed. After both:
 
 | Check | Result (Windows 11) |
 |---|---|
-| `pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_coverage.py tests/test_expo_persistence.py tests/test_expo_input.py tests/test_expo_deck.py tests/test_expo_docs.py` | 1,017 passed, 2 skipped, 2 expected failures (E-D2, E-D8) |
-| `pytest` (whole repository, with a sibling Party checkout present) | 2,541 passed, 4 skipped, 2 expected failures, 0 failed |
+| `pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_coverage.py tests/test_expo_persistence.py tests/test_expo_input.py tests/test_expo_deck.py tests/test_expo_docs.py` | 1,024 passed, 2 skipped, 2 expected failures (E-D2, E-D8) |
+| `pytest` (whole repository, with a sibling Party checkout present) | 2,548 passed, 4 skipped, 2 expected failures, 0 failed |
 | `ops/check_docs.py`, `tests/test_no_private_data.py`, `ops/export_avrana_catalog.py --check provider/catalog.json` | all passed |
 | `tests/playtest_expo.mjs`, headless Chrome | passed once each at 2, 3, 4 and 5 humans (default mission) |
+
+The independent review passed the change with findings, none Important. Its hostile run (4,696
+requests on a stored table and 617 tables with hostile names, settings and tokens) left every
+table saving, answering and restarting. One finding was inside this change, an untested arm of
+the store's failure handling; it has a test now. Recorded and not fixed here:
+
+- Two cooperating seats can still make a snapshot too large to read back, with about 7,000
+  accepted commands whose request ids are all quotation marks (each is escaped twice in the
+  file). The table keeps playing and is lost only at a restart. No issue is filed yet.
+- An integer of more than 4,300 digits raises out of `Engine.apply`. A socket cannot deliver one
+  (the JSON reader refuses it); state and file are unchanged.
+
+The counts below include `main` and the later AVR-242 commit merged in. The playtest was run
+before that merge and not repeated.
 
 Not covered: a live socket carrying the request (the tests call the adapter), real phones, the
 appliance, a Party-launched round, the playtest on Linux.
