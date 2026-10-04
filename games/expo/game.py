@@ -16,7 +16,18 @@ UNTRUSTED_CLOCK = ('The server restarted and could not tell how much time had pa
 
 
 def _mono():
+    # Seconds since boot, the same for every process on the host (Linux and Windows).
     return time.monotonic()
+
+
+def _boot():
+    # The kernel's identity for this boot, or None where there is none to read. Without it a
+    # reboot whose clocks happen to line up cannot be told from a restart of the service.
+    try:
+        with open('/proc/sys/kernel/random/boot_id', encoding='ascii') as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
 
 
 def _wall():
@@ -108,10 +119,15 @@ class ExpoSession(GameSession):
     @staticmethod
     def _clock_continuous(clock):
         # After a restart the saved deadline still means something only if the monotonic clock
-        # is the one the snapshot was written under: it has not gone backward (a reboot) and it
-        # agrees with the wall clock about how long the server was down (no reboot, no step, no
-        # suspend). An appliance without a real-time clock cannot say how long it was off.
+        # is the one the snapshot was written under: the same boot by the kernel's own word, a
+        # clock that has not gone backward, and agreement with the wall clock about how long the
+        # server was down (no step, no suspend). An appliance without a real-time clock cannot
+        # say how long it was off, and its clocks can line up again after a reboot; where the
+        # boot cannot be identified, nothing is trusted.
         if not (isinstance(clock, dict) and all(type(clock.get(k)) in (int, float) for k in ('wall', 'mono'))):
+            return False
+        boot = _boot()
+        if not (isinstance(boot, str) and boot and clock.get('boot') == boot):
             return False
         return (_mono() >= clock['mono']
                 and abs((_wall() - _mono()) - (clock['wall'] - clock['mono'])) <= CLOCK_TOLERANCE)
@@ -121,7 +137,6 @@ class ExpoSession(GameSession):
             return [self.fx('invalid', to=token, code='payload', msg='No active mission.')]
         actor = self.players[token].pid if token in self.participants and token in self.players else None
         before = self.engine.snapshot()
-        before_deadline = self.deadline
         try:
             self.engine.apply(actor, msg, _mono())
             self._sync()
@@ -137,8 +152,7 @@ class ExpoSession(GameSession):
         except OSError:
             self.engine = Engine.restore(before)
             self.rng = self.engine.rng
-            self.phase = self.engine.s['phase']
-            self._bump(before_deadline)
+            self._sync()
             return [self.fx('invalid', to=token, code='storage', msg='The table could not be saved. Try again.')]
         if self.phase == 'closed':
             self._outcome = 'abandoned' if self.engine.s['result']['status'] == 'abandoned' else 'completed'
@@ -225,7 +239,7 @@ class ExpoSession(GameSession):
 
     def snapshot(self):
         return {'version': 1, 'engine': self.engine.snapshot(), 'settings': deepcopy(self.settings),
-                'clock': {'wall': _wall(), 'mono': _mono()},
+                'clock': {'wall': _wall(), 'mono': _mono(), 'boot': _boot()},
                 'participants': list(self.participants), 'pid_counter': self._pid_counter,
                 'players': [{k: getattr(p, k) for k in Player.__slots__} for p in self.players.values()
                             if p.token in self.participants]}
@@ -248,12 +262,20 @@ class ExpoSession(GameSession):
         engine.s['revision'] += 1
         if self._clock_continuous(saved.get('clock')):
             engine.observe_time(_mono())
+            ended = False
         else:
-            engine.expire(UNTRUSTED_CLOCK)
+            ended = engine.expire(UNTRUSTED_CLOCK)
         self.engine, self.rng, self.players = engine, engine.rng, players
         self.participants, self._pid_counter = saved['participants'], saved['pid_counter']
         self.settings = saved['settings']
         self._sync()
+        if ended:
+            # The end must outlive this process too: a later restart on the saved boot would
+            # otherwise find the deadline still running in the file.
+            try:
+                self._save()
+            except OSError:
+                pass
         if engine.s['phase'] == 'closed':
             self.end_game()
 

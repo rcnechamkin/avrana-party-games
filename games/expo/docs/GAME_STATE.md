@@ -31,7 +31,7 @@ Table lifetime:
 
 | Key | Meaning |
 |---|---|
-| `version`, `content` | snapshot format (1) and content hash: the task catalog and every mission definition, untimed and timed, a blocked mission by its reason. A restore with other values is refused |
+| `version`, `content` | snapshot format (1) and content hash: the task catalog and every mission definition, untimed and timed, a blocked mission by its reason. A restore with other values is refused. Rules that live in the engine or the evaluators rather than in a mission definition (the mission 23 sonar rule, the two-player refusals, the deal exceptions, the task evaluators) are not in the hash: changing one needs a new format `version` |
 | `humans`, `seats` | the seated players in clockwise order; `seats` also contains `tonoja` for two players |
 | `timed` | the table's real-time setting |
 | `attempt` | counter of prepared deals, part of every command's scope |
@@ -222,17 +222,22 @@ With the snapshot file:
 A timed mission and the clock (AVR-242, was E-D7):
 
 - The deadline is kept on the monotonic clock. A step of the wall clock while the table is live,
-  in either direction, neither grants nor takes time.
-- Every snapshot records the wall clock and the monotonic clock at the moment it was written.
-- A restored table with a running deadline continues only when the clocks prove how long the
-  server was down: the monotonic clock has not gone backward and the difference between the two
-  clocks is what it was, within two seconds. That is a restart of the service on the same boot.
-  The downtime is charged, and a deadline that passed meanwhile fails the mission.
-- Otherwise (a reboot, a wall clock that stepped either way, a suspend, a snapshot without the
-  clock record) the timed attempt ends at once as a counted failure with its own reason. The table
-  itself is kept and the crew may retry. A timed attempt never continues with more time than it
-  had. An appliance without a real-time clock cannot say how long it was off, so a reboot always
-  ends a running timed attempt.
+  in either direction, neither grants nor takes time. On a host that suspends, the monotonic
+  clock may stand still during the suspend and the deadline with it; the appliance does not
+  suspend.
+- Every snapshot records the wall clock, the monotonic clock and the kernel's identity for the
+  current boot (`/proc/sys/kernel/random/boot_id`) at the moment it was written.
+- A restored table with a running deadline continues only when all of this holds: the boot
+  identity is readable and is the one in the snapshot, the monotonic clock has not gone backward,
+  and the difference between the two clocks is what it was, within two seconds. That is a restart
+  of the service on the same boot. The downtime is charged, and a deadline that passed meanwhile
+  fails the mission.
+- Otherwise (a reboot, even one whose clocks line up as before; a wall clock that stepped either
+  way; a suspend; a host that cannot name its boot; a snapshot without the record) the timed
+  attempt ends at once as a counted failure with its own reason, and that end is written to the
+  snapshot so that no later restart finds the deadline still running. The table itself is kept
+  and the crew may retry. An appliance without a real-time clock cannot say how long it was off,
+  so a reboot always ends a running timed attempt.
 - A table with no running deadline restores whatever the clocks say.
 
 ## Party rounds

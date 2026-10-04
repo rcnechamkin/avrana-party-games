@@ -103,12 +103,13 @@ def test_an_unchanged_mission_table_still_restores(tmp_path):
 # ---- E-D7 the clock ----------------------------------------------------------------------------
 
 class Clock:
-    """The adapter's two clocks, set by hand."""
+    """The adapter's two clocks and the boot they belong to, set by hand."""
 
-    def __init__(self, monkeypatch, wall, mono):
-        self.wall, self.mono = wall, mono
+    def __init__(self, monkeypatch, wall, mono, boot='boot-a'):
+        self.wall, self.mono, self.boot = wall, mono, boot
         monkeypatch.setattr(game, '_wall', lambda: self.wall)
         monkeypatch.setattr(game, '_mono', lambda: self.mono)
+        monkeypatch.setattr(game, '_boot', lambda: self.boot)
 
     def pass_time(self, seconds):
         self.wall += seconds
@@ -163,8 +164,9 @@ def test_a_timed_mission_runs_on_the_monotonic_clock_and_browsers_get_a_wall_clo
     assert s.game_state(None)['expiry'] is None and s.deadline is None
 
 
-def test_on_the_real_clocks_the_shared_timer_and_the_browsers_get_the_same_150_seconds(tmp_path):
+def test_on_the_real_clocks_the_shared_timer_and_the_browsers_get_the_same_150_seconds(tmp_path, monkeypatch):
     import time
+    monkeypatch.setattr(game, '_boot', lambda: 'this-boot')         # not every host can name its boot
 
     class Real:
         mono = property(lambda self: time.monotonic())
@@ -208,7 +210,7 @@ def test_a_restart_on_the_same_boot_continues_the_deadline_and_charges_the_downt
     clock = Clock(monkeypatch, wall=1000.0, mono=5000.0)
     s, tokens = timed_table(path, clock)
     on_disk = path.read_text(encoding='utf-8')
-    assert json.loads(on_disk)['clock'] == {'wall': 1000.0, 'mono': 5000.0}
+    assert json.loads(on_disk)['clock'] == {'wall': 1000.0, 'mono': 5000.0, 'boot': 'boot-a'}
     clock.pass_time(60)                                              # down for a minute; both clocks agree
     again = restart(path)
     assert again.recovery_error is None and again.engine.s['result'] is None
@@ -243,16 +245,21 @@ def test_a_timed_table_restored_after_its_deadline_has_already_failed(tmp_path, 
     assert again.engine.s['phase'] == 'allocation' and again.engine.s['result'] is None
 
 
-# (wall, mono) at the restart, for a snapshot written at wall 1000, mono 5000 with 150 s to run.
+# (wall, mono, boot) at the restart, for a snapshot written at wall 1000, mono 5000 on boot-a
+# with 150 s to run.
 UNTRUSTED = {
-    'the wall clock stepped backward': (400.0, 5060.0),
-    'the wall clock stepped back to before the snapshot by seconds': (990.0, 5060.0),
-    'the wall clock jumped forward': (99999.0, 5060.0),
-    'a reboot: the monotonic clock began again': (1060.0, 12.0),
-    'a reboot without a real-time clock: the wall clock resumed where it stopped': (1001.0, 12.0),
-    'a reboot after a longer uptime than before': (1060.0, 9000.0),
-    'a suspend: the wall clock ran on, the monotonic clock did not': (1060.0, 5010.0),
-    'both clocks went backward': (500.0, 4500.0),
+    'the wall clock stepped backward': (400.0, 5060.0, 'boot-a'),
+    'the wall clock stepped back to before the snapshot': (990.0, 5060.0, 'boot-a'),
+    'the wall clock jumped forward': (99999.0, 5060.0, 'boot-a'),
+    'the wall clock is just outside the tolerance, ahead': (1062.1, 5060.0, 'boot-a'),
+    'the wall clock is just outside the tolerance, behind': (1057.9, 5060.0, 'boot-a'),
+    'a reboot: the monotonic clock began again': (1060.0, 12.0, 'boot-b'),
+    'a reboot without a real-time clock: the wall clock resumed where it stopped': (1001.0, 12.0, 'boot-b'),
+    'a reboot after a longer uptime than before': (1060.0, 9000.0, 'boot-b'),
+    'a reboot whose two clocks line up exactly as before': (1005.0, 5005.0, 'boot-b'),
+    'a host that cannot name its boot': (1060.0, 5060.0, None),
+    'a suspend: the wall clock ran on, the monotonic clock did not': (1060.0, 5010.0, 'boot-a'),
+    'both clocks went backward': (500.0, 4500.0, 'boot-a'),
 }
 
 
@@ -261,16 +268,22 @@ def test_a_timed_table_restored_under_a_clock_that_cannot_be_trusted_ends_and_ne
     path = tmp_path / 'crew.json'
     clock = Clock(monkeypatch, wall=1000.0, mono=5000.0)
     s, tokens = timed_table(path, clock)
-    on_disk = path.read_text(encoding='utf-8')
-    clock.wall, clock.mono = UNTRUSTED[case]
+    clock.wall, clock.mono, clock.boot = UNTRUSTED[case]
     again = restart(path)
+    ended = {'status': 'failed', 'reason': game.UNTRUSTED_CLOCK}
     assert again.recovery_error is None                              # the table itself is kept
-    assert again.engine.s['result'] == {'status': 'failed', 'reason': game.UNTRUSTED_CLOCK}
+    assert again.engine.s['result'] == ended
     assert again.phase == 'mission_result' and again.engine.s['expiry'] is None and again.deadline is None
     assert again.game_state(None)['expiry'] is None
     assert again.engine.s['attempts'] == 1 and again.engine.s['log'] == []   # a counted attempt, no success
     assert again.engine.s['hands'] == s.engine.s['hands']
-    assert path.read_text(encoding='utf-8') == on_disk
+    # The end is written down, so no later restart can find the deadline still running: not even
+    # one back on the first boot with both clocks exactly where a live deadline would expect them.
+    on_disk = json.loads(path.read_text(encoding='utf-8'))
+    assert on_disk['engine']['state']['result'] == ended and on_disk['engine']['state']['expiry'] is None
+    clock.wall, clock.mono, clock.boot = 1020.0, 5020.0, 'boot-a'
+    later = restart(path)
+    assert later.engine.s['result'] == ended and later.engine.s['expiry'] is None
     for t in tokens:
         again.join(t, t)
     agree(again, tokens, 'retry', keep=True)                         # the crew is not stranded
@@ -291,6 +304,10 @@ def test_a_timed_snapshot_without_a_clock_record_ends_the_attempt(tmp_path, monk
         again = restart(path)
         assert again.recovery_error is None
         assert again.engine.s['result'] == {'status': 'failed', 'reason': game.UNTRUSTED_CLOCK}, bad
+        saved = json.loads(path.read_text(encoding='utf-8'))         # put the running table back
+        saved['engine']['state'].update(result=None, expiry=5150.0, phase='before_trick')
+        saved['engine']['state']['revision'] -= 2
+        path.write_text(json.dumps(saved), encoding='utf-8')
 
 
 @pytest.mark.parametrize('case', UNTRUSTED)
@@ -300,7 +317,7 @@ def test_a_table_with_no_running_deadline_restores_whatever_the_clocks_say(case,
     s, tokens = session(path=untimed)
     waiting = tmp_path / 'timed-not-begun.json'
     t, _ = timed_table(waiting, clock, begin=False)                  # timed, but the clock is not running
-    clock.wall, clock.mono = UNTRUSTED[case]
+    clock.wall, clock.mono, clock.boot = UNTRUSTED[case]
     for path, before in ((untimed, s), (waiting, t)):
         again = restart(path)
         assert again.recovery_error is None and again.engine.s['result'] is None
@@ -384,3 +401,29 @@ def test_a_request_refused_only_because_the_disk_failed_succeeds_when_sent_again
     assert s.game_action(seat[actor], msg) == []                     # the very same message
     assert s.engine.s['revision'] == before['state']['revision'] + 1
     assert s.game_action(seat[actor], msg) == [] and s.engine.s['revision'] == before['state']['revision'] + 1
+
+
+@pytest.mark.parametrize('drift', [-1.9, 0.0, 1.9])
+def test_clocks_that_agree_within_two_seconds_on_the_same_boot_are_trusted(drift, tmp_path, monkeypatch):
+    path = tmp_path / 'crew.json'
+    clock = Clock(monkeypatch, wall=1000.0, mono=5000.0)
+    timed_table(path, clock)
+    clock.wall, clock.mono = 1060.0 + drift, 5060.0
+    again = restart(path)
+    assert again.engine.s['result'] is None and again.engine.s['expiry'] == 5150.0
+    assert remaining(again, clock) == 90.0                           # the monotonic clock decides how much
+
+
+def test_a_failed_write_after_a_wall_clock_step_leaves_the_shared_timer_on_the_true_deadline(tmp_path, monkeypatch):
+    clock = Clock(monkeypatch, wall=1000.0, mono=5000.0)
+    s, tokens = timed_table(tmp_path / 'crew.json', clock)
+    clock.wall -= 600                                                # corrected while the table is live
+
+    def broken(snapshot):
+        raise OSError('disk unavailable')
+    monkeypatch.setattr(s.store, 'write', broken)
+    seat = by_pid(s, tokens)
+    turn = s.engine.s['turn']
+    assert send(s, seat[turn], 'play_card', card=s.engine.playable(turn)[0])[0]['code'] == 'storage'
+    assert s.engine.s['expiry'] == 5150.0 and s.engine.s['trick'] == []
+    assert s.deadline == clock.wall + 150.0                          # not the moment from before the step
