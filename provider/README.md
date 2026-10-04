@@ -103,7 +103,10 @@ cross-repo job compares it with Party's contracts/party-games.v0.json (Party too
   are `tests/vectors/game-result.v1.json`. A game opts in by defining
   `GameSession.game_result(ref)` (see `core/session.py`); `core/net.py` turns its seat tokens
   into the launch roster's participant ids and builds the envelope. People are named only by
-  participant id; `game.build` is a digest of the game's own sources. A result the party would
+  participant id. `game.build` identifies the implementation that produced the result: a digest
+  of the shared server runtime (`server.py`, `core/`, `games/registry.py`, `requirements.txt`)
+  and the game's own sources and server-side content (`core.party_session.build_id`; browser
+  assets, art and docs are excluded). It is recomputable at any commit. A result the party would
   refuse is left out and logged, and the session still ends. Reporters are listed under
   `result.reported_by` in `provider/avrana-contract.json` (today: BLUFF). No browser message
   can produce or alter a result.
