@@ -27,6 +27,14 @@ services, no PKI. Consequence (documented, accepted): a game server can mint tic
 sessions; it cannot touch another game's, whose key it does not hold. Built-in LAN Games modules
 share one process, so their keys are per process in practice (GAME-INTEGRATION.md §3.1).
 
+Key files: read_key refuses a key that anyone but its owner and this process could read, or that
+anyone but its owner could change. A file with no group or other permission bits passes on its
+mode. A systemd `LoadCredential=` file passes on its ACL: systemd may leave such a file owned by
+root and grant the service user read through a POSIX ACL, and the mode then reads 0440, because
+the group bits of a file with an ACL show the ACL's mask, not the group's rights. That file is
+accepted only when the ACL itself says the owning group and everyone else get nothing and the one
+named user is this process (key_file_problem). A plain group-readable key is still refused.
+
 Clock: both ends read one wall clock, and the appliance has no RTC, so an NTP step after an
 offline boot can move it. `unseal` tolerates CLOCK_SKEW seconds of future `iat` and nothing more
 (tolerances are not widened silently). A token whose `iat` is further ahead than that means the
@@ -52,6 +60,7 @@ import json
 import os
 import re
 import secrets
+import struct
 import time
 
 VERSION = 'avrana.party-session/v0'
@@ -84,13 +93,62 @@ def write_key(path, key):
         f.write(key.hex() + '\n')
 
 
+ACL_XATTR = 'system.posix_acl_access'      # Linux: where a file's POSIX ACL lives
+_ACL_OWNER, _ACL_USER, _ACL_GROUP_OBJ, _ACL_GROUP, _ACL_MASK, _ACL_OTHER = 0x01, 0x02, 0x04, 0x08, 0x10, 0x20
+_READ = 4
+
+
+def _acl_admits_only(acl, uid):
+    """True when this raw POSIX ACL lets the file's owner and user `uid` read it and lets nobody
+    else do anything: no write or execute for anyone, nothing for the owning group or for others,
+    no named group, and no named user but `uid`. Anything unrecognised is False."""
+    if not isinstance(acl, bytes) or len(acl) < 4 or (len(acl) - 4) % 8 \
+            or struct.unpack_from('<I', acl)[0] != 2:
+        return False
+    named = False
+    for offset in range(4, len(acl), 8):
+        tag, perm, ident = struct.unpack_from('<HHI', acl, offset)
+        if tag in (_ACL_OWNER, _ACL_MASK):
+            if perm & ~_READ:
+                return False
+        elif tag == _ACL_USER:
+            if ident != uid or perm != _READ:
+                return False
+            named = True
+        elif tag in (_ACL_GROUP_OBJ, _ACL_OTHER):
+            if perm:
+                return False
+        else:                                   # a named group, or a tag this code does not know
+            return False
+    return named
+
+
+def key_file_problem(mode, owner, uid, acl=None):
+    """Why a key file with these permission bits, this owner uid and this raw ACL (or None) must
+    not be used by a process running as `uid`; None when it may. See "Key files" above."""
+    if not mode & 0o077:
+        return None                             # private by its mode alone
+    if mode & 0o077 == 0o040 and owner in (0, uid) and _acl_admits_only(acl, uid):
+        return None                             # 0440 where the 040 is only an ACL mask
+    return 'key file must not be readable by group or others'
+
+
 def read_key(path):
     with open(path, encoding='ascii') as f:
         text = f.read().strip()
+        if os.name == 'posix':
+            st = os.fstat(f.fileno())
+            acl = None
+            if st.st_mode & 0o077 and hasattr(os, 'getxattr'):
+                try:
+                    acl = os.getxattr(f.fileno(), ACL_XATTR)
+                except OSError:
+                    acl = None                  # no ACL, or a filesystem without them
+            problem = key_file_problem(st.st_mode & 0o7777, st.st_uid, os.geteuid(), acl)
+            if problem:
+                raise ValueError(f'{path}: {problem}')
     if not re.fullmatch(r'[0-9a-f]{64}', text):
         raise ValueError(f'{path}: not a 32-byte hex key')
-    if os.name == 'posix' and os.stat(path).st_mode & 0o077:
-        raise ValueError(f'{path}: key file must not be readable by group or others')
     return bytes.fromhex(text)
 
 
