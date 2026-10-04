@@ -17,7 +17,8 @@ Classes:
 | DEFERRED | specified or desirable, not built; nothing claims it works |
 
 Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests named here exist in
-`tests/test_expo.py`, `tests/test_expo_party.py` and `tests/test_expo_contract.py`;
+`tests/test_expo.py`, `tests/test_expo_party.py`, `tests/test_expo_contract.py` and
+`tests/test_expo_coverage.py`;
 `tests/test_expo_docs.py` fails if a name stops existing.
 
 ## Summary
@@ -25,9 +26,9 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 - The card rules, deal, captain, trick resolution, communication truth and timing, selection and
   pass rule, task evaluators, mission targets and modifiers of the 24 enabled missions match R
   and L.
-- Seven defects were recorded (E-D1 to E-D7). Three are fixed: E-D1, the selection stall
+- Eight defects were recorded (E-D1 to E-D7 by the reconciliation, E-D8 by AVR-247). Three are fixed: E-D1, the selection stall
   (AVR-239), and E-D3 and E-D4, late completion of the window tasks and currents visibility
-  (AVR-241). Of the four that remain, one affects play and needs an owner decision on the remedy:
+  (AVR-241). Of the five that remain, one affects play and needs an owner decision on the remedy:
   a table cannot be ended while someone is away (AVR-240).
 - Twenty-three digital policies are in force. The owner decided the open ones on 2026-10-04
   (AVR-243, questions Q1 to Q8 below). Four decisions change behaviour. All four are implemented:
@@ -54,7 +55,7 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 | E-M09 | One token per player per attempt; only before a trick; only after tasks are distributed (R p5) | `communication_options` requires `before_trick` | `test_communication_conditions_resource_and_immutable_meaning`, `test_communication_is_refused_before_the_crew_begins_and_for_non_crew`, `test_sonar_is_available_again_on_the_next_attempt` | MATCH |
 | E-M10 | Declaration must be the true highest, only or lowest; no submarines (R p6). A single card is "only" (C10) | `rules.assertions` | `test_communication_conditions_resource_and_immutable_meaning`, `test_every_offered_declaration_is_true_and_single_cards_are_always_only` | MATCH |
 | E-M11 | Shown card stays in hand; declaration never changes; reminder leaves when played; token stays spent (R p6 to p7) | exposure record with `active` | `test_an_exposed_card_stays_in_hand_follows_suit_and_its_token_is_never_restored` | MATCH |
-| E-M12 | Draw tasks to the exact total, skipping cards that would exceed it (R p8) | `_generate` | `test_difficulty_generation_and_no_pass_in_second_circuit` | MATCH (order of skipping not tested, AVR-247) |
+| E-M12 | Draw tasks to the exact total, skipping cards that would exceed it (R p8) | `_generate` | `test_difficulty_generation_and_no_pass_in_second_circuit` | MATCH; skip order: `test_task_drawing_skips_a_card_that_would_exceed_the_total_and_keeps_scanning` |
 | E-M13 | Captain first, clockwise, one task per turn (R p9) | `allocation_ring`, `selector` | `test_difficulty_generation_and_no_pass_in_second_circuit`, `test_skip_captain_and_terrain_draws_are_frozen_on_restore` | MATCH |
 | E-M14 | Pass only when fewer tasks than seats at the start, and all tasks placed in one circuit (R p9) | `pass_task` | `test_pass_capacity_and_captain_comparison`, `test_difficulty_generation_and_no_pass_in_second_circuit` | MATCH |
 | E-M15 | Captain may not take a captain-comparison task (R p18), in every allocation mode | `eligible`, `_assign`, `_proposal` | `test_pass_capacity_and_captain_comparison`, `test_collective_and_free_allocation_refuse_a_captain_comparison_task_for_the_captain` | MATCH |
@@ -64,7 +65,7 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 | E-M19 | Retry redeals; tasks kept or redrawn (R p11) | `retry` decision, `prepare(keep)` | `test_explicit_feasibility_and_used_deck_replenishment`, `test_distress_surcharge_is_logged_once_and_a_new_mission_clears_it` | MATCH |
 | E-M20 | Distress: before any communication; everyone passes one non-submarine the same way; stays active; one extra recorded attempt (R p14 to p15) | `distress` decision, `pass_card`, `_finish` log | `test_distress_sealed_exchange_and_persistence`, `test_distress_surcharge_is_logged_once_and_a_new_mission_clears_it` | MATCH |
 | E-M21 | Two players: 13/13 and seven two-card columns; captain is human and controls the dummy; only face-up cards; reveal after the trick (R p21 to p22) | `_deal`, `controller`, `playable`, `_play` | `test_deals_conserve_and_captain`, `test_tonoja_control_visibility_and_delayed_reveal`, `test_tonoja_only_ever_offers_face_up_cards_and_follows_suit_from_them` | MATCH |
-| E-M22 | Missions may be played in any order (R p3) | `next` accepts any enabled mission | `test_distress_surcharge_is_logged_once_and_a_new_mission_clears_it` (next), `test_forged_next_mission_is_a_transactional_rejection` | MATCH (an out-of-order choice is not tested, AVR-247) |
+| E-M22 | Missions may be played in any order (R p3) | `next` accepts any enabled mission | `test_distress_surcharge_is_logged_once_and_a_new_mission_clears_it` (next), `test_forged_next_mission_is_a_transactional_rejection` | MATCH; out of order: `test_the_next_mission_may_be_any_enabled_mission_in_any_order` |
 
 ### Missions and modifiers
 
@@ -82,7 +83,7 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 | E-M39 | Mission 8 and 21: never two more 9s (1s) than anyone (L M8, M21) | `_outcome` balance | `test_modifiers_balance_first_winner_final_card_and_timer`, `test_rank_balance_allows_a_difference_of_one_and_ignores_submarine_one` | MATCH |
 | E-M40 | Mission 23: first-trick winner always strictly ahead; no sonar before trick 2 (L M23) | `_outcome`, `communication_options` | `test_modifiers_balance_first_winner_final_card_and_timer` | MATCH |
 | E-M41 | Mission 27: yellow 5 is the last card of the last trick; not the unplayed card (L M27) | `_outcome` | `test_modifiers_balance_first_winner_final_card_and_timer`, `test_final_yellow5_cannot_succeed_as_surplus_card`, `test_yellow_five_as_the_last_card_of_the_last_trick_succeeds` | MATCH |
-| E-M42 | Mission 32: four named tasks, selected clockwise (L M32) | `fixed` | `tests/test_expo_docs.py` | MATCH (no play-through test, AVR-247) |
+| E-M42 | Mission 32: four named tasks, selected clockwise (L M32) | `fixed` | `tests/test_expo_docs.py`, `test_mission_thirty_two_deals_its_four_named_tasks_and_plays_to_a_result` | MATCH |
 | E-M43 | Continuation from difficulty 18, plus one each time, free selection (L epilogue) | missions 33 to 50 | `test_difficulty_generation_and_no_pass_in_second_circuit` | MATCH up to 35; cap is P11 |
 | E-M44 | Real-time expiry fails the mission (R p20) | `observe_time` | `test_modifiers_balance_first_winner_final_card_and_timer`, `test_timed_start_barrier_and_volunteer_eligibility_failure` | MATCH |
 
@@ -110,6 +111,7 @@ updated.
 | E-D5 | The content hash covers `tasks.json` only. A changed mission table does not invalidate a snapshot unless it is the mission in flight | state contract | none yet | AVR-242 |
 | E-D6 | Only accepted requests are remembered; a rejected request id can be reused with another payload | state contract (asked for both) | `test_a_rejected_request_is_not_remembered_and_an_accepted_one_is` pins today's behaviour | AVR-242 |
 | E-D7 | A timed snapshot is restored against the wall clock; a backward clock step grants time. The appliance has no real-time clock | state contract | none yet | AVR-242 |
+| E-D8 | The reason shown on an unavailable control is not the server's rejection in six places. Two state something untrue: a color card in the distress exchange after the player's own choice is sealed reads "Submarines cannot be passed", and a card that follows suit reads "You must follow the opening suit." while a crew decision is pending (the captain's off-suit Tonoja card reads "Only the captain plays for Tonoja."). Four are a second wording of the same fact: a card before the crew begins, "Take this task" for another seat and for the captain on a comparison task, "Offer all tasks" for a non-captain. The server refuses every one of these requests and nothing changes | action contract ("the client can disable it with the right reason") | `test_defect_the_reason_shown_before_play_begins_is_the_servers_rejection`; the playtest asserts the refusals | AVR-263 |
 
 Not a defect, recorded so nobody "fixes" it by guessing: other reversible tasks could be proven
 safe early from public cards (a "win no pink" task after all nine pink cards are gone). The
@@ -633,3 +635,60 @@ Not covered: Linux. No repeated run has been made there yet. This change adds
 runs as inputs; never on push or pull request) that starts one server and repeats the playtest
 against it. It can be started only once it is on `main`, so the Linux runs are still to be made.
 The notes under AVR-250 and AVR-251 above describe the playtest before this change.
+
+### AVR-247, 2026-10-04
+
+Scope: tests and these documents. `tests/test_expo_coverage.py` is new; `tests/playtest_expo.mjs`
+gained the unavailable-control checks; `tests/test_expo_docs.py` reads the new file and knows
+E-D8. No engine, content, client or shared platform file changed.
+
+Every matrix row that was partial is closed or says why it cannot be tested
+([IMPLEMENTATION_PLAN](IMPLEMENTATION_PLAN.md#deterministic-test-matrix)). What the new tests
+establish, none of it by changing behaviour:
+
+- No view changes when what its viewer may not see changes (other hands and covered cards in
+  every phase; sealed distress choices, a committed secret prediction and a currents declaration
+  wherever one exists): every seat, a watcher, an unknown id and the dummy's name, at 2 to 5 players, and the card under a
+  column Tonoja has just played from.
+- Two commands built at one revision cannot both be accepted, in the engine and from two real
+  sockets; the last shared sonar token asked for twice is spent once.
+- A dropped socket returns to the same seat, hand, options and table in all seven phases through
+  the real WebSocket endpoint, with a sealed choice, a live exposure and a card on the table.
+- A stored table restarts exactly at five points (sealed choice, finished exchange, live exposure,
+  mid-trick, result); a failed write at each rejects the command, keeps the table and the file,
+  and the same request then succeeds. A timed table restored after its deadline has failed.
+- Task drawing against a fixed deck order, an unreachable total, a retry with new tasks, missions
+  out of order, mission 6 with the dummy, mission 25 at five seats, mission 32 played through.
+- Boundaries for every count task, the trick comparisons and their ties, more than half,
+  `value22or23`, the last trick at 13, 10 and 8, and the two color-collection tasks.
+
+The tests were checked against ten deliberate faults in a scratch copy (a sealed choice in the
+view, a covered card in a played column's place, a value computed from another hand, no revision
+check, no rollback after a failed write, a restore that drops sealed choices, a reconnect that
+clears spent tokens, a returning phone sent an empty hand, a secret prediction shown to everyone,
+a currents declaration shown to everyone). Each fault fails a test. Three tests did not catch
+theirs at first and were tightened; the independent review found the third (the reconnect test
+compared a returning phone with its own earlier state).
+
+A random walk outside the suite (120 tables at 2 to 5 players over every enabled mission, about
+108,000 accepted and 3.8 million rejected commands, every seat offered every kind of command at
+every step) met no stuck table, no invariant failure, no leaked card and no error other than a
+rejection, apart from the duplicate task recorded as AVR-265.
+
+One defect was found by these tests and recorded, not fixed: E-D8 (AVR-263), the wording of six
+unavailable-control reasons. The server refuses each of those requests. Three more were found by
+probing while this work was reviewed, each with its own issue and none pinned here: one malformed
+crew-decision request freezes the table (AVR-264); after mission 32 a later mission can deal the
+same task twice (AVR-265); on a phone a pending crew decision is off-screen for a player looking
+at their hand (AVR-266).
+
+| Check | Result (Windows 11) |
+|---|---|
+| `pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_coverage.py tests/test_expo_docs.py` | 457 passed, 2 skipped (distress is not offered to two players), 2 expected failures (E-D2, E-D8) |
+| `pytest` (whole repository, with a sibling Party checkout present) | 1,963 passed, 4 skipped, 2 expected failures, 0 failed |
+| `ops/check_docs.py`, `tests/test_no_private_data.py`, `ops/export_avrana_catalog.py --check provider/catalog.json`, `npm run check:syntax` | all passed |
+| `tests/playtest_expo.mjs`, headless Chrome, one server for all runs | 55 of 55 passed in two batches (38 before the review changes, 17 after): 13 at five humans, 13 at four, 8 at three, 8 at two; missions 5, 8, 9, 10 (kept and offered), 11, 13 (kept and offered) and 25; a run forced to fail exited 1 and the next run passed. Every clockwise run checked all five refusals; missions 8, 10 and 13 have no task selection and checked the other three |
+
+Not covered: real phones, the appliance, a Party-launched round, Linux for the playtest. The
+restore of a timed table after a backward clock step and a snapshot taken before a mission-table
+change are recorded defects (E-D7, E-D5) and belong to AVR-242.

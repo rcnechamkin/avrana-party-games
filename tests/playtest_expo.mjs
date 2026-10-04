@@ -28,6 +28,19 @@ async function settle(){
   for(const p of pages)await p.waitForFunction(r=>ST?.game&&ST.game.revision>=r&&!ST.game.away.length,{},rev);
   return state(pages[0]);
 }
+// Matrix T43: a control the page shows as unavailable is refused by the server when the very
+// request is sent anyway. Returns the server's sentence; the table must not have moved.
+async function control(pg,key){return pg.evaluate(k=>{const n=[...document.querySelectorAll("[data-key]")].find(x=>x.dataset.key===k);return n?{disabled:n.disabled,title:n.title}:null;},key);}
+async function refusal(pg,msg){
+  const before=(await state(pg)).game.revision;
+  const said=await pg.evaluate(m=>new Promise((resolve,reject)=>{
+    const toast=Hub.toast,timer=setTimeout(()=>{Hub.toast=toast;reject(Error("the server did not refuse "+m.t));},5000);
+    Hub.toast=(text,kind)=>{clearTimeout(timer);Hub.toast=toast;toast.call(Hub,text,kind);resolve({text,kind});};
+    const g=ST.game;conn.send({...m,attempt:g.attempt,revision:g.revision,request:crypto.randomUUID()});}),msg);
+  assert.equal(said.kind,"err");assert.equal((await state(pg)).game.revision,before,"a refused request changes nothing");
+  await pause(150);return said.text;
+}
+const checked={take:false,pass:false,early:false,turn:false,suit:false};
 async function crewDecision(pg,key){
   await settle();const old=(await state(pg)).game.revision;await clickKey(pg,key);await waitRevision(pg,old);
   for(const p of pages){
@@ -98,12 +111,30 @@ try{
     for(const p of pages){if((await state(p)).you.pid===s.game.controller)pg=p;}
     assert.ok(pg,"task selector has a browser");
     const own=(await state(pg)).game;
+    const idle=pages.find(p=>p!==pg),open=own.tasks.find(t=>!t.owner);
+    if(!checked.take&&open&&(await control(idle,"task:"+open.id))){
+      // Another seat's selection: the button is disabled and the request is refused (the two
+      // sentences differ, AVR-263, so only the refusal is asserted).
+      assert.equal((await control(idle,"task:"+open.id)).disabled,true);
+      await refusal(idle,{t:"choose_task",task:open.id});checked.take=true;
+    }
+    // Pass while passing is allowed, so the run reaches a seat that may not pass.
+    const pass=await control(pg,"pass-task");
+    if(pass&&!pass.disabled){const rev=own.revision;await clickKey(pg,"pass-task");await waitRevision(pg,rev);continue;}
+    if(pass&&!checked.pass){assert.equal(pass.title,await refusal(pg,{t:"pass_task"}));checked.pass=true;}
     const task=own.tasks.find(t=>!t.owner&&t.eligible_owners.includes(own.selector));
     if(task){const rev=own.revision;await clickKey(pg,"task:"+task.id);await waitRevision(pg,rev);}
     else{const rev=own.revision;await clickKey(pg,"pass-task");await waitRevision(pg,rev);}
   }
   await settle();
   for(const pg of pages){const s=await state(pg);for(const t of s.game.tasks){if(t.prediction_required&&!t.prediction_committed&&(t.owner===s.you.pid||(t.owner==="tonoja"&&s.game.captain===s.you.pid))){const rev=(await state(pg)).game.revision;await clickKey(pg,"lock:"+t.id);await waitRevision(pg,rev);}}}
+  {
+    // Before the crew begins, every hand card is disabled with the view's reason and the server
+    // refuses a play (the two sentences differ: E-D8, AVR-263).
+    const early=(await settle()).game,card=early.me.hand[0],shown=await control(pages[0],"card:"+card);
+    assert.equal(early.stage,"assistance");assert.equal(shown.disabled,true);assert.equal(shown.title,early.me.play_reason);
+    await refusal(pages[0],{t:"play_card",card});checked.early=true;
+  }
   await crewDecision(pages[0],"begin");
   // Select a non-default sonar card, commit it, then verify its public exposure.
   const sonar=await settle(),opts=sonar.game.me.communication_options;
@@ -136,6 +167,20 @@ try{
     const actor=s.game.turn==="tonoja"?s.game.captain:s.game.turn;
     let player;for(const p of pages)if((await state(p)).you.pid===actor)player=p;
     assert.ok(player);const g=(await state(player)).game;assert.ok(g.me.legal_cards.length);
+    if(!checked.turn){
+      // A card that cannot be played says why in the server's own words (matrix T43): the
+      // disabled card's reason equals the rejection the server sends for that very request.
+      const idle=pages.find(p=>p!==player),seen=(await state(idle)).game,card=seen.me.hand[0];
+      const shown=await control(idle,"card:"+card);
+      assert.equal(shown.disabled,true);assert.equal(shown.title,seen.me.play_reason);
+      assert.equal(shown.title,await refusal(idle,{t:"play_card",card}));checked.turn=true;
+    }
+    const offSuit=s.game.turn==="tonoja"?null:g.me.hand.find(c=>!g.me.legal_cards.includes(c));
+    if(offSuit&&!checked.suit){
+      const shown=await control(player,"card:"+offSuit);
+      assert.equal(shown.disabled,true);
+      assert.equal(shown.title,await refusal(player,{t:"play_card",card:offSuit}));checked.suit=true;
+    }
     await clickKey(player,"card:"+g.me.legal_cards[0]);await waitRevision(player,g.revision);
     if(i===0){
       const partial=(await state(player)).game;
@@ -149,10 +194,14 @@ try{
   await pages[0].setViewport({width:390,height:844});
   await pages[0].screenshot({path:path.join(OUT,"result-phone.png"),fullPage:true});
   assert.deepEqual(errors,[]);
+  assert.ok(checked.early&&checked.turn,"unavailable controls were checked against the server");
+  // Clockwise selection always reaches another seat's task and a seat that may not pass. An
+  // off-suit card is checked whenever the deal offers one before the mission ends.
+  if(["normal","skip_captain"].includes(opening.mission.allocation)&&opening.tasks.length)assert.ok(checked.take&&checked.pass,"task selection refusals were checked");
   await crewDecision(pages[0],"end");
   await pages[0].waitForFunction(()=>ST.phase==="game_end"||ST.phase==="lobby");
   finished=true;
-  console.log(`PASS: live ${HUMANS}-player mission, hostile request, masked frames, reload and four viewports`,OUT);
+  console.log(`PASS: live ${HUMANS}-player mission, hostile request, masked frames, reload and four viewports; refusals checked: ${Object.keys(checked).filter(k=>checked[k]).join(", ")}`,OUT);
 }finally{
   try{if(!finished)await endTable();}
   finally{await browser.close();}
