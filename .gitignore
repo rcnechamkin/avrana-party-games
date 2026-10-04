@@ -1,6 +1,9 @@
 # runtime data (user-uploaded avatars, chat media) — never commit.
 # Root-relative so it does NOT catch game word-lists like games/wordclash/data/.
-/data/
+/data/*
+# ...except the empty directory itself: a code release is built from tracked files, and the
+# games service binds its state directory over data/ (deploy/avranaparty-games.service).
+!/data/.gitkeep
 
 # python
 .venv

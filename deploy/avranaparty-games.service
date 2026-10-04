@@ -1,0 +1,55 @@
+# The games service on the Avrana Party appliance, as its own unprivileged user (avrana-party
+# ADR 0016 phase 1, AVR-256). Installed by avrana-party's ops/migrate-service-users.sh, never by
+# hand and never by a deployment; until that migration has been run on a host, the unit installed
+# there is the earlier one, running as the operator account from the operator's checkout.
+#
+# RECONSTRUCTED, NOT COPIED. The unit this replaces exists only on the appliance and is in no
+# repository. This file was written from two records of it:
+#   - avrana-party docs/runbooks/games-fork-deploy.md, "Before-state" (read on the appliance
+#     2026-09-27): the unit name, a virtualenv python running server.py, Restart=on-failure, no
+#     drop-ins at that time;
+#   - avrana-party tests/fixtures/boundary/pi-2026-10-03.json (the boundary checker's read-only
+#     collection): the user, the paths of the interpreter, the checkout and data/, the listener,
+#     and AVRANA_PARTY_KEYS pointing at the shared key directory.
+# Neither record shows the installed unit's [Unit] section, RestartSec=, any Environment= line of
+# its own, or its WantedBy=. Those four are this file's choice, marked below, and are listed in
+# avrana-party docs/runbooks/service-users-migration.md as "to verify against the appliance before
+# migration": compare with `systemctl cat avranaparty-games` first.
+#
+# This is the retiring runtime (avrana-party ADR 0014): one process, one identity, every game it
+# hosts inside one boundary. It gets a user of its own and nothing more.
+[Unit]
+Description=Avrana Party Games (LAN Games fork)
+# not confirmed from the records
+After=network.target
+
+[Service]
+User=avrana-lan-games
+Group=avrana-lan-games
+# Root-owned code release built by avrana-party's ops/deploy.sh, and a root-owned copy of the
+# virtualenv the service already used. This user can write neither.
+WorkingDirectory=/opt/avrana-party-games/current
+ExecStart=/opt/avrana-party-games/venv/bin/python /opt/avrana-party-games/current/server.py
+Restart=on-failure
+# not confirmed from the records
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+# data/ (avatars, chat media, venue.json) is the only thing the server writes. It lives in this
+# service's own state directory and is bound over the release's empty data/, so the code tree
+# stays read-only without a change to the server.
+StateDirectory=avrana-lan-games
+StateDirectoryMode=0700
+BindPaths=/var/lib/avrana-lan-games:/opt/avrana-party-games/current/data
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+[Install]
+# not confirmed from the records
+WantedBy=multi-user.target
