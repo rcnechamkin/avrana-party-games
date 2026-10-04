@@ -92,6 +92,10 @@ cross-repo job compares it with Party's contracts/party-games.v0.json (Party too
   chat and avatar photos still use wc-token and are not covered by the switch.
 - The server listens on loopback (`LANGAMES_HOST`, default `127.0.0.1`) and its WebSocket
   server refuses frames over 64 KiB before buffering them (`server.WS_MAX_SIZE`).
+- A session key file must be private: no group or other permission bits, or a systemd
+  `LoadCredential=` file whose POSIX ACL grants read to this service's user and to nobody else
+  (its mode then reads 0440). A plainly group-readable key is refused
+  (`core/party_protocol.py` `read_key`, vendored; AVR-253).
 - Outbound, the application queues nothing and uvicorn's WebSocket protocol has no write flow
   control, so the server runs `core.ws_limit.BoundedWebSocketProtocol`: a socket with more than
   1 MiB unread in the transport buffer is aborted (`slow_socket_dropped` in the event log) and
