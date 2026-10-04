@@ -464,8 +464,9 @@ def test_a_host_that_never_could_name_its_boot_ends_the_attempt_on_every_restart
     assert again.engine.s['result'] == {'status': 'failed', 'reason': game.UNTRUSTED_CLOCK}
 
 
-@pytest.mark.parametrize('expiry', [5150.1, 1e9, 1e18, float('inf'), float('nan'), 10 ** 400, '5150', True])
-def test_a_saved_deadline_later_than_a_full_timer_is_not_resumed(expiry, tmp_path, monkeypatch):
+@pytest.mark.parametrize('expiry,refused', [(5150.1, False), (1e9, False), (1e18, True), (float('inf'), True),
+                                            (float('nan'), True), (10 ** 400, True), ('5150', True), (True, True)])
+def test_a_saved_deadline_later_than_a_full_timer_is_not_resumed(expiry, refused, tmp_path, monkeypatch):
     # No attempt has more than its 150 seconds from the moment its snapshot was written.
     path = tmp_path / 'crew.json'
     clock = Clock(monkeypatch, wall=1000.0, mono=5000.0)
@@ -475,11 +476,25 @@ def test_a_saved_deadline_later_than_a_full_timer_is_not_resumed(expiry, tmp_pat
     path.write_text(json.dumps(saved), encoding='utf-8')
     clock.pass_time(5)
     again = restart(path)
-    if again.recovery_error:                                         # not a deadline at all: refused
+    assert bool(again.recovery_error) is refused
+    if refused:                                                      # not a deadline at all
         assert again.engine is None
-    else:
+    else:                                                            # a deadline, but too late to be true
         assert again.engine.s['result'] == {'status': 'failed', 'reason': game.UNTRUSTED_CLOCK}
         assert again.engine.s['expiry'] is None
+
+
+def test_a_snapshot_with_a_deadline_on_an_untimed_mission_is_refused(tmp_path, monkeypatch):
+    path = tmp_path / 'crew.json'
+    Clock(monkeypatch, wall=1000.0, mono=5000.0)
+    s, tokens = session(path=path)                                   # mission 1, untimed
+    assert restart(path).recovery_error is None
+    saved = json.loads(path.read_text(encoding='utf-8'))
+    assert saved['engine']['state']['mission']['seconds'] is None
+    saved['engine']['state']['expiry'] = 5100.0
+    path.write_text(json.dumps(saved), encoding='utf-8')
+    again = restart(path)
+    assert again.recovery_error and again.engine is None
 
 
 @pytest.mark.parametrize('expiry', [5100.0, 10 ** 400, float('nan'), float('inf'), '5150', True])
