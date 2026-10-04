@@ -235,7 +235,11 @@ A timed mission and the clock (AVR-242, was E-D7):
 - Otherwise (a reboot, even one whose clocks line up as before; a wall clock that stepped either
   way; a suspend; a host that cannot name its boot; a snapshot without the record) the timed
   attempt ends at once as a counted failure with its own reason, and that end is written to the
-  snapshot so that no later restart finds the deadline still running. The table itself is kept
+  snapshot so that no later restart finds the deadline still running. If that write fails, the
+  next restart judges the clocks again: after a reboot the attempt ends again, and on the same
+  boot it can continue only with the time the monotonic clock says is left. A saved deadline
+  later than a full timer from the moment the snapshot was written, or a clock reading that is
+  not a finite number of seconds, is treated the same way. The table itself is kept
   and the crew may retry. An appliance without a real-time clock cannot say how long it was off,
   so a reboot always ends a running timed attempt.
 - A table with no running deadline restores whatever the clocks say.
