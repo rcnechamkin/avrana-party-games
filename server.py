@@ -20,6 +20,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import re
 
 import uvicorn
 from fastapi import FastAPI, Request, WebSocket
@@ -127,6 +128,26 @@ async def api_games():
         "external": EXTERNAL,
         "coming_soon": COMING_SOON,
     })
+
+
+# The Party's browser origin, when game pages are served from another one (avrana-party ADR 0013,
+# AVR-226): e.g. AVRANA_PARTY_ORIGIN=https://party.avrana.net on a server reached as
+# games.avrana.net. Unset (today's deployment) the pages share the Party's origin and nothing
+# changes. It is an origin and nothing else, or it is ignored; pages never take it from a URL.
+PARTY_ORIGIN_ENV = "AVRANA_PARTY_ORIGIN"
+BRIDGE = "avrana.party-bridge/v1"
+
+
+def party_origin(environ):
+    value = environ.get(PARTY_ORIGIN_ENV, "")
+    return value if re.fullmatch(r"https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?", value) else None
+
+
+@app.get("/api/avrana")
+async def api_avrana():
+    return JSONResponse({"integration": "avrana.lan-launch/v1", "bridge": BRIDGE,
+                         "partyOrigin": party_origin(os.environ)},
+                        headers={"Cache-Control": "no-store"})
 
 
 def _refuse(status, error):
