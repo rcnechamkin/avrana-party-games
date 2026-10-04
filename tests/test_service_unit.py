@@ -60,6 +60,22 @@ def test_the_listener_is_loopback_and_no_drop_in_widens_it():
             assert 'LANGAMES_HOST' not in value, path.name
 
 
+def test_the_kernel_allows_this_unit_loopback_traffic_only():
+    """AVR-272, owner decision 2026-10-04. Text only: the unit has never run."""
+    d = directives(UNIT)
+    assert (d['IPAddressDeny'], d['IPAddressAllow']) == (['any'], ['localhost'])
+    for path in sorted((ROOT / 'deploy').glob('*.conf')):
+        assert not {'IPAddressAllow', 'IPAddressDeny'} & set(directives(path.read_text(encoding='utf-8'))), path.name
+    # The server's only outbound connection is to Party Core, and that origin must be loopback
+    # (core/party_session.py refuses any other), so the filter takes nothing away from it.
+    assert party_session.LOOPBACK == ('127.0.0.1', '::1')
+    callers = [p.relative_to(ROOT).as_posix() for p in [ROOT / 'server.py', *sorted((ROOT / 'core').glob('*.py'))]
+               if re.search(r'urlopen|http\.client|create_connection', p.read_text(encoding='utf-8'))]
+    assert callers == ['core/party_session.py']
+    env = dict(v.split('=', 1) for v in directives(DROP_IN)['Environment'])
+    assert env.get(party_session.PARTY_URL_ENV, 'http://127.0.0.1:8191').startswith('http://127.0.0.1:')
+
+
 def test_the_header_says_what_was_not_confirmed():
     assert 'RECONSTRUCTED, NOT COPIED' in UNIT
     assert UNIT.count('# not confirmed from the records') == 3
