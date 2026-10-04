@@ -136,6 +136,15 @@ try{
     const actor=s.game.turn==="tonoja"?s.game.captain:s.game.turn;
     let player;for(const p of pages)if((await state(p)).you.pid===actor)player=p;
     assert.ok(player);const g=(await state(player)).game;assert.ok(g.me.legal_cards.length);
+    if(i===1){
+      // A card that cannot be played says why in the server's own words (matrix T43): the
+      // disabled card's reason equals the rejection the server sends for that very request.
+      const idle=pages.find(p=>p!==player),seen=(await state(idle)).game,card=seen.me.hand[0];
+      const shown=await idle.evaluate(k=>[...document.querySelectorAll("[data-key]")].find(x=>x.dataset.key===k).title,"card:"+card);
+      const said=await idle.evaluate(c=>new Promise(resolve=>{const toast=Hub.toast;Hub.toast=(m,kind)=>{Hub.toast=toast;toast.call(Hub,m,kind);resolve(m);};const g=ST.game;conn.send({t:"play_card",card:c,attempt:g.attempt,revision:g.revision,request:crypto.randomUUID()});}),card);
+      assert.equal(shown,said);assert.equal(shown,seen.me.play_reason);
+      assert.equal((await state(idle)).game.revision,seen.revision);
+    }
     await clickKey(player,"card:"+g.me.legal_cards[0]);await waitRevision(player,g.revision);
     if(i===0){
       const partial=(await state(player)).game;
