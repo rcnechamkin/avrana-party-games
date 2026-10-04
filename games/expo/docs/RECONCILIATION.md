@@ -26,7 +26,7 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 - The card rules, deal, captain, trick resolution, communication truth and timing, selection and
   pass rule, task evaluators, mission targets and modifiers of the 24 enabled missions match R
   and L.
-- Eight defects were recorded (E-D1 to E-D7 by the reconciliation, E-D8 by AVR-247). Five are fixed: E-D1, the selection stall
+- Nine defects were recorded (E-D1 to E-D7 by the reconciliation, E-D8 by AVR-247, E-D9 by probing during its review). Six are fixed: E-D9, the table freeze from one malformed crew decision (AVR-264), E-D1, the selection stall
   (AVR-239), E-D3 and E-D4, late completion of the window tasks and currents visibility
   (AVR-241), and E-D5 and E-D7, the content hash scope and the timed clock (AVR-242). E-D6 was
   settled by amending the contract (AVR-242). Of the two that remain, one affects play and needs
@@ -113,6 +113,7 @@ updated.
 | E-D6 | **Settled 2026-10-04 by amending the contract; no code change.** Only accepted requests are remembered, and a rejected request id used again is a new request. The earlier draft asked for both to be kept. Keeping rejections adds nothing to idempotency (every state change raises the revision), would forbid resending a request refused only because the disk failed, and would let one seated player fill the capped request memory alone and lock the table. Reasons in [GAME_STATE](GAME_STATE.md#commands-ordering-and-repeats) | state contract (amended) | `test_a_rejected_request_is_not_remembered_and_an_accepted_one_is`, `test_a_flood_of_rejected_requests_is_not_remembered_and_cannot_use_up_the_request_limit`, `test_the_same_rejected_request_sent_again_gets_the_same_answer`, `test_a_rejected_request_id_used_again_is_a_new_request_and_is_remembered_once_accepted`, `test_a_request_refused_only_because_the_disk_failed_succeeds_when_sent_again_unchanged` | AVR-242 |
 | E-D7 | **Fixed 2026-10-04.** Was: the deadline was a wall-clock moment, so a backward clock step granted time, on restore and (found while fixing it) on a live table with no restart at all. Now: the deadline runs on the monotonic clock; a restored timed attempt continues only on the same boot (by the kernel's boot identity) with both clocks agreeing about how long the server was down, and otherwise ends as a counted failure with its own reason, written to the snapshot. A reboot therefore always ends a running timed attempt | state contract; the appliance has no real-time clock | `test_a_timed_mission_runs_on_the_monotonic_clock_and_browsers_get_a_wall_clock_moment`, `test_a_wall_clock_step_during_a_live_timed_mission_neither_grants_nor_takes_time`, `test_a_restart_on_the_same_boot_continues_the_deadline_and_charges_the_downtime`, `test_a_timed_table_restored_after_its_deadline_has_already_failed`, `test_a_timed_table_restored_under_a_clock_that_cannot_be_trusted_ends_and_never_gains_time`, `test_a_timed_snapshot_without_a_clock_record_ends_the_attempt`, `test_clocks_that_agree_within_two_seconds_on_the_same_boot_are_trusted`, `test_a_failed_write_after_a_wall_clock_step_leaves_the_shared_timer_on_the_true_deadline`, `test_a_table_with_no_running_deadline_restores_whatever_the_clocks_say`, `test_on_the_real_clocks_the_shared_timer_and_the_browsers_get_the_same_150_seconds`, `test_the_engine_expires_only_a_running_deadline` | AVR-242 |
 | E-D8 | The reason shown on an unavailable control is not the server's rejection in six places. Two state something untrue: a color card in the distress exchange after the player's own choice is sealed reads "Submarines cannot be passed", and a card that follows suit reads "You must follow the opening suit." while a crew decision is pending (the captain's off-suit Tonoja card reads "Only the captain plays for Tonoja."). Four are a second wording of the same fact: a card before the crew begins, "Take this task" for another seat and for the captain on a comparison task, "Offer all tasks" for a non-captain. The server refuses every one of these requests and nothing changes | action contract ("the client can disable it with the right reason") | `test_defect_the_reason_shown_before_play_begins_is_the_servers_rejection`; the playtest asserts the refusals | AVR-263 |
+| E-D9 | **Fixed 2026-10-04.** Was: a crew decision was checked for its keys but not for the type of every value. In missions 6, 10 and 13 the `task` of an `assign` decision was never read, so any JSON value was stored in the pending decision and sent to every viewer; a value nested about 500 lists deep (one socket message) then made every view, snapshot and command raise, and one seated player could freeze the table. Now: every field of a crew decision must be a plain value of its own type and, where all tasks go together, `task` must be `all`; anything else is rejected before it is stored or remembered | action contract (a rejected request changes nothing) | `test_an_assign_field_of_the_wrong_type_is_refused_in_every_allocation_mode`, `test_every_other_decision_field_of_the_wrong_type_is_refused`, `test_where_all_tasks_go_together_the_task_field_is_the_word_all`, `test_the_request_that_froze_the_table_is_refused_and_the_table_plays_on` | AVR-264 |
 
 Not a defect, recorded so nobody "fixes" it by guessing: other reversible tasks could be proven
 safe early from public cards (a "win no pink" task after all nine pink cards are gone). The
@@ -737,3 +738,34 @@ the boot identity in the tests are set by hand; one test runs on the real clocks
 On a host with no readable boot identity (Windows, where these tests ran) a running timed attempt
 never survives a restart. The timed mission is
 not reachable from a Party round (E-P1) and the playtest does not play it.
+
+### AVR-264, 2026-10-04
+
+One malformed request from a seated player could freeze a table (E-D9). Changed:
+`games/expo/engine.py`, `tests/test_expo_input.py` (new), `tests/test_expo_docs.py` and these
+documents. No client, adapter, shared session, protocol or provider file changed.
+
+- **Cause.** `Engine.apply` checked the keys of a crew decision but not the type of every value.
+  In missions 6, 10 and 13 the `task` of an `assign` decision was never read, so any JSON value
+  was stored in the pending decision. A value nested about 500 lists deep fits in one socket
+  message; once stored, copying the state raised `RecursionError` in every view, snapshot and
+  command.
+- **Fix.** The common check now requires every field of a crew decision to be a plain value of
+  its own type, before the request can be stored or remembered. Where all tasks go together the
+  `task` field must be the word `all`, which is what the client sends. Field types are stated in
+  [ACTIONS](ACTIONS.md).
+- **Codes.** A value of the wrong type is now `payload` in every case. Three used to carry a
+  more specific code: a non-string `direction` (`direction`), a non-integer `mission`
+  (`mission`) and a non-string `owner` (`owner`). Values of the right type keep their codes.
+
+Each new test was run against the code before the fix: all 151 failed, the type cases on the
+rejection code or on the stored value, the adapter test on `RecursionError`. After it:
+
+| Check | Result (Windows 11) |
+|---|---|
+| `pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_coverage.py tests/test_expo_persistence.py tests/test_expo_input.py tests/test_expo_docs.py` | RESULT_EXPO |
+| `pytest` (whole repository, with a sibling Party checkout present) | RESULT_ALL |
+| `ops/check_docs.py`, `tests/test_no_private_data.py`, `ops/export_avrana_catalog.py --check provider/catalog.json`, `npm run check:syntax` | all passed |
+| `tests/playtest_expo.mjs`, headless Chrome | RESULT_PLAY |
+
+Not covered: real phones, the appliance, a Party-launched round, the playtest on Linux.

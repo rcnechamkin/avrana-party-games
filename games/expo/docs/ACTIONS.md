@@ -161,6 +161,14 @@ everyone (AVR-252).
 | `end` | any phase | none | result `abandoned` unless a mission result already stands; phase `closed`; the platform shows its results screen and reports the outcome |
 
 - **Actor**: any seated human.
+- **Field types**: `kind`, `direction`, `owner` and `task` are strings, `mission` is an integer
+  and `keep` is a boolean. A proposal with a key missing, a key too many or a value of another
+  type (a number, a list, an object, null; a boolean is not an integer) is rejected with
+  `payload` Invalid crew decision. before anything else is looked at, in every phase and every
+  allocation mode. Nothing is stored and the request is not remembered.
+- **`task`**: in mode `free` it is the id of one task in the pool. In modes `one` and
+  `captain_one` the tasks go together and it is the word `all`; any other string is rejected
+  with `task` These tasks go together.
 - **Mutation on propose**: the proposal is stored with the proposer's confirmation. A `captain_one`
   offer also stores its `recipient`; a `captain_one` assignment to the captain or Tonoja stores
   nothing and takes effect at once.

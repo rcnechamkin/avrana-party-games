@@ -392,7 +392,11 @@ class Engine:
             require(isinstance(owner, str) and owner in s['seats'], 'owner', 'Choose a crew member.')
             if s['mission']['allocation'] == 'captain_one':
                 require(actor == s['captain'], 'captain', 'The captain must offer these tasks.')
-            keys = [payload.get('task')] if s['mission']['allocation'] == 'free' else list(s['pool'])
+            if s['mission']['allocation'] == 'free':
+                keys = [payload.get('task')]
+            else:
+                require(payload.get('task') == 'all', 'task', 'These tasks go together.')
+                keys = list(s['pool'])
             require(all(isinstance(k, str) and k in s['pool'] and self.eligible(k, owner) for k in keys),
                     'task', 'Every task needs an eligible owner.')
         elif kind == 'retry':
@@ -569,7 +573,11 @@ class Engine:
             keys = {'begin': {'kind'}, 'end': {'kind'}, 'retry': {'kind', 'keep'},
                     'next': {'kind', 'mission'}, 'distress': {'kind', 'direction'},
                     'assign': {'kind', 'owner', 'task'}}
-            require(isinstance(p.get('kind'), str) and p['kind'] in keys and set(p) == keys[p['kind']],
+            # Every field is a plain value of its own type (AVR-264): what is accepted here is
+            # stored in the pending decision, copied and sent to every viewer.
+            types = {'kind': str, 'keep': bool, 'mission': int, 'direction': str, 'owner': str, 'task': str}
+            require(isinstance(p.get('kind'), str) and p['kind'] in keys and set(p) == keys[p['kind']]
+                    and all(type(p[k]) is types[k] for k in p),
                     'payload', 'Invalid crew decision.')
         identity = actor + ':' + str(msg['attempt']) + ':' + msg['request']
         fingerprint = json.dumps(msg, sort_keys=True)
