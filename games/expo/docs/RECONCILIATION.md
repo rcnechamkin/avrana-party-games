@@ -781,4 +781,12 @@ rejection code or on the stored value, the adapter test on `RecursionError`. Aft
 | `ops/check_docs.py`, `tests/test_no_private_data.py`, `ops/export_avrana_catalog.py --check provider/catalog.json`, `npm run check:syntax` | all passed |
 | `tests/playtest_expo.mjs`, headless Chrome | passed once each at 2, 3, 4 and 5 humans (default mission); mission 10 kept and offered (3 humans); mission 13 offered (5 humans) |
 
+The independent review passed the change with two findings. Its hostile run (43,800 malformed
+requests over every action, field and allocation mode) found nothing against the fix, and each
+of five faults put back into the engine was caught by the new tests. It found one more request
+of the same class in another field, not fixed here: a request ID that cannot be written as UTF-8
+stops a standalone table with a snapshot file from saving or answering (AVR-268). E-D9 is
+therefore fixed for crew decisions; it does not claim that no single request can stop a table.
+The other finding was a wording error in ACTIONS, corrected.
+
 Not covered: real phones, the appliance, a Party-launched round, the playtest on Linux.
