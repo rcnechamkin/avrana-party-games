@@ -806,18 +806,19 @@ provider file changed.
   `Engine.check` now refuses a deck, used pile or selection that holds an id twice, an id in the
   deck and in another pile, or an id in the used pile and in a mission still in play. The rule is
   in [GAME_STATE](GAME_STATE.md).
-- **A snapshot written before the fix.** One taken after mission 32 on a table that had already
-  drawn a deck may hold a duplicate. It is refused on restore with the usual recovery message.
+- **A snapshot written before the fix.** One taken during or after mission 32, on a table that
+  reached it from another mission, holds the four tasks in two places. It is refused on restore
+  with the usual recovery message, whether or not a duplicate was ever dealt.
 - **Fixtures.** About twenty existing tests lay tasks out by hand and left the same cards in the
   deck. They now take them out (`place` in `tests/test_expo.py`). No assertion was changed.
 
-Each new test was run against the code before the fix: 300 of 301 failed. The one that passed
-opens a table on mission 32, which was never affected. After it:
+Each test of the first version was run against the code before the fix: 300 of 301 failed. The
+one that passed opens a table on mission 32, which was never affected. After it:
 
 | Check | Result (Windows 11) |
 |---|---|
-| `pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_coverage.py tests/test_expo_persistence.py tests/test_expo_input.py tests/test_expo_deck.py tests/test_expo_docs.py` | 994 passed, 2 skipped, 2 expected failures (E-D2, E-D8) |
-| `pytest` (whole repository, with a sibling Party checkout present) | 2,500 passed, 4 skipped, 2 expected failures, 0 failed |
+| `pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_coverage.py tests/test_expo_persistence.py tests/test_expo_input.py tests/test_expo_deck.py tests/test_expo_docs.py` | 996 passed, 2 skipped, 2 expected failures (E-D2, E-D8) |
+| `pytest` (whole repository, with a sibling Party checkout present) | 2,502 passed, 4 skipped, 2 expected failures, 0 failed |
 | `ops/check_docs.py`, `tests/test_no_private_data.py`, `ops/export_avrana_catalog.py --check provider/catalog.json` | all passed |
 | `tests/playtest_expo.mjs`, headless Chrome | passed once each at 2, 3, 4 and 5 humans (default mission) and mission 25 (3 humans) |
 
@@ -827,3 +828,12 @@ for 200 seeds at three players and 20 each at two, four and five.
 
 A random walk over 120 tables (about 108,000 accepted and 3.8 million rejected commands, the
 invariants checked after every step) met no failed invariant and no error other than a rejection.
+
+The independent review passed the change with minor findings. Its own walks (about 130,000
+accepted commands with a restore after every step, and 1,200 tables of retries and next missions)
+found no state the invariant refuses in legitimate play; the same walk on the engine before the
+fix found 79,642. Ten faults put back into the engine were each caught by the new tests. On its
+findings the invariant now also covers the pool and refuses a disabled task in any pile, and the
+note on old snapshots above was corrected. It found one defect that is older than this change
+and not fixed here: a next mission or a retry with new tasks is sometimes refused because a
+replacement task is looked for in the deck only (AVR-270).

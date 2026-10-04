@@ -9,7 +9,7 @@ import random
 
 import pytest
 
-from games.expo.content import BLOCKED, MISSIONS, mission
+from games.expo.content import BLOCKED, MISSIONS, TASKS, mission
 from games.expo.engine import Engine, Invalid
 
 from test_expo import decide
@@ -118,7 +118,6 @@ def test_the_reported_table_reaches_mission_forty_seven_with_distinct_tasks():
             finish(e)
     assert len(e.s['selected']) == len(set(e.s['selected']))
     crew = str(len(e.s['seats']))
-    from games.expo.content import TASKS
     assert sum(TASKS[k]['difficulty'][crew] for k in set(e.s['selected'])) == e.s['mission']['target']
 
 
@@ -137,6 +136,8 @@ def corrupt(change):
     ('a task in play and in the deck', lambda s: s['deck'].append(s['selected'][0])),
     ('a task in play and in the used pile', lambda s: s['used'].append(s['selected'][0])),
     ('a task twice in play', lambda s: (s['selected'].append(s['selected'][0]), s['pool'].append(s['pool'][0]))),
+    ('a task twice in the pool', lambda s: s['pool'].append(s['pool'][0])),
+    ('a disabled task in the deck', lambda s: s['deck'].append(next(k for k, v in TASKS.items() if not v['enabled']))),
     ('a pile that is not a list of task ids', lambda s: s['deck'].append(['blue4'])),
     ('a task that does not exist in the deck', lambda s: s['deck'].append('no-such-task')),
 ])

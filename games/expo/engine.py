@@ -643,8 +643,8 @@ class Engine:
                     and s['turn'] == order[len(s['trick'])], 'snapshot', 'Current trick check failed.')
         # A task card is in one place: the deck, the used pile or the mission in play. The tasks
         # of a mission that has ended are in the used pile and still shown as its tasks.
-        piles = (s['deck'], s['used'], s['selected'])
-        require(all(type(p) is list and all(isinstance(k, str) and k in TASKS for k in p)
+        piles = (s['deck'], s['used'], s['selected'], s['pool'])
+        require(all(type(p) is list and all(isinstance(k, str) and k in TASKS and TASKS[k]['enabled'] for k in p)
                     and len(set(p)) == len(p) for p in piles)
                 and not set(s['deck']) & (set(s['used']) | set(s['selected']))
                 and (s['result'] is not None or not set(s['used']) & set(s['selected'])),
