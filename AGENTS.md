@@ -41,6 +41,17 @@ Given `Implement AVR-N`:
 4. Name the tests that will prove the change before editing.
 5. Branch from fetched `origin/main` as `type/avr-N-short-description`.
 
+## Worktrees and claims
+
+Issue work happens in a dedicated worktree claimed through
+[AI-workflow](https://github.com/rcnechamkin/AI-workflow), checked out beside this repository:
+`python ../AI-workflow/aw.py start AVR-N` checks readiness, finds or creates the worktree from
+`origin/main` and claims it for your session; `claim`, `handoff`, `release` and `status` manage it
+afterwards. Live Linear data comes from your agent's Linear connector, piped to `start` (its README
+shows how). Do not edit or commit in a worktree another session has claimed. Local commit hooks
+check this: today they warn, and they will refuse once enforcement is switched on; the message
+names the owner and the way out. Workflow state is never committed here.
+
 ## Safety
 
 Never, unless the task explicitly authorizes it in writing:
