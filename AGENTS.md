@@ -39,6 +39,8 @@ Given `Implement AVR-N`:
    snapshot, launch integration are Party-owned). If so, pair branches with the same `avr-N`
    ([CROSS-REPO](https://github.com/rcnechamkin/avrana-party/blob/main/docs/CROSS-REPO.md)).
 4. Name the tests that will prove the change before editing.
+   For a change the owner merges ([REVIEW](REVIEW.md), "Change class"), first post a short plan
+   on the issue (files that change, order of work, risks, proof) and wait for it to be accepted.
 5. Branch from fetched `origin/main` as `type/avr-N-short-description`.
 
 ## Worktrees and claims
@@ -91,6 +93,8 @@ Done means all of:
 - Linux CI including the `cross-repo` job is expected to pass;
 - Party compatibility handled: paired PR, or "Party unaffected because ...";
 - `provider/README.md` and the manifest updated when behavior changed;
+- a session that did not write the change has checked it (`.claude/agents/verifier.md`) and
+  reviewed it against [REVIEW](REVIEW.md) (`.claude/agents/reviewer.md`), and the PR says so;
 - the implementation report (Party's
   [format](https://github.com/rcnechamkin/avrana-party/blob/main/docs/agents/IMPLEMENTATION-REPORT.md))
   is in the PR and the final message; the issue is In Review, not Done, while review, CI or phones remain.
