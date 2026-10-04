@@ -9,7 +9,6 @@ web/party/bridge/shim.js, vendored unchanged like the session protocol.
 import asyncio
 import hashlib
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -18,7 +17,6 @@ import server
 
 ROOT = Path(__file__).resolve().parent.parent
 BRIDGE = json.loads((ROOT / 'provider/avrana-contract.json').read_text(encoding='utf-8'))['bridge']
-PARTY_REPO = Path(os.environ.get('AVRANA_PARTY_REPO') or ROOT.parent / 'avrana-party')
 
 
 def digest(path):
@@ -66,15 +64,9 @@ def test_the_vendored_shim_and_vectors_are_the_declared_ones():
     assert json.loads((ROOT / BRIDGE['vectors']).read_text(encoding='utf-8'))['protocol'] == BRIDGE['protocol']
 
 
-@pytest.mark.parametrize('source,vendored', (('web/party/bridge/shim.js', 'vendored'),
-                                             ('contracts/vectors/party-bridge.v1.json', 'vectors')))
-def test_vendored_bridge_files_match_a_sibling_party_checkout(source, vendored):
-    """Only against a Party checkout that carries this branch's shim; CI's cross-repo job compares
-    the two declarations (Party tools/contract_check.py) and may not skip."""
-    reference = PARTY_REPO / source
-    if not reference.exists() or digest(reference) != BRIDGE[vendored + '_sha256']:
-        pytest.skip('no avrana-party checkout carrying this shim; the cross-repo job checks it')
-    assert digest(reference) == digest(ROOT / BRIDGE[vendored])
+# That the vendored shim and vectors are Party's own is checked where it can fail: the cross-repo
+# job compares the two declarations' digests (avrana-party tools/contract_check.py). A sibling
+# checkout on another branch says nothing either way, so there is no local comparison here.
 
 
 def test_the_drop_in_documents_the_setting_and_does_not_set_it():

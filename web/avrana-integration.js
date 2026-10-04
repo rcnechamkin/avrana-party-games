@@ -24,15 +24,30 @@
   document.documentElement.dataset.avrana = '1';
 
   // The Party origin comes from this server's configuration only: never from the address bar, a
-  // link or a message, so no page can be pointed at another "Party".
-  const partyOrigin = (async () => {
+  // link or a message, so no page can be pointed at another "Party". Only an answer decides: a
+  // server that says nothing (a timeout, an error, a 5xx) has not said "same origin", so the page
+  // asks again until it is told. A 404 is an answer: a server from before the game origin.
+  const CONFIG_WAIT = 3000, CONFIG_RETRY = [500, 1000, 2000, 4000];
+  async function askPartyOrigin() {
+    const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = setTimeout(() => { if (ctl) ctl.abort(); }, CONFIG_WAIT);
     try {
-      const res = await fetch('/api/avrana', { cache: 'no-store' });
-      const body = res.ok ? await res.json() : null;
-      const origin = body && body.partyOrigin;
+      const res = await fetch('/api/avrana', { cache: 'no-store', signal: ctl ? ctl.signal : undefined });
+      if (res.status === 404) return null;
+      if (!res.ok) return undefined;
+      const origin = (await res.json()).partyOrigin;
       return typeof origin === 'string' && /^https?:\/\/[^/]+$/.test(origin) && origin !== location.origin ? origin : null;
     } catch (error) {
-      return null;
+      return undefined;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  const partyOrigin = (async () => {
+    for (let i = 0; ; i += 1) {
+      const origin = await askPartyOrigin();
+      if (origin !== undefined) return origin;
+      await new Promise((resolve) => setTimeout(resolve, CONFIG_RETRY[Math.min(i, CONFIG_RETRY.length - 1)]));
     }
   })();
 
@@ -131,11 +146,12 @@
     style.rel = 'stylesheet'; style.href = '/shared/avrana-integration.css';
     document.head.appendChild(style);
     const reveal = () => { nav.hidden = false; };       // Party mode hides it again in CSS
+    // A slow or missing Party, or a server slow to say where the Party is, never strands it.
+    const late = window.isSecureContext ? setTimeout(reveal, 4000) : null;
     partyOrigin.then((origin) => {
       if (origin) {
         home = origin + '/party/';
         point();
-        const late = setTimeout(reveal, 4000);           // a slow or missing Party never strands it
         followThroughBridge(origin, nav, () => { clearTimeout(late); reveal(); })
           .catch(() => null)
           .then((conn) => { settle(conn); if (!conn) { clearTimeout(late); reveal(); } });
@@ -147,7 +163,6 @@
       // the Party (/party/lib/, HTTPS Full Mode only); without it, or without Party Core, nothing
       // changes here.
       if (window.isSecureContext) {
-        const late = setTimeout(reveal, 4000);             // a slow or missing Party never strands it
         import('/party/lib/party-follow.js')
           .then((m) => m.startPartyFollow({ here: m.gameOfPath(location.pathname), container: nav }))
           .catch(() => null)

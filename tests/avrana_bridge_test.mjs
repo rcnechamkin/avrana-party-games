@@ -30,10 +30,12 @@ function element(tag) {
   return el;
 }
 
-/** A game page: /games/<slug>/?avrana=1 on `origin`, whose server answers /api/avrana with `config`. */
+/** A game page: /games/<slug>/?avrana=1 on `origin`, whose server answers /api/avrana with `config`:
+    an object is the 200 body, a number is that status, an Error is a request that reached nothing.
+    A list is one answer per request, the last repeated. `tick()` fires the timers set so far. */
 function page({ origin = GAMES, slug = "bluff", config = { partyOrigin: PARTY }, shell = true, search = "?avrana=1" } = {}) {
-  const imports = [], fetched = [], returns = [element("a")];
-  let conn = null;
+  const imports = [], fetched = [], returns = [element("a")], answers = Array.isArray(config) ? [...config] : [config];
+  let conn = null, timers = [];
   const connectParty = (opts) => {
     const listeners = new Set();
     let view = null;
@@ -52,11 +54,14 @@ function page({ origin = GAMES, slug = "bluff", config = { partyOrigin: PARTY },
   const ctx = {
     window, console, URL, URLSearchParams,
     location: { origin, pathname: `/games/${slug}/`, search, href: `${origin}/games/${slug}/${search}` },
-    setTimeout: () => 1, clearTimeout() {},
+    AbortController,
+    setTimeout: (fn) => timers.push(fn), clearTimeout(id) { if (id) timers[id - 1] = null; },
     fetch: async (url, init) => {
       fetched.push([url, init]);
-      if (config instanceof Error) throw config;
-      return { ok: config !== null, json: async () => config };
+      const answer = answers.length > 1 ? answers.shift() : answers[0];
+      if (answer instanceof Error) throw answer;
+      if (typeof answer === "number") return { ok: answer >= 200 && answer < 300, status: answer, json: async () => { throw new Error("no body"); } };
+      return { ok: true, status: 200, json: async () => answer };
     },
     document: { readyState: "complete", documentElement: root, body, head, createElement: element, addEventListener() {},
       querySelectorAll: (sel) => (sel === "[data-avrana-return]" ? returns : []),
@@ -71,7 +76,8 @@ function page({ origin = GAMES, slug = "bluff", config = { partyOrigin: PARTY },
   vm.createContext(ctx);
   assert.equal(source.split("import('").length, 3);
   vm.runInContext(source.replaceAll("import('", "importModule('"), ctx);
-  return { window, root, body, imports, fetched, returns, conn: () => conn, integration: window.AvranaIntegration };
+  const tick = async () => { const due = timers; timers = []; for (const fn of due) if (fn) fn(); await settle(); };
+  return { window, root, body, imports, fetched, returns, tick, conn: () => conn, integration: window.AvranaIntegration };
 }
 const member = (more = {}) => ({ party: true, member: true, host: false, hostName: "Ana",
   location: { at: "game", game: "bluff" }, round: null, ...more });
@@ -134,8 +140,7 @@ test("on the game origin a game that draws its own host controls gets no fallbac
 for (const [label, config, origin] of [
   ["no Party origin is configured", { partyOrigin: null }, PARTY],
   ["the configured Party origin is this page's own", { partyOrigin: PARTY }, PARTY],
-  ["the server does not answer", null, PARTY],
-  ["the request fails", new Error("offline"), PARTY],
+  ["the server predates the route (404)", 404, PARTY],
   ["the Party origin carries a path", { partyOrigin: "https://evil.example/party" }, GAMES],
   ["the Party origin is not http(s)", { partyOrigin: "javascript://x" }, GAMES],
   ["the Party origin is not a string", { partyOrigin: { href: PARTY } }, GAMES],
@@ -149,6 +154,35 @@ for (const [label, config, origin] of [
     assert.equal(p.conn(), null);
   });
 }
+
+// Only an answer decides. A server that says nothing has not said "same origin": on the game origin
+// that guess would leave the page without the Party until it was reloaded.
+for (const [label, silence] of [["reaches nothing", new Error("offline")], ["gets a 502", 502], ["gets a 200 that is not JSON", 200]]) {
+  test(`a request that ${label} decides nothing; the page asks again and then uses the bridge`, async () => {
+    const p = page({ config: [silence, silence, { partyOrigin: PARTY }] });
+    await settle();
+    assert.deepEqual(p.imports, []);                                      // neither path chosen yet
+    assert.equal(p.conn(), null);
+    await p.tick();
+    assert.deepEqual(p.imports, []);
+    await p.tick();
+    assert.equal(p.fetched.length, 3);
+    assert.deepEqual(p.imports, ["/shared/avrana-party-bridge.js"]);
+    assert.equal(await p.integration.party, p.conn());
+    assert.equal(p.integration.home, PARTY + "/party/");
+  });
+}
+
+test("every request for the Party origin can be given up on (an abort signal), and the bar is never stranded", async () => {
+  const p = page({ config: [new Error("offline"), { partyOrigin: null }] });
+  await settle();
+  assert.equal(typeof p.fetched[0][1].signal.aborted, "boolean");
+  const nav = p.body.children[0];
+  assert.equal(nav.hidden, true);                                         // waiting for the Party's answer
+  await p.tick();                                                         // the 4 s reveal, and the retry
+  assert.equal(nav.hidden, false);
+  assert.equal(await p.integration.party, null);
+});
 
 test("a page that is not an integrated launch asks nothing and has no Party", async () => {
   const p = page({ search: "" });
