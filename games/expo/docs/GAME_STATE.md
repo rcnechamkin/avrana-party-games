@@ -236,8 +236,9 @@ A timed mission and the clock (AVR-242, was E-D7):
   way; a suspend; a host that cannot name its boot; a snapshot without the record) the timed
   attempt ends at once as a counted failure with its own reason, and that end is written to the
   snapshot so that no later restart finds the deadline still running. If that write fails, the
-  next restart judges the clocks again: after a reboot the attempt ends again, and on the same
-  boot it can continue only with the time the monotonic clock says is left. A saved deadline
+  next restart judges the clocks again: after a reboot the attempt ends again. On the same boot
+  it ends again too, unless the clocks have come back into agreement in the meantime; it then
+  has only the time the monotonic clock says is left. A saved deadline
   later than a full timer from the moment the snapshot was written, or a clock reading that is
   not a plain number of seconds within a sane range, also ends the attempt as a counted failure.
   A snapshot whose deadline is not a number, or stands beside a mission result or an untimed
