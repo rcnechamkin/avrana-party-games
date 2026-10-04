@@ -860,4 +860,5 @@ def test_the_tracked_systemd_drop_in_configures_both_halves():
     env = dict(line.split("=", 2)[1:] for line in conf.splitlines() if line.startswith("Environment="))
     assert set(env) == {party_session.KEYS_ENV, party_session.PARTY_URL_ENV}
     assert party_session.party_url(env[party_session.PARTY_URL_ENV]) == env[party_session.PARTY_URL_ENV]
-    assert env[party_session.KEYS_ENV].startswith("/etc/")
+    # the keys arrive as systemd credentials (tests/test_service_unit.py), never by a store path
+    assert env[party_session.KEYS_ENV] == "%d"
