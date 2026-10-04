@@ -131,16 +131,28 @@ def test_a_sealed_distress_choice_is_invisible_whichever_card_was_chosen():
 
 
 def test_tonojas_covered_cards_reach_no_view_until_their_trick_is_resolved():
-    e = two_humans(1)
-    for _ in range(4):
-        covered = {c['covered'] for c in e.s['columns'] if c['covered']}
-        for viewer in ('a', 'b', None):
-            text = json.dumps(e.view(viewer))
-            assert not [c for c in covered if '"%s"' % c in text]
-        q = e.s['turn']
-        act(e, e.controller(q), 'play_card', card=legal_cards(e.playable(q), e.s['trick'])[0])
-        if e.s['result']:
-            break
+    uncovered_mid_trick = revealed = 0
+    for seed in range(6):
+        e = two_humans(1, seed)
+        while not e.s['result']:
+            covered = {c['covered'] for c in e.s['columns'] if c['covered']}
+            # Tonoja has played from a column and the trick is still open: the card beneath
+            # is the one a careless view would show in the empty place.
+            waiting = [c['covered'] for c in e.s['columns'] if c['top'] is None and c['covered']]
+            uncovered_mid_trick += bool(waiting)
+            for viewer in ('a', 'b', None, 'tonoja', 'stranger'):
+                view = e.view(viewer)
+                text = json.dumps(view)
+                assert not [c for c in covered if '"%s"' % c in text], (seed, viewer)
+                assert view['tonoja'] == [c['top'] for c in e.s['columns']]
+                assert view['hand_counts']['tonoja'] == sum((c['top'] is not None) + (c['covered'] is not None)
+                                                            for c in e.s['columns'])
+            q = e.s['turn']
+            act(e, e.controller(q), 'play_card', card=legal_cards(e.playable(q), e.s['trick'])[0])
+            if waiting and not e.s['trick']:                         # the trick resolved: now it shows
+                assert all(card in e.view(None)['tonoja'] for card in waiting)
+                revealed += 1
+    assert uncovered_mid_trick and revealed
 
 
 # ---- T38, T10 concurrency: two commands at one revision ----------------------------------------
@@ -352,13 +364,17 @@ def test_an_exact_count_is_pending_until_the_end_and_fails_one_over(key, cards, 
 
 
 @pytest.mark.parametrize('key,needed,total', [('2x9', 2, 4), ('3x6', 3, 4), ('4x3', 4, 4), ('4x9', 4, 4),
-                                              ('2black', 2, 4), ('3black', 3, 4)])
-def test_an_exact_count_fails_as_soon_as_too_few_matching_cards_are_left(key, needed, total):
+                                              ('1black', 1, 4), ('2black', 2, 4), ('3black', 3, 4),
+                                              ('1red', 1, 9), ('2blue', 2, 9), ('2green', 2, 9),
+                                              ('3orMore5', 3, 4), ('2orMore7', 2, 4), ('3orMore9', 3, 4),
+                                              ('5orMoreRed', 5, 9), ('7orMoreYellow', 7, 9)])
+def test_a_count_fails_as_soon_as_too_few_matching_cards_are_left(key, needed, total):
     d = TASKS[key]
+    assert d['params']['count'] == needed
     selector = d['params']['selector']
     pool = [f'{s}:{r}' for s in selector['suits'] for r in selector.get('ranks', range(1, 10))
             if not (s == 'submarine' and r > 4)]
-    assert len(pool) >= total
+    assert len(pool) == total
     lost_ok = len(pool) - needed                                     # the others may win this many
     state = held([], extra=[[c] for c in pool[:lost_ok]])
     assert evaluate(d, 'a', state) == 'pending'
@@ -858,7 +874,16 @@ def test_a_dropped_phone_returns_to_its_seat_in_every_phase_through_the_websocke
         p.read(lambda q: q.game['me']['pass_locked'] or q.game['stage'] == 'before_trick')
     for p in phones:
         p.catch_up(stage='before_trick')
+    together(room, phones)
+    speaker = phones[0]                                              # a live exposure and a spent token
+    card, opts = next(iter(speaker.game['me']['communication_options'].items()))
+    revision = engine.s['revision']
+    speaker.send('communicate', card=card, assertion=opts[0])
+    speaker.catch_up(revision + 1)
+    exposure = {'seat': speaker.pid, 'card': card, 'assertion': opts[0], 'active': True}
     drop_and_return(room, phones, 'before_trick')
+    assert engine.s['exposures'] == [exposure] and engine.s['spent'] == [speaker.pid]
+    assert phones[1].game['exposures'] == [exposure] and phones[1].game['sonar_spent'] == [speaker.pid]
 
     together(room, phones)
     leader = phone_of(phones, engine.s['turn'])
@@ -919,3 +944,106 @@ def test_the_reasons_the_view_gives_for_an_unplayable_card_are_the_servers_rejec
     with pytest.raises(Invalid) as refused:
         act(e, e.s['turn'], 'play_card', card=e.playable(e.s['turn'])[0])
     assert e.view(e.s['turn'])['me']['play_reason'] == str(refused.value) == 'Waiting for the crew to reconnect.'
+
+
+DEFECT = dict(strict=True, raises=(AssertionError, Invalid))
+
+
+@pytest.mark.xfail(reason='E-D8 / AVR-263: before play begins the view gives a reason that is not the server’s rejection', **DEFECT)
+def test_defect_the_reason_shown_before_play_begins_is_the_servers_rejection():
+    e = allocated(Engine(['p0', 'p1', 'p2'], random.Random(4)))
+    assert e.s['phase'] == 'assistance'
+    captain = e.s['captain']
+    before = e.snapshot()
+    with pytest.raises(Invalid) as refused:
+        act(e, captain, 'play_card', card=e.playable(captain)[0])
+    assert refused.value.code == 'phase' and e.snapshot() == before  # refused either way
+    assert e.view(captain)['me']['legal_cards'] == []
+    assert e.view(captain)['me']['play_reason'] == str(refused.value)
+
+
+# ---- T32 a timed table restored after its deadline ---------------------------------------------
+
+def timed_table(path, monkeypatch, begun_at):
+    """A stored, timed mission 16 table whose 150 seconds began at `begun_at`."""
+    from games.expo import game
+    monkeypatch.setattr(game.time, 'time', lambda: begun_at)
+    for seed in range(40):
+        s = ExpoSession(random.Random(seed), snapshot_path=path)
+        tokens = [f'human-{i}' for i in range(3)]
+        for t in tokens:
+            s.join(t, t)
+            s.set_ready(t, True)
+        s.set_settings(tokens[0], {'timed': True})
+        s.set_settings(tokens[0], {'mission': 16})
+        s.start(tokens[0])
+        s.tick(s.gen)
+        e, seat = s.engine, by_pid(s, tokens)
+        assert e.s['mission']['seconds'] == 150 and e.s['expiry'] is None
+        send(s, seat[e.controller(e.selector())], 'volunteer', yes=True)
+        for k, q in list(e.s['assignments'].items()):
+            if TASKS[k]['params'].get('predict'):
+                send(s, seat[q], 'predict', task=k, count=0)
+        if e.s['phase'] == 'assistance':                             # else: an ineligible volunteer
+            agree(s, tokens, 'begin')
+            return s, tokens
+        s.store.clear()
+    pytest.fail('no timed fixture')
+
+
+def test_a_timed_table_restored_after_its_deadline_has_already_failed(tmp_path, monkeypatch):
+    from games.expo import game
+    path = tmp_path / 'crew.json'
+    s, tokens = timed_table(path, monkeypatch, 1000.0)
+    assert s.engine.s['expiry'] == 1150.0 and s.deadline == 1150.0 and s.engine.s['result'] is None
+    on_disk = path.read_text(encoding='utf-8')
+    monkeypatch.setattr(game.time, 'time', lambda: 1150.0)          # the server was down until then
+    again = ExpoSession(random.Random(99), snapshot_path=path)
+    assert again.recovery_error is None
+    assert again.engine.s['result'] == {'status': 'failed', 'reason': 'Time has run out.'}
+    assert again.phase == 'mission_result' and again.engine.s['expiry'] is None and again.deadline is None
+    assert again.engine.s['hands'] == s.engine.s['hands'] and again.engine.s['history'] == []
+    assert again.engine.s['attempts'] == 1 and again.engine.s['log'] == []
+    assert path.read_text(encoding='utf-8') == on_disk               # restoring writes nothing
+    for t in tokens:
+        again.join(t, t)
+    seat = by_pid(again, tokens)
+    turn = again.engine.s['turn']
+    refused = send(again, seat[turn], 'play_card', card=again.engine.playable(turn)[0])
+    assert refused[0]['code'] == 'phase'                             # the deal is over
+    agree(again, tokens, 'retry', keep=True)                         # and the crew may dive again
+    assert again.engine.s['phase'] == 'allocation' and again.engine.s['result'] is None
+
+
+# ---- E-M42 mission 32 played through -----------------------------------------------------------
+
+@pytest.mark.parametrize('n', [2, 3, 4, 5])
+def test_mission_thirty_two_deals_its_four_named_tasks_and_plays_to_a_result(n):
+    fixed = ['0tricks', 'exactly3trickInARow', '2tricksInARow', 'firstAndLastTrick']
+    outcomes = set()
+    for seed in range(12):
+        e = Engine([f'p{i}' for i in range(n)], random.Random(seed), 32)
+        seats, captain = e.s['seats'], e.s['captain']
+        assert e.s['selected'] == fixed and e.s['pool'] == fixed and e.s['mission']['allocation'] == 'normal'
+        assert e.s['deck'] == [] and e.s['used'] == []               # nothing is drawn from the task deck
+        ring = seats[seats.index(captain):] + seats[:seats.index(captain)]
+        order = []
+        while e.s['pool']:
+            seat = e.selector()
+            order.append(seat)
+            assert not e.view(e.controller(seat))['me']['may_pass_task'] or len(seats) > 4
+            act(e, e.controller(seat), 'choose_task', task=e.s['pool'][0])
+        assert order == [ring[i % len(ring)] for i in range(4)] and e.s['phase'] == 'assistance'
+        decide(e, e.s['humans'][0], 'begin')
+        while not e.s['result']:
+            q = e.s['turn']
+            act(e, e.controller(q), 'play_card', card=legal_cards(e.playable(q), e.s['trick'])[0])
+            e.check()
+        status = e.s['result']['status']
+        outcomes.add(status)
+        progress = e.s['progress']
+        assert set(progress) == set(fixed) and status in ('success', 'failed')
+        assert (status == 'success') == all(v == 'satisfied' for v in progress.values())
+        assert (status == 'failed') == any(v == 'failed' for v in progress.values())
+        assert set(fixed) <= set(e.s['used'])                        # and they are used up afterwards
+    assert 'failed' in outcomes

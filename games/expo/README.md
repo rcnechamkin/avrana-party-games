@@ -38,12 +38,13 @@ evaluation, mission results, distress, the two-player variant, and the modifiers
 missions.
 
 **Known defects** (each pinned by a strict expected-failure test in
-`tests/test_expo_contract.py` where one can be written):
+`tests/test_expo_contract.py` or `tests/test_expo_coverage.py` where one can be written):
 
 | | Defect | Issue |
 |---|---|---|
 | E-D2 | A table cannot be ended while a seated player is away; a standalone table can be stranded until the server restarts | AVR-240 |
 | E-D5 to E-D7 | Snapshot hardening: content hash scope, request memory, timed restore and the clock | AVR-242 |
+| E-D8 | Six unavailable-control reasons differ from the server's rejection; the server refuses each request | AVR-263 |
 
 Fixed: E-D1, the task-selection stall when the captain was the only seat left for a
 captain-comparison task (AVR-239, 2026-10-04). E-D3 and E-D4, late completion of the "win none of
