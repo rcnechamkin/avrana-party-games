@@ -1,8 +1,47 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git fetch:*)",
+      "Bash(git switch:*)",
+      "Bash(git worktree list:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git merge --no-edit origin/main)",
+      "Bash(git merge --ff-only origin/main)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run watch:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(python tests/test_no_private_data.py)",
+      "Bash(python ops/check_docs.py)",
+      "Bash(python ops/export_avrana_catalog.py --check:*)",
+      "Bash(python ops/graphify_context.py:*)",
+      "Bash(npm run check:syntax)",
+      "Bash(node --test:*)"
+    ]
+  },
   "hooks": {
-    "PreToolUse": [{
-      "matcher": "Grep|Glob|Bash",
-      "hooks": [{"type": "command", "command": "python ops/graphify_context.py guard", "timeout": 10}]
-    }]
+    "PreToolUse": [
+      {
+        "matcher": "Grep|Glob|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python ops/graphify_context.py guard",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
   }
 }

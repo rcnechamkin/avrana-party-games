@@ -49,6 +49,7 @@ dev.pid
 /graphify-public/
 /.claude/*
 !/.claude/settings.json
+!/.claude/agents/
 # Graphify query/export side effects beside the reviewed shared products stay local.
 /context/graphify/*
 !/context/graphify/semantic-graph.json
