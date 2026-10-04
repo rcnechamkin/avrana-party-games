@@ -18,6 +18,15 @@
     "vectors_sha256": "ddf391e061ae3a831347e56954fed744abc1c294f9e3a7a995d53f7d576d2f48",
     "reported_by": ["bluff"]
   },
+  "bridge": {
+    "protocol": "avrana.party-bridge/v1",
+    "vendored": "web/avrana-party-bridge.js",
+    "vendored_sha256": "11025f460d54b2b3082681758e72493b17e22eff5666e0f25bea65a0d29dff7d",
+    "vectors": "tests/vectors/party-bridge.v1.json",
+    "vectors_sha256": "4271426d9234c95a2b17b80b144698a4603f45dd8573d64b67441c3cc7026677",
+    "party_origin_env": "AVRANA_PARTY_ORIGIN",
+    "advertised_at": "/api/avrana"
+  },
   "routes": {
     "party_ticket": "/party/api/session/ticket",
     "party_ended": "/internal/party-session/v0/ended",

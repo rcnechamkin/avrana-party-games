@@ -64,6 +64,21 @@ The whole boundary (protocol digest, routes, launch integration, environment nam
 provider/avrana-contract.json; tests/test_avrana_contract.py checks it against this code, and CI's
 cross-repo job compares it with Party's contracts/party-games.v0.json (Party tools/contract_check.py).
 
+### The game origin (avrana-party ADR 0013, AVR-226)
+
+Status: TESTED here and in avrana-party's Chromium run with two host names
+(tests/provider/game-origin.spec.ts there); not deployed; no real phone yet.
+A page learns where the Party is from this server only: GET /api/avrana answers `partyOrigin`
+from $AVRANA_PARTY_ORIGIN (an origin and nothing else, or null; documented and unset in
+deploy/avrana-party-session.conf). Null, or the page's own origin: nothing changes (the Party's
+module runs in the page; tickets are fetched with the cookie). Another origin: the page holds no
+Party identity and never calls the Party API. web/avrana-integration.js embeds the Party's bridge
+frame through web/avrana-party-bridge.js (avrana-party's web/party/bridge/shim.js, vendored
+UNCHANGED and pinned with its vectors under `bridge` in provider/avrana-contract.json; never edit
+it here) and publishes the same window.AvranaParty, so game chrome is written once; hubnet.js
+asks the bridge for a ticket before every connect. Tests: tests/avrana_bridge_test.mjs,
+tests/hubnet_party_ticket_test.mjs ("game origin"), tests/test_avrana_bridge.py.
+
 - Config (deploy/avrana-party-session.conf, a systemd drop-in for the games service):
   $AVRANA_PARTY_KEYS names a directory holding <slug>.key (32-byte hex, 0600, the same key the
   party holds for that game; only core/party_session.GAMES = BLUFF look for one) and
