@@ -440,7 +440,13 @@ const Hub = (() => {
      launch that includes it (a rematch; a watcher now on the roster) is joined without a reload.
      A page that never held a ticket keeps today's hello on `no`/`absent`: the game server decides
      its role (a watcher while the room belongs to a party session). No automatic navigation
-     (ADR 0006). */
+     (ADR 0006).
+
+     On the game origin (avrana-party ADR 0013, AVR-226) the page has no Party cookie and Party
+     Core refuses its requests: the ticket comes from the Party's bridge frame instead
+     (avrana-integration.js `party`, the vendored shim). The answers above are the same; the
+     session id is read from the ticket this page was just handed, since the bridge shows a game
+     page no id of its own. */
   const TICKET_WAIT = 5000, PARTY_POLL = 5000, MAX_TICKET_TRIES = 20, SETUP_POLL = 2000;
   const partySessionKey = "avrana-party-session:" + gameSlug;
   let partySessionMemo = "";
@@ -453,6 +459,23 @@ const Hub = (() => {
       try { sessionStorage.setItem(partySessionKey, sid); } catch (e) { /* private mode: memory only */ }
     },
   };
+  // The session a ticket is for (aps0.<base64url JSON payload>.<signature>, field `sid`), or "".
+  function sessionOfTicket(ticket) {
+    try {
+      const part = String(ticket).split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+      const sid = JSON.parse(atob(part + "=".repeat((4 - part.length % 4) % 4))).sid;
+      return typeof sid === "string" ? sid : "";
+    } catch (e) { return ""; }
+  }
+  const BRIDGE_TRANSIENT = ["timeout", "offline", "unavailable", "stopped"];
+  async function bridgeTicket(bridge) {
+    const r = await bridge.ticket();
+    if (r.ok) return { kind: "ticket", ticket: r.ticket, session: sessionOfTicket(r.ticket) };
+    if (r.error === "setup") return { kind: "setup" };
+    const view = bridge.view();
+    if (view && !view.party) return { kind: "absent" };       // the bridge found no Party Core
+    return { kind: BRIDGE_TRANSIENT.includes(r.error) ? "transient" : "no" };
+  }
   async function partyTicket() {
     const ctl = typeof AbortController === "function" ? new AbortController() : null;
     let timer = null;
@@ -460,6 +483,8 @@ const Hub = (() => {
       timer = setTimeout(() => { if (ctl) ctl.abort(); resolve({ kind: "transient" }); }, TICKET_WAIT);
     });
     const ask = (async () => {
+      const bridge = await (window.AvranaIntegration && window.AvranaIntegration.party);
+      if (bridge) return bridgeTicket(bridge);
       let res, body = null;
       try {
         res = await fetch("/party/api/session/ticket", {
