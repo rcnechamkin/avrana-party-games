@@ -776,9 +776,9 @@ rejection code or on the stored value, the adapter test on `RecursionError`. Aft
 
 | Check | Result (Windows 11) |
 |---|---|
-| `pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_coverage.py tests/test_expo_persistence.py tests/test_expo_input.py tests/test_expo_docs.py` | RESULT_EXPO |
-| `pytest` (whole repository, with a sibling Party checkout present) | RESULT_ALL |
+| `pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_coverage.py tests/test_expo_persistence.py tests/test_expo_input.py tests/test_expo_docs.py` | 693 passed, 2 skipped, 2 expected failures (E-D2, E-D8) |
+| `pytest` (whole repository, with a sibling Party checkout present) | 2,199 passed, 4 skipped, 2 expected failures, 0 failed |
 | `ops/check_docs.py`, `tests/test_no_private_data.py`, `ops/export_avrana_catalog.py --check provider/catalog.json`, `npm run check:syntax` | all passed |
-| `tests/playtest_expo.mjs`, headless Chrome | RESULT_PLAY |
+| `tests/playtest_expo.mjs`, headless Chrome | passed once each at 2, 3, 4 and 5 humans (default mission); mission 10 kept and offered (3 humans); mission 13 offered (5 humans) |
 
 Not covered: real phones, the appliance, a Party-launched round, the playtest on Linux.
