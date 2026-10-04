@@ -63,8 +63,6 @@ def catalog(humans=3, timed=False):
         try:
             m = mission(n, timed)
             reason = None
-            if humans == 2 and m['communication'] in ('terrain', 'rapture'):
-                reason = 'C11: shared sonar with Tonoja needs clarification'
             if humans == 2 and m['allocation'] == 'volunteer':
                 reason = 'C11: Tonoja volunteer handling needs clarification'
         except ValueError as e:

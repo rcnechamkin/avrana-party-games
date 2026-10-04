@@ -256,15 +256,301 @@ def test_tonoja_only_ever_offers_face_up_cards_and_follows_suit_from_them():
     assert legal_cards(e.playable('tonoja'), [{'seat': 'x', 'card': led + ':1'}]) == tops
 
 
-def test_two_humans_cannot_use_distress_or_shared_sonar_or_volunteer_missions():
-    e = allocated(Engine(['a', 'b'], random.Random(4)))
-    with pytest.raises(Invalid):
-        act(e, 'a', 'propose', proposal={'kind': 'distress', 'direction': 'left'})
-    for mid in (11, 16, 21, 24, 27):
-        with pytest.raises(Invalid):
-            Engine(['a', 'b'], random.Random(1), mid)
-    off = {m['id'] for m in catalog(2) if not m['enabled']}
-    assert {11, 16, 21, 22, 23, 24, 25, 27} <= off and 8 not in off and 9 not in off
+def test_two_humans_cannot_use_distress_or_volunteer_missions():
+    # Still deferred by the owner decision Q6 (C11): the supplied rules do not say how Tonoja
+    # passes or receives a distress card, or how it answers a volunteer question.
+    for mid in (1, 11):                                              # distress stays off everywhere
+        e = allocated(Engine(['a', 'b'], random.Random(4), mid))
+        before = e.snapshot()
+        with pytest.raises(Invalid) as refused:
+            act(e, 'a', 'propose', proposal={'kind': 'distress', 'direction': 'left'})
+        assert refused.value.code == 'distress' and e.snapshot() == before
+    for timed in (False, True):
+        with pytest.raises(Invalid) as refused:
+            Engine(['a', 'b'], random.Random(1), 16, timed)
+        assert refused.value.code == 'C11'
+        off = {m['id']: m['reason'] for m in catalog(2, timed) if not m['enabled'] and m['id'] not in content.BLOCKED}
+        assert list(off) == [16] and off[16].startswith('C11')
+
+
+# ---- AVR-250: two humans and Tonoja share one sonar token (C11, owner decision Q6) -------------
+# Tonoja is the third crew seat, so the shared pool of "seats minus two" holds one token. Only the
+# two humans may spend it; Tonoja never communicates.
+
+SHARED_SONAR_FOR_TWO = (11, 21, 22, 23, 24, 25, 27)
+
+
+def two_humans(mid=11, seed=4, mode=None):
+    """Two humans and Tonoja at the first trick boundary; `mode` picks a terrain draw by seed."""
+    while True:
+        e = Engine(['a', 'b'], random.Random(seed), mid)
+        if mode is None or e.s['communication'] == mode:
+            break
+        seed += 1
+    allocated(e)
+    decide(e, 'a', 'begin')
+    return e
+
+
+def test_the_shared_sonar_and_terrain_missions_are_exactly_the_ones_opened_to_two_players():
+    wanted = [n for n in range(1, 51) if n not in content.BLOCKED
+              and content.mission(n)['communication'] in ('rapture', 'terrain')]
+    assert tuple(wanted) == SHARED_SONAR_FOR_TWO
+
+
+@pytest.mark.parametrize('mid', SHARED_SONAR_FOR_TWO)
+def test_two_humans_can_prepare_every_shared_sonar_and_terrain_mission(mid):
+    choice = next(m for m in catalog(2) if m['id'] == mid)
+    assert choice == {'id': mid, 'enabled': True, 'reason': None}
+    e = Engine(['a', 'b'], random.Random(mid), mid)
+    assert e.s['seats'].count('tonoja') == 1 and len(e.s['seats']) == 3 and e.s['shared'] == 1
+    assert e.s['mission'] == content.mission(mid)                    # the same mission as for 3 to 5
+    e.check()
+
+
+def test_a_two_player_table_starts_a_shared_sonar_mission_and_still_refuses_the_volunteer_mission():
+    s = ExpoSession(random.Random(4))
+    for t in ('human-0', 'human-1'):
+        s.join(t, t)
+        s.set_ready(t, True)
+    s.settings['mission'] = 16
+    refusal = s.start('human-0')
+    assert s.engine is None and refusal[0]['msg'].startswith('C11')
+    s.settings['mission'] = 11
+    s.start('human-0')
+    s.tick(s.gen)
+    assert s.engine.s['mission']['id'] == 11 and s.engine.s['seats'].count('tonoja') == 1
+    assert s.game_state('human-0')['shared_sonar'] == 1
+
+
+def test_two_humans_on_mission_eleven_begin_with_exactly_one_shared_token():
+    e = two_humans()
+    assert e.s['communication'] == 'rapture' and e.s['shared'] == 1 and e.s['spent'] == []
+    for viewer in ('a', 'b', None):
+        assert e.view(viewer)['shared_sonar'] == 1
+    assert e.communication_options('a') and e.communication_options('b')
+
+
+@pytest.mark.parametrize('spender', ['a', 'b'])
+def test_either_human_may_spend_the_shared_token_and_then_nobody_can_communicate(spender):
+    e = two_humans()
+    other = 'b' if spender == 'a' else 'a'
+    card, opts = next(iter(e.communication_options(spender).items()))
+    act(e, spender, 'communicate', card=card, assertion=opts[0])
+    assert e.s['shared'] == 0 and e.s['spent'] == [] and len(e.s['exposures']) == 1
+    assert e.communication_options(spender) == {} == e.communication_options(other)
+    assert all(e.view(v)['shared_sonar'] == 0 for v in ('a', 'b', None))
+    before = e.snapshot()
+    for actor in (other, spender):
+        c = next(c for c in e.playable(actor) if c != card and assertions(e.playable(actor), c))
+        with pytest.raises(Invalid) as refused:
+            act(e, actor, 'communicate', card=c, assertion=assertions(e.playable(actor), c)[0])
+        assert refused.value.code == 'communication'
+    assert e.snapshot() == before                                   # refusals changed nothing
+    play_trick(e)                                                   # and the pool stays empty
+    assert e.s['shared'] == 0 and e.communication_options(other) == {}
+
+
+def test_tonoja_never_communicates_and_the_captain_cannot_communicate_for_it():
+    e = two_humans()
+    captain = e.s['captain']
+    assert e.communication_options('tonoja') == {} and e.view('tonoja')['me'] is None
+    shown = next(c for c in e.playable('tonoja') if assertions(e.playable('tonoja'), c))
+    declaration = assertions(e.playable('tonoja'), shown)[0]
+    before = e.snapshot()
+    with pytest.raises(Invalid) as refused:                         # Tonoja is not an actor
+        e.apply('tonoja', command(e, 'tonoja', 'communicate', card=shown, assertion=declaration), 100)
+    assert refused.value.code == 'actor'
+    with pytest.raises(Invalid) as refused:                         # the captain plays Tonoja's
+        act(e, captain, 'communicate', card=shown, assertion=declaration)   # cards, never shows them
+    assert refused.value.code == 'communication'
+    assert e.snapshot() == before and e.s['shared'] == 1
+    assert all(shown not in e.communication_options(q) for q in e.s['humans'])
+    assert not any(x['seat'] == 'tonoja' for x in e.s['exposures'])
+
+
+@pytest.mark.parametrize('card,assertion', [('blue:99', 'highest'), ('submarine:4', 'highest'),
+                                            (None, 'middle'), (None, 'wrong')])
+def test_an_invalid_shared_sonar_request_from_two_players_is_transactional(card, assertion):
+    e = two_humans()
+    actor = e.s['captain']
+    real, opts = next(iter(e.communication_options(actor).items()))
+    if assertion == 'wrong':                                         # a real card, an untrue claim
+        assertion = next(a for a in ('highest', 'only', 'lowest') if a not in opts)
+    before, rng = e.snapshot(), e.rng.getstate()
+    with pytest.raises(Invalid) as refused:
+        act(e, actor, 'communicate', card=card or real, assertion=assertion)
+    assert refused.value.code == 'communication'
+    assert e.snapshot() == before and e.rng.getstate() == rng and e.s['shared'] == 1
+    act(e, actor, 'communicate', card=real, assertion=opts[0])       # the token was not consumed
+    assert e.s['shared'] == 0
+
+
+@pytest.mark.parametrize('n', [3, 4, 5])
+def test_the_shared_pool_for_three_to_five_players_is_unchanged(n):
+    e = playing(n=n, mid=11)
+    assert e.s['communication'] == 'rapture' and e.s['shared'] == n - 2 and 'tonoja' not in e.s['seats']
+    for _ in range(n - 2):                                           # one player may use several
+        card, opts = next(iter(e.communication_options('p0').items()))
+        act(e, 'p0', 'communicate', card=card, assertion=opts[0])
+    assert e.s['shared'] == 0 and e.s['spent'] == []
+    assert all(e.communication_options(q) == {} for q in e.s['humans'])
+    assert not next(m for m in catalog(n) if m['id'] == 11)['reason']
+
+
+def test_personal_sonar_for_two_players_is_unchanged_outside_shared_sonar():
+    e = playing(n=2)                                                 # mission 1, normal sonar
+    assert e.s['communication'] == 'normal' and e.view('p0')['shared_sonar'] is None
+    card, opts = next(iter(e.communication_options('p0').items()))
+    act(e, 'p0', 'communicate', card=card, assertion=opts[0])
+    assert e.s['spent'] == ['p0'] and e.s['shared'] == 1             # the pool is not touched
+    assert e.communication_options('p0') == {} and e.communication_options('p1')
+
+
+def test_terrain_for_two_players_reaches_every_mode_with_the_matching_resource():
+    seen = set()
+    for seed in range(60):
+        e = Engine(['a', 'b'], random.Random(seed), 24)
+        assert e.s['communication'] == ['normal', 'currents', 'rapture'][(rank(e.s['terrain']) - 1) // 3]
+        seen.add(e.s['communication'])
+        e.check()
+    assert seen == {'normal', 'currents', 'rapture'}
+    e = two_humans(24, mode='rapture')
+    card, opts = next(iter(e.communication_options('a').items()))
+    act(e, 'a', 'communicate', card=card, assertion=opts[0])
+    assert e.s['shared'] == 0 and e.communication_options('b') == {}
+    e = two_humans(24, mode='normal')                                # personal tokens, one each
+    card, opts = next(iter(e.communication_options('a').items()))
+    act(e, 'a', 'communicate', card=card, assertion=opts[0])
+    assert e.s['spent'] == ['a'] and e.communication_options('b')
+
+
+def test_two_player_shared_sonar_views_stay_private():
+    e = two_humans()
+    card, opts = next(iter(e.communication_options('a').items()))
+    act(e, 'a', 'communicate', card=card, assertion=opts[0])
+    covered = {c['covered'] for c in e.s['columns']}
+    for viewer in ('b', None, 'tonoja', 'stranger'):
+        view = e.view(viewer)
+        assert view['exposures'] == [{'seat': 'a', 'card': card, 'assertion': opts[0], 'active': True}]
+        text = json.dumps(view)
+        assert 'hands' not in view and 'columns' not in view and 'deck' not in view
+        hidden = (set(e.s['hands']['a']) - {card}) | covered
+        if viewer != 'b':
+            hidden |= set(e.s['hands']['b'])
+            assert view['me'] is None
+        assert not [c for c in hidden if '"%s"' % c in text], viewer
+    e = two_humans(24, mode='currents')                              # terrain can draw currents
+    card, opts = next(iter(e.communication_options('a').items()))
+    act(e, 'a', 'communicate', card=card, assertion=opts[0])
+    assert e.view('a')['exposures'][0]['assertion'] == opts[0]
+    assert all('assertion' not in e.view(v)['exposures'][0] for v in ('b', None, 'tonoja'))
+
+
+# ---- AVR-250: what the existing mission rules imply with Tonoja as the third seat --------------
+# These pin current behaviour. Nothing here is a new rule.
+
+def test_mission_twenty_one_counts_tonoja_in_the_balance_of_color_ones():
+    e = two_humans(21)
+    won = lambda i, seat, cards: trick(i, seat, cards, seats=e.s['seats'])
+    e.s['history'] = [won(1, 'tonoja', ['blue:1', 'submarine:1', 'pink:5'])]
+    e._outcome()
+    assert e.s['result'] is None                                     # Tonoja one ahead is legal
+    e.s['history'].append(won(2, 'tonoja', ['green:1', 'green:3', 'green:5']))
+    e._outcome()                                                     # Tonoja two ahead of a human
+    assert e.s['result'] == {'status': 'failed', 'reason': 'A crew member has captured two more 1s than another.'}
+    e = two_humans(21)
+    e.s['history'] = [won(1, 'a', ['blue:1', 'blue:2', 'blue:3']), won(2, 'b', ['green:1', 'green:2', 'green:3'])]
+    e._outcome()
+    assert e.s['result'] is None                                     # 1, 1 and Tonoja 0
+    e.s['history'].append(won(3, 'a', ['pink:1', 'pink:2', 'pink:3']))
+    e._outcome()                                                     # a human two ahead of Tonoja
+    assert e.s['result']['status'] == 'failed'
+
+
+def test_mission_twenty_three_treats_tonoja_as_a_possible_first_winner():
+    e = two_humans(23)
+    assert e.communication_options('a') == {} == e.communication_options('b')   # not before trick 2
+    won = lambda i, seat: {'index': i, 'leader': seat, 'winner': seat, 'plays': []}
+    e.s['history'] = [won(1, 'tonoja'), won(2, 'tonoja'), won(3, 'a')]
+    e._outcome()
+    assert e.s['result'] is None                                     # Tonoja 2, a human 1
+    e.s['history'].append(won(4, 'a'))
+    e._outcome()                                                     # a human draws level with Tonoja
+    assert e.s['result'] == {'status': 'failed',
+                             'reason': 'The first trick winner must always have strictly more tricks.'}
+    e = two_humans(23)
+    e.s['history'] = [won(1, 'a'), won(2, 'a'), won(3, 'tonoja'), won(4, 'tonoja')]
+    e._outcome()                                                     # Tonoja draws level with a human
+    assert e.s['result']['status'] == 'failed'
+
+
+def test_mission_twenty_five_with_tonoja_the_captain_takes_no_task_and_chooses_tonojas():
+    for seed in range(12):
+        e = Engine(['a', 'b'], random.Random(seed), 25)
+        captain = e.s['captain']
+        other = next(q for q in e.s['humans'] if q != captain)
+        after = e.s['seats'][(e.s['seats'].index(captain) + 1) % 3]
+        assert set(e.s['allocation_ring']) == {'tonoja', other} and e.s['allocation_ring'][0] == after
+        while e.s['pool']:
+            seat = e.selector()
+            assert seat != captain and e.view(captain)['selector'] == seat
+            task = next(k for k in e.s['pool'] if e.eligible(k, seat))
+            if seat == 'tonoja':                                     # only the captain picks for it
+                before = e.snapshot()
+                with pytest.raises(Invalid) as refused:
+                    act(e, other, 'choose_task', task=task)
+                assert refused.value.code == 'turn' and e.snapshot() == before
+                assert e.view(captain)['controller'] == captain
+            act(e, e.controller(seat), 'choose_task', task=task)
+        owners = set(e.s['assignments'].values())
+        assert captain not in owners and owners <= {'tonoja', other}
+        assert e.s['leader'] == e.s['turn'] == captain               # the captain still opens
+
+
+def test_mission_twenty_seven_with_tonoja_holding_yellow_five():
+    # Tonoja has fourteen cards and thirteen tricks. No rule redeals for yellow 5, so it may be
+    # dealt to Tonoja, even face down, and it may end as the card Tonoja never plays.
+    where = set()
+    for seed in range(40):
+        e = Engine(['a', 'b'], random.Random(seed), 27)
+        assert e.s['pool'] == [] and not e._deal_exception(e.s['selected'])
+        where |= {k for c in e.s['columns'] for k in ('top', 'covered') if c[k] == 'yellow:5'}
+    assert where == {'top', 'covered'}
+    e = two_humans(27)
+    filler = [trick(i + 1, 'a', ['blue:1', 'blue:2', 'blue:3'], seats=e.s['seats']) for i in range(12)]
+    e.s['history'] = filler + [trick(13, 'a', ['blue:9', 'blue:8', 'blue:7'], seats=e.s['seats'])]
+    e._outcome()                                                     # all 13 tricks, never played
+    assert e.s['result'] == {'status': 'failed',
+                             'reason': 'Yellow 5 was left unplayed instead of ending the final trick.'}
+    e = two_humans(27)
+    order = [q for q in e.s['seats'] if q != 'tonoja'] + ['tonoja']
+    e.s['history'] = filler + [trick(13, order[0], ['blue:9', 'blue:8', 'yellow:5'], seats=order)]
+    assert e.s['history'][-1]['plays'][-1] == {'seat': 'tonoja', 'card': 'yellow:5'}
+    e._outcome()                                                     # Tonoja plays it last
+    assert e.s['result']['status'] == 'success'
+
+
+@pytest.mark.parametrize('mid', SHARED_SONAR_FOR_TWO)
+def test_two_players_play_every_shared_sonar_mission_to_a_result_with_legal_actions(mid):
+    for seed in range(6):
+        e = two_humans(mid, seed)
+        for _ in range(45):
+            if e.s['result']:
+                break
+            if not e.s['trick']:
+                for q in e.s['humans']:                              # use sonar whenever offered
+                    options = e.communication_options(q)
+                    if options:
+                        card, opts = next(iter(options.items()))
+                        act(e, q, 'communicate', card=card, assertion=opts[0])
+            q = e.s['turn']
+            act(e, e.controller(q), 'play_card', card=legal_cards(e.playable(q), e.s['trick'])[0])
+            e.check()
+        assert e.s['result']['status'] in ('success', 'failed')
+        assert not any(x['seat'] == 'tonoja' for x in e.s['exposures'])
+        if e.s['communication'] == 'rapture':
+            assert e.s['shared'] in (0, 1) and len(e.s['exposures']) <= 1
 
 
 # ---- restoration, clock and persistence (T32, T39, T40) ----------------------------------------

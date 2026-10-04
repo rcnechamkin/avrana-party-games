@@ -217,9 +217,10 @@ Sources: R p21 to p22.
   not oblige it.
 - Consequence: 13 complete tricks; Tonoja ends with one card.
 - DECIDED C11 (owner, 2026-10-04): Tonoja is the third crew member for crew-count mechanics.
-  Mission 8 counts Tonoja. Shared sonar uses one token for two players (three seats minus two);
-  until AVR-250 the shared-sonar and terrain missions are still refused for two players. Distress
-  and volunteer missions stay unavailable for two players.
+  Mission 8 counts Tonoja. Shared sonar uses one token for two players (three seats minus two),
+  so the shared-sonar and terrain missions are offered to two players (built 2026-10-04, AVR-250).
+  Only the two humans may use the token; Tonoja never communicates. Distress and volunteer missions
+  stay unavailable for two players.
 
 ## What the game cannot enforce
 

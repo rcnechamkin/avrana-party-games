@@ -187,8 +187,8 @@ class Engine:
         s = self.s
         m = mission(mission_id, s['timed'])
         if len(s['humans']) == 2:
-            require(m['communication'] not in ('terrain', 'rapture') and m['allocation'] != 'volunteer',
-                    'C11', 'Shared sonar and volunteer missions with Tonoja need clarification.')
+            require(m['allocation'] != 'volunteer',
+                    'C11', 'Volunteer missions with Tonoja need clarification.')
         changed = not s['mission'] or s['mission']['id'] != mission_id
         if changed:
             s['distress'], s['attempts'] = False, 0

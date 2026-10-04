@@ -145,14 +145,34 @@ Notes on the table:
 
 ### Two players
 
-With two humans and Tonoja the following are refused (BLOCKED C11): every `terrain` and `rapture`
-mission (11, 21 to 25, 27), the `volunteer` mission (16), and distress in any mission. Missions
-1, 2, 5 to 10, 13, 17, 18, 28 to 32 and the continuation are offered. Mission 8 counts Tonoja in
-the balance (confirmed, Q6).
+With two humans and Tonoja the following are refused (DEFERRED C11): the `volunteer`
+mission (16) and distress in any mission. Every other enabled mission is offered. Mission 8 counts
+Tonoja in the balance (confirmed, Q6).
 
-Decided 2026-10-04 and not built yet (AVR-250): shared sonar is allowed for two players with one
-token, which will open missions 11, 21 to 25 and 27. Distress and the volunteer mission stay
-refused for two players.
+Shared sonar (owner decision Q6, built 2026-10-04, AVR-250). Tonoja is the third crew seat, so the
+`rapture` pool of crew seats minus two holds one token. Either human may spend it; once it is
+spent neither can communicate for the rest of the attempt. Tonoja never communicates, and the
+captain cannot show one of Tonoja's cards. This opens the shared-sonar and unfamiliar-terrain
+missions to two players with one shared token: missions 11, 21 to 25 and 27. When `terrain` draws
+`normal` or `currents`, each human has a personal token as in any other two-player mission (R p21).
+
+What the existing mission rules give with Tonoja as a seat. None of this is a two-player rule of
+its own; each line is the mission's ordinary rule applied to three seats, and each is tested.
+
+- Mission 21: Tonoja's captured color 1s count. The mission fails when any seat, Tonoja included,
+  has two more than any other seat.
+- Mission 23: Tonoja can win the first trick. Then Tonoja must stay strictly ahead of both humans;
+  if a human wins it, that human must stay strictly ahead of Tonoja too.
+- Mission 25: the captain takes no task. Selection runs clockwise from the seat after the captain
+  over Tonoja and the other human, and the captain still makes Tonoja's choices (R10) and opens
+  the first trick.
+- Mission 27: yellow 5 may be dealt to Tonoja, face up or covered; there is no redeal for it. It
+  succeeds only as the last card of trick 13, so Tonoja must play last in that trick if it holds
+  the card. If yellow 5 is the one card Tonoja never plays, the mission fails at the end of the
+  deal, exactly as when it is the unplayed card of the fourteen-card hand at three humans. Which
+  card stays unplayed follows from the captain's plays for Tonoja under follow suit (P08). UNKNOWN:
+  whether some deal makes success impossible however the crew plays. The sources define no remedy
+  and none is built; a failed attempt is retried as usual.
 
 ## Task definition
 

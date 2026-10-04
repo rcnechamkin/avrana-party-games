@@ -29,7 +29,8 @@ specification, deferred) and an issue.
 
 **Playable.** Two to five humans; two humans play with a captain-controlled dummy hand (Tonoja).
 24 of the 32 numbered missions and a continuation (33 to 50) are enabled for three to five
-players, fewer for two. 92 of 96 tasks are enabled.
+players; two players get all of them except the volunteer mission (16), and no distress. 92 of 96
+tasks are enabled.
 
 **Verified against the sources.** Deal, captain, turn order, following suit, submarines, trick
 resolution, truthful communication and its timing, task drawing, selection and passing, task
@@ -50,10 +51,10 @@ the first N tricks" tasks and the communicator not seeing their own declaration 
 (AVR-241, 2026-10-04).
 
 **Decided, not built yet.** The owner answered the open policy questions on 2026-10-04 under a
-"fidelity first" principle (AVR-243). Two answers that change behaviour are still to build: one
-shared sonar token for two players (AVR-250), and the captain's authority in missions 10 and 13
-(AVR-251). Built on 2026-10-04: a single card of a color is communicated only as "only"
-(AVR-248), and the task `5with7` is enabled (AVR-249).
+"fidelity first" principle (AVR-243). One answer that changes behaviour is still to build: the
+captain's authority in missions 10 and 13 (AVR-251). Built on 2026-10-04: a single card of a color
+is communicated only as "only" (AVR-248), the task `5with7` is enabled (AVR-249), and two players
+share one sonar token in the shared-sonar and unfamiliar-terrain missions (AVR-250).
 
 **Waiting on the owner.** The rule for routine progression decisions: AVR-252, tied to AVR-240.
 Party-round setup: AVR-245. Presentation contract: AVR-246.
