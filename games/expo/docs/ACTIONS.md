@@ -136,8 +136,18 @@ See [Crew decisions](#crew-decisions). Used by allocation modes `one`, `captain_
 
 A crew decision is proposed by one seated human and takes effect when **every** seated human has
 confirmed it (P09). One may be pending at a time; while it is, no other command is accepted.
-Decided 2026-10-04 and not built yet: missions 10 and 13 will need only the captain and the
-recipient (AVR-251), and routine progression decisions should stop requiring everyone (AVR-252).
+
+The exception is the captain's assignment in missions 10 and 13 (mode `captain_one`, owner
+decision Q8, built 2026-10-04, AVR-251). It is the captain's decision, not the crew's:
+
+- the captain names the captain, or Tonoja (whom the captain controls, R10): the tasks are assigned
+  in the same command and no decision is pending;
+- the captain names another human: an offer is pending that only that human may accept or
+  decline. Nobody else can confirm or decline it, the captain included. A declined offer leaves
+  every task in the pool and the captain chooses again.
+
+Decided 2026-10-04 and not built yet: routine progression decisions should stop requiring
+everyone (AVR-252).
 
 ### `propose {proposal: {kind, ...}}`
 
@@ -145,13 +155,15 @@ recipient (AVR-251), and routine progression decisions should stop requiring eve
 |---|---|---|---|
 | `begin` | phase `assistance` | `phase` Finish task allocation and predictions first. | phase `before_trick`; the attempt is counted; a real-time clock starts |
 | `distress {direction}` | phase `assistance`; more than two humans; direction `left` or `right` (R09) | `distress` Distress is available before play; the Tonoja exchange is not yet verified. / `direction` Choose left or right. | distress active for the mission; phase `passing` |
-| `assign {owner, task}` | phase `allocation` in mode `one`, `captain_one` or `free`; owner is a seat; every affected task is in the pool and the owner is eligible; in `captain_one` the proposer is the captain | `phase` Use the current task selector. / `owner` Choose a crew member. / `captain` The captain must offer these tasks. / `task` Every task needs an eligible owner. | the task, or all tasks, go to the owner; in `captain_one` with another owner, sonar is limited to before the first trick; phase advances when the pool is empty |
+| `assign {owner, task}` | phase `allocation` in mode `one`, `captain_one` or `free`; owner is a seat; every affected task is in the pool and the owner is eligible; in `captain_one` the proposer is the captain | `phase` Use the current task selector. / `owner` Choose a crew member. / `captain` The captain must offer these tasks. / `task` Every task needs an eligible owner. | the task, or all tasks, go to the owner; in `captain_one` with another owner, sonar is limited to before the first trick; phase advances when the pool is empty. In `captain_one` "all confirm" means the recipient alone, and nobody when the owner is the captain or Tonoja |
 | `retry {keep}` | phase `mission_result` after a failure; `keep` is a boolean (R p11) | `phase` Retry is available after a failed mission. / `payload` Choose whether to keep the tasks. | a new attempt of the same mission: new deal, sonar and progress reset, distress kept; same tasks or a new draw |
 | `next {mission}` | phase `mission_result` after a success; the mission exists and is not blocked | `phase` Complete this mission first. / `mission` with the blocking conflict's reason | the log entry was already written at success; distress and attempts reset; the new mission is prepared |
 | `end` | any phase | none | result `abandoned` unless a mission result already stands; phase `closed`; the platform shows its results screen and reports the outcome |
 
 - **Actor**: any seated human.
-- **Mutation on propose**: the proposal is stored with the proposer's confirmation.
+- **Mutation on propose**: the proposal is stored with the proposer's confirmation. A `captain_one`
+  offer also stores its `recipient`; a `captain_one` assignment to the captain or Tonoja stores
+  nothing and takes effect at once.
 - **Knowable before**: yes for every row.
 - **Client**: buttons appear only in the matching phase ("Begin without passing", "Distress · pass
   left / right" (hidden for two players), "Offer all tasks", "Propose owner", "Retry · same tasks",
@@ -163,12 +175,15 @@ recipient (AVR-251), and routine progression decisions should stop requiring eve
 
 ### `confirm {yes}`
 
-- **Legal**: a decision is pending and the sender has not confirmed it.
+- **Legal**: a decision is pending, the sender is one of those asked (every seated human, or the
+  recipient alone for a `captain_one` offer) and has not confirmed it.
 - **Illegal**: `vote` "There is no pending decision for you."
-- **Mutation**: yes adds the sender; when all seated humans have confirmed, the decision takes
+- **Mutation**: yes adds the sender; when everyone asked has confirmed, the decision takes
   effect in the same command. No clears the proposal with no other effect.
 - **Client**: a decision panel with the proposal in words, the count of confirmations, "Agree" and
-  "Decline" for those who have not answered.
+  "Decline" for those who have not answered. For a `captain_one` offer the panel is headed
+  "Captain's offer", names the captain and the recipient, and shows "Accept" and "Decline" to the
+  recipient only.
 - **Known defect**: because of common check 2, no decision can be proposed or confirmed while a
   seat is away, including `end` (E-D2, AVR-240).
 

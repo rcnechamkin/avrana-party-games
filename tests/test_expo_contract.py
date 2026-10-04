@@ -210,8 +210,169 @@ def test_only_the_captain_may_offer_the_tasks_in_missions_ten_and_thirteen():
     e.s['pool'] = ['blue4']; e.s['selected'] = ['blue4']
     with pytest.raises(Invalid):
         act(e, other, 'propose', proposal={'kind': 'assign', 'owner': other, 'task': 'all'})
-    decide(e, e.s['captain'], 'assign', owner=e.s['captain'], task='all')
+    act(e, e.s['captain'], 'propose', proposal={'kind': 'assign', 'owner': e.s['captain'], 'task': 'all'})
     assert not e.s['before_first_only'] and set(e.s['assignments'].values()) == {e.s['captain']}
+
+
+# ---- AVR-251: in missions 10 and 13 the captain decides, only the recipient consents (Q8, P09) ---
+# L M10 and M13: the captain assumes all tasks or passes them to a willing crew member. Nobody
+# else has a say. Every other crew decision still needs every seated human.
+
+def captain_one(humans=('a', 'b', 'c'), mid=10, pool=('blue4',), seed=9):
+    """A `captain_one` table at allocation: the engine, the captain and the other humans."""
+    e = Engine(list(humans), random.Random(seed), mid)
+    e.s['pool'] = list(pool); e.s['selected'] = list(pool)
+    cap = e.s['captain']
+    return e, cap, [q for q in e.s['humans'] if q != cap]
+
+
+def offer(e, actor, owner):
+    act(e, actor, 'propose', proposal={'kind': 'assign', 'owner': owner, 'task': 'all'})
+
+
+@pytest.mark.parametrize('mid', [10, 13])
+@pytest.mark.parametrize('n', [2, 3, 4, 5])
+def test_the_captain_keeping_the_tasks_takes_effect_in_the_same_command(mid, n):
+    e, cap, others = captain_one([f'p{i}' for i in range(n)], mid, ('blue4', 'green6'))
+    revision = e.s['revision']
+    offer(e, cap, cap)
+    assert e.s['proposal'] is None and e.s['revision'] == revision + 1
+    assert e.s['assignments'] == {'blue4': cap, 'green6': cap} and e.s['pool'] == []
+    assert e.s['phase'] == 'assistance' and not e.s['before_first_only']
+    for q in others:                                                 # nobody is asked, nobody can undo it
+        for yes in (True, False):
+            before = e.snapshot()
+            with pytest.raises(Invalid) as refused:
+                act(e, q, 'confirm', yes=yes)
+            assert refused.value.code == 'vote' and e.snapshot() == before
+
+
+@pytest.mark.parametrize('mid', [10, 13])
+def test_an_offer_is_accepted_by_the_recipient_alone(mid):
+    e, cap, (target, third) = captain_one(mid=mid)
+    offer(e, cap, target)
+    assert e.s['proposal'] == {'payload': {'kind': 'assign', 'owner': target, 'task': 'all'},
+                               'votes': [cap], 'recipient': target}
+    assert e.s['assignments'] == {} and e.s['pool'] == ['blue4'] and e.s['phase'] == 'allocation'
+    assert all(e.view(v)['proposal']['recipient'] == target for v in (cap, target, third, None))
+    act(e, target, 'confirm', yes=True)                              # the third player never answers
+    assert e.s['proposal'] is None and e.s['assignments'] == {'blue4': target}
+    assert e.s['before_first_only'] and e.s['phase'] == 'assistance'
+
+
+@pytest.mark.parametrize('yes', [True, False])
+def test_a_third_player_can_neither_confirm_nor_decline_an_offer(yes):
+    e, cap, others = captain_one(('a', 'b', 'c', 'd'))
+    target = others[0]
+    offer(e, cap, target)
+    before = e.snapshot()
+    for bystander in [q for q in e.s['humans'] if q not in (cap, target)] + [cap]:
+        with pytest.raises(Invalid) as refused:                     # the captain cannot answer either
+            act(e, bystander, 'confirm', yes=yes)
+        assert refused.value.code == 'vote'
+    assert e.snapshot() == before and e.s['proposal']['recipient'] == target
+    act(e, target, 'confirm', yes=True)
+    assert e.s['assignments'] == {'blue4': target}
+
+
+def test_a_declined_offer_returns_to_the_captain_with_the_pool_intact():
+    e, cap, (target, third) = captain_one(pool=('blue4', 'green6'))
+    offer(e, cap, target)
+    act(e, target, 'confirm', yes=False)
+    assert e.s['proposal'] is None and e.s['pool'] == ['blue4', 'green6'] and e.s['assignments'] == {}
+    assert e.s['phase'] == 'allocation' and not e.s['before_first_only'] and e.s['progress'] == {}
+    offer(e, cap, third)                                             # the captain chooses again
+    assert e.s['proposal']['recipient'] == third
+    act(e, third, 'confirm', yes=False)
+    offer(e, cap, cap)                                               # or keeps them after all
+    assert set(e.s['assignments'].values()) == {cap} and not e.s['before_first_only']
+
+
+def test_tonoja_as_recipient_takes_effect_at_once_because_the_captain_decides_for_it():
+    e, cap, (other,) = captain_one(('a', 'b'), pool=('blue4', 'green6'))
+    offer(e, cap, 'tonoja')
+    assert e.s['proposal'] is None and set(e.s['assignments'].values()) == {'tonoja'}
+    assert e.s['before_first_only'] and e.s['phase'] == 'assistance'  # handed over: sonar rule applies
+    before = e.snapshot()
+    with pytest.raises(Invalid) as refused:
+        act(e, other, 'confirm', yes=False)
+    assert refused.value.code == 'vote' and e.snapshot() == before
+    e, cap, (other,) = captain_one(('a', 'b'))                       # the other human is asked alone
+    offer(e, cap, other)
+    assert e.s['proposal']['recipient'] == other
+    act(e, other, 'confirm', yes=True)
+    assert e.s['assignments'] == {'blue4': other}
+
+
+@pytest.mark.parametrize('humans', [('a', 'b'), ('a', 'b', 'c')])
+def test_a_non_captain_still_cannot_offer_or_keep_the_tasks(humans):
+    e, cap, others = captain_one(humans)
+    before = e.snapshot()
+    for owner in e.s['seats']:
+        with pytest.raises(Invalid) as refused:
+            offer(e, others[0], owner)
+        assert refused.value.code == 'captain'
+    assert e.snapshot() == before
+
+
+def test_the_captain_comparison_rule_still_binds_the_captains_own_choice():
+    e, cap, (target, third) = captain_one(pool=('blue4', 'moreTricksThanCaptain'))
+    before = e.snapshot()
+    with pytest.raises(Invalid) as refused:                         # the captain may not own it
+        offer(e, cap, cap)
+    assert refused.value.code == 'task' and e.snapshot() == before
+    with pytest.raises(Invalid) as refused:
+        offer(e, cap, 'nobody')
+    assert refused.value.code == 'owner' and e.snapshot() == before
+    offer(e, cap, target)
+    act(e, target, 'confirm', yes=True)
+    assert set(e.s['assignments'].values()) == {target}
+
+
+def test_a_handed_over_mission_still_limits_sonar_to_before_the_first_trick():
+    e, cap, (target, third) = captain_one()
+    offer(e, cap, target)
+    act(e, target, 'confirm', yes=True)
+    decide(e, cap, 'begin')
+    assert e.communication_options(third)                            # before the first trick: allowed
+    play_trick(e)
+    assert all(e.communication_options(q) == {} for q in e.s['humans'])
+    e, cap, _ = captain_one()                                        # kept: the usual sonar rule
+    offer(e, cap, cap)
+    decide(e, cap, 'begin')
+    play_trick(e)
+    assert any(e.communication_options(q) for q in e.s['humans'])
+
+
+def test_a_pending_offer_survives_a_snapshot_and_blocks_other_commands():
+    e, cap, (target, third) = captain_one()
+    offer(e, cap, target)
+    restored = Engine.restore(json.loads(json.dumps(e.snapshot())))
+    assert restored.s['proposal']['recipient'] == target
+    before = restored.snapshot()
+    with pytest.raises(Invalid) as refused:                         # no second decision meanwhile
+        act(restored, third, 'propose', proposal={'kind': 'end'})
+    assert refused.value.code == 'vote' and restored.snapshot() == before
+    act(restored, target, 'confirm', yes=True)
+    assert restored.s['assignments'] == {'blue4': target}
+
+
+def test_every_other_crew_decision_still_needs_every_seated_human():
+    e = Engine(['a', 'b', 'c'], random.Random(9), 6)                 # `one`: the crew decides together
+    e.s['pool'] = ['blue4']; e.s['selected'] = ['blue4']
+    act(e, 'a', 'propose', proposal={'kind': 'assign', 'owner': 'b', 'task': 'all'})
+    assert 'recipient' not in e.s['proposal']
+    act(e, 'b', 'confirm', yes=True)
+    assert e.s['proposal']['votes'] == ['a', 'b'] and e.s['assignments'] == {}
+    act(e, 'c', 'confirm', yes=False)                                # anyone may still decline
+    assert e.s['proposal'] is None and e.s['pool'] == ['blue4']
+    e, cap, (target, third) = captain_one()                          # begin in mission 10 is unchanged
+    offer(e, cap, cap)
+    act(e, cap, 'propose', proposal={'kind': 'begin'})
+    act(e, target, 'confirm', yes=True)
+    assert e.s['phase'] == 'assistance' and 'recipient' not in e.s['proposal']
+    act(e, third, 'confirm', yes=True)
+    assert e.s['phase'] == 'before_trick'
 
 
 @pytest.mark.parametrize('mid', [6, 17])

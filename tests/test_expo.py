@@ -337,7 +337,8 @@ def test_single_owner_delegation_free_allocation_and_volunteers():
     cap=e.s['captain'];target=next(q for q in e.s['humans'] if q!=cap)
     # Select a non-comparison fixture so every task is eligible for the delegate.
     e.s['pool']=['blue4'];e.s['selected']=list(e.s['pool'])
-    decide(e,cap,'assign',owner=target,task='all')
+    act(e,cap,'propose',proposal={'kind':'assign','owner':target,'task':'all'})
+    act(e,target,'confirm',yes=True)  # only the recipient consents (AVR-251)
     assert e.s['before_first_only'] and set(e.s['assignments'].values())=={target}
     e=Engine(['a','b','c'],random.Random(9),17)
     while e.s['pool']:

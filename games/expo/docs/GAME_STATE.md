@@ -43,7 +43,7 @@ Table lifetime:
 | `deck`, `used` | the private task deck order and the used pile |
 | `away` | seated players without a connection |
 | `dedup` | accepted request ids of the current attempt with their fingerprints |
-| `proposal` | the pending crew decision and who has confirmed it |
+| `proposal` | the pending crew decision and who has confirmed it; a captain's offer in missions 10 and 13 also names its `recipient`, the only seat that may answer |
 | `result` | none, or `{status, reason}` with status `success`, `failed` or `abandoned` |
 
 Per attempt (reset by every preparation):

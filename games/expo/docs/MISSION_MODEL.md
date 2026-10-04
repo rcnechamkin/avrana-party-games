@@ -37,18 +37,21 @@ card rules. Tasks are evaluated from the history of resolved tricks only.
 |---|---|---|
 | `normal` | R06: captain first, clockwise, one task per turn | R p9 |
 | `one` | the crew decides together on one seat that takes every task | L M6 |
-| `captain_one` | the captain takes every task, or offers them all to one willing crew member; if they are passed on, sonar may be used only before the first trick | L M10, M13 |
+| `captain_one` | the captain takes every task, or offers them all to one willing crew member; the captain decides alone and only the recipient consents; if they are passed on, sonar may be used only before the first trick | L M10, M13 |
 | `free` | the crew discusses and assigns freely; uneven is allowed; one seat may take all | R p21, L M17, M28 to M31, continuation |
 | `skip_captain` | clockwise selection, but the captain is skipped and gets no task; the captain still opens the first trick | L M25 |
 | `volunteer` | the captain asks each seat once, clockwise, ending with the captain; only yes or no; the first yes takes every task; if the remaining seats are exactly as many as are still needed, they must take them | R p20 |
 
 In every mode the captain-comparison restriction of R06 applies to whoever would own the task.
 
-Decided 2026-10-04 and not built yet (AVR-251): in `captain_one` the captain's choice to keep the
-tasks needs nobody's approval, and an offer needs only the recipient's consent.
+POLICY P09: `one` and `free` assignments take effect when every seated human confirms the
+proposal. In `free`, tasks are proposed and confirmed one at a time.
 
-POLICY P09: `one`, `captain_one` and `free` assignments take effect when every seated human
-confirms the proposal. In `free`, tasks are proposed and confirmed one at a time.
+`captain_one` follows its source instead (owner decision Q8, built 2026-10-04, AVR-251): the
+captain's choice to keep the tasks needs nobody's approval and takes effect at once; an offer to
+another human needs that human's consent and nobody else's; giving them to Tonoja takes effect at
+once, because the captain decides for Tonoja (R10). A declined offer returns the choice to the
+captain with every task still unassigned.
 
 ## Communication modes
 

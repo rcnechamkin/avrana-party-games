@@ -138,7 +138,7 @@ function render(st) {
     if(g.stage==="allocation"){
       if(["normal","skip_captain"].includes(g.mission.allocation)&&g.controller===g.me.seat)actions.append(button("Pass selection",()=>send("pass_task"),"pass-task",!g.me.may_pass_task,"The remaining tasks must be assigned this round."));
       if(["one","captain_one"].includes(g.mission.allocation)){
-        const owner=ownerSelect("all-owner",g.seats);actions.append(owner,button("Offer all tasks",()=>propose("assign",{owner:owner.value,task:"all"}),"all-tasks",g.mission.allocation==="captain_one"&&g.me.seat!==g.captain));
+        const owner=ownerSelect("all-owner",g.seats);actions.append(owner,button("Offer all tasks",()=>propose("assign",{owner:owner.value,task:"all"}),"all-tasks",g.mission.allocation==="captain_one"&&g.me.seat!==g.captain,"The captain decides who takes the tasks."));
       }
       if(g.mission.allocation==="volunteer"&&g.controller===g.me.seat)actions.append(button("Yes · take the tasks",()=>send("volunteer",{yes:true}),"volunteer-yes"),button("No",()=>send("volunteer",{yes:false}),"volunteer-no",!g.me.may_decline_volunteer,"The remaining crew must take the tasks."));
     }
@@ -148,7 +148,13 @@ function render(st) {
     }
   }
   $("decision").hidden=!g.proposal;$("decision").replaceChildren();
-  if(g.proposal){const p=g.proposal.payload;const descriptions={begin:"Begin the mission without passing cards?",distress:`Activate distress and pass one color card ${p.direction}? This adds one recorded attempt to the mission.`,assign:p.task==="all"?`Give all tasks to ${name(p.owner)}?`:`Give this task to ${name(p.owner)}?`,retry:p.keep?"Retry with the same tasks?":"Retry with fresh tasks?",next:`Begin mission ${p.mission}?`,end:"End this table?"};$("decision").append(el("h2","Crew decision"),el("p",descriptions[p.kind]),el("p",`${g.proposal.votes.length} / ${g.seats.filter(s=>s!=="tonoja").length} confirmed`,"muted"));if(g.me&&!g.proposal.votes.includes(g.me.seat)&&!g.away.length)$("decision").append(button("Agree",()=>send("confirm",{yes:true}),"agree"),button("Decline",()=>send("confirm",{yes:false}),"decline"));}
+  if(g.proposal){const p=g.proposal.payload;const descriptions={begin:"Begin the mission without passing cards?",distress:`Activate distress and pass one color card ${p.direction}? This adds one recorded attempt to the mission.`,assign:p.task==="all"?`Give all tasks to ${name(p.owner)}?`:`Give this task to ${name(p.owner)}?`,retry:p.keep?"Retry with the same tasks?":"Retry with fresh tasks?",next:`Begin mission ${p.mission}?`,end:"End this table?"};
+    // Missions 10 and 13: the captain's offer is answered by its recipient alone (AVR-251).
+    const asked=g.proposal.recipient;
+    if(asked)$("decision").append(el("h2","Captain’s offer"),el("p",`${name(g.captain)} offers all tasks to ${name(asked)}.`),el("p",`Only ${name(asked)} can accept or decline.`,"muted"));
+    else $("decision").append(el("h2","Crew decision"),el("p",descriptions[p.kind]),el("p",`${g.proposal.votes.length} / ${g.seats.filter(s=>s!=="tonoja").length} confirmed`,"muted"));
+    if(g.me&&!g.proposal.votes.includes(g.me.seat)&&!g.away.length&&(!asked||asked===g.me.seat))$("decision").append(button(asked?"Accept":"Agree",()=>send("confirm",{yes:true}),"agree"),button("Decline",()=>send("confirm",{yes:false}),"decline"));
+  }
   $("hand-panel").hidden=spectator;$("hand").replaceChildren();$("tonoja").replaceChildren();
   if(g.me){
     $("hand-reason").textContent=g.stage==="passing"?g.me.pass_locked?"Your pass is sealed":"Choose one color card":g.me.play_reason||"Follow the opening suit when possible";
