@@ -93,7 +93,7 @@ Owner questions (Q numbers) are set out in full in
 | C15 | "N tasks" in L | R p8: the number is a total difficulty | treated as difficulty | Applied |
 | C16 | Color names | V: red, black, rocket. R: pink, submarine | player-facing names follow R; task ids keep V's words | Applied |
 | C17 | Provenance of V and L | V had no recorded upstream; L is a third-party transcription | V is pinned and byte-verified. L unchanged | **V half resolved** 2026-10-03; L half open (AVR-244) |
-| C18 | Task faces not independently verified | No readable set of the 96 cards was supplied. R shows examples only | 91 enabled from V's data; `4with8`, `5with7`, `6with6` disabled | Open. New evidence: R p17 pictures "win a 5 with a 7", which matches `5with7` as stored; L M32 confirms `exactly3trickInARow` and `2tricksInARow`; R p18 confirms only the lower sum thresholds 8/12/16. **Decided** by the owner 2026-10-04: the reference-derived catalog stays enabled where no higher source contradicts it, with provenance recorded per task (Q4); `5with7` is to be enabled (Q5, AVR-249); `4with8` and `6with6` stay quarantined. Stronger evidence: AVR-244 |
+| C18 | Task faces not independently verified | No readable set of the 96 cards was supplied. R shows examples only | 92 enabled; `4with8` and `6with6` disabled | Open. New evidence: R p17 pictures "win a 5 with a 7", which matches `5with7` as stored; L M32 confirms `exactly3trickInARow` and `2tricksInARow`; R p18 confirms only the lower sum thresholds 8/12/16. **Decided** by the owner 2026-10-04: the reference-derived catalog stays enabled where no higher source contradicts it, with provenance recorded per task (Q4); `5with7` was enabled on 2026-10-04 on the rulebook's text (Q5, AVR-249); `4with8` and `6with6` stay quarantined. Stronger evidence: AVR-244 |
 | C19 | Platform lifecycle | The shared session abandons an all-away table, lets "again" skip results, and has no durable store | game-specific overrides; opt-in snapshot file | Applied, with defect E-D2 (AVR-240) |
 | C20 | Captain forced onto a captain-comparison task (new 2026-10-03) | R p18: the captain may never choose one. R p9: with as many tasks as seats, nobody may pass. R p13 to p14: unavoidable impossible combinations are repaired by replacing the most recently revealed task; avoidable ones are failed attempts. L and V are silent | an unavoidable draw is repaired before selection by exchanging the most recently revealed comparison task for one of equal difficulty, with no attempt counted; a comparison task the crew leaves for the captain ends the attempt as a counted failure; the captain never passes the task onward | **Resolved 2026-10-04** by owner decision (Q9) and implemented (AVR-239). Before that: selection stalled and only End table remained (defect E-D1) |
 
@@ -163,7 +163,7 @@ and shows no table of values.
 | `red7WithBlack` | 3 / 3 / 3 | `win_with` | enabled | reference |
 | `green9WithBlack` | 3 / 3 / 3 | `win_with` | enabled | reference |
 | `4with8` | 3 / 4 / 5 | `win_with` | blocked C18 | quarantined |
-| `5with7` | 1 / 2 / 2 | `win_with` | blocked C18 | corroborated (R p17) |
+| `5with7` | 1 / 2 / 2 | `win_with` | enabled | corroborated (R p17) |
 | `6with6` | 2 / 3 / 4 | `win_with` | blocked C18 | quarantined |
 | `trickWith2` | 3 / 4 / 5 | `win_with` | enabled | corroborated (R p13, p17) |
 | `trickWith3` | 3 / 4 / 5 | `win_with` | enabled | reference |
