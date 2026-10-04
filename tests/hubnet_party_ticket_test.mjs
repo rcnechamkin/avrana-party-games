@@ -15,7 +15,7 @@ const S1 = "session-" + "1".repeat(32), S2 = "session-" + "2".repeat(32);
 const NO_GAME = { status: 409, body: { error: "no_game", message: "No game is on." } };
 const ticketFor = (session, ticket = "aps0.T.S") => ({ status: 200, body: { game: "bluff", ticket, session } });
 
-function load({ integrated = true, answer = () => ticketFor(S1), tab = {} } = {}) {
+function load({ integrated = true, answer = () => ticketFor(S1), tab = {}, bridge = undefined } = {}) {
   const timers = [];
   let now = 0;
   const listeners = {};
@@ -48,7 +48,10 @@ function load({ integrated = true, answer = () => ticketFor(S1), tab = {} } = {}
     console, JSON, Math, Promise, Date: { now: () => now }, URLSearchParams,
     location: { pathname: "/games/bluff/", search: integrated ? "?avrana=1" : "", protocol: "https:", host: "party.example" },
     navigator: {}, matchMedia: () => ({ matches: false, addEventListener() {} }),
-    window: { isSecureContext: false, AvranaIntegration: { integrated, home: integrated ? "/party/" : "/" } },
+    // `bridge`: the page is on the game origin (avrana-integration.js `party`, ADR 0013)
+    window: { isSecureContext: false, AvranaIntegration: { integrated, home: integrated ? "/party/" : "/",
+                                                           ...(bridge ? { party: Promise.resolve(bridge) } : {}) } },
+    atob,
     localStorage: { getItem: (k) => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } },
     sessionStorage: { getItem: (k) => tab[k] ?? null, setItem: (k, v) => { tab[k] = String(v); }, removeItem: (k) => { delete tab[k]; } },
     document: {
@@ -409,6 +412,115 @@ test("setup after an earlier round: the next setup is not the ended screen", asy
   assert.deepEqual(setup, [true]);
   assert.ok(!t.ended());
   assert.equal(t.sockets.length, 0);
+});
+
+// ---- the game origin: tickets come from the Party's bridge frame (avrana-party ADR 0013, AVR-226)
+const b64 = (obj) => Buffer.from(JSON.stringify(obj)).toString("base64url");
+const bridgeTicket = (sid, n = 1) => ({ ok: true, ticket: `aps0.${b64({ v: "avrana.party-session/v0", sid, n })}.SIG`, role: "player", expiresIn: 120 });
+function fakeBridge(answer, view = { party: true, member: true }) {
+  const b = { asked: 0, view: () => view, ticket: async () => answer(++b.asked) };
+  return b;
+}
+
+test("game origin: the ticket comes from the bridge and the page never calls the Party itself", async () => {
+  const bridge = fakeBridge(() => bridgeTicket(S1));
+  const t = load({ bridge });
+  t.Hub.connect("/games/bluff/ws", { onState() {} });
+  await flush(); await flush();
+  assert.equal(bridge.asked, 1);
+  assert.deepEqual(t.calls, [], "no request to the Party API from the game origin");
+  assert.equal(t.sockets.length, 1);
+  assert.ok(!t.sockets[0].url.includes("aps0"), "ticket must never be in the URL");
+  t.sockets[0].accept();
+  assert.deepEqual(t.sockets[0].sent[0], { t: "hello", ticket: bridgeTicket(S1).ticket, avatar: "🦊" });
+  assert.equal(t.tab["avrana-party-session:bluff"], S1, "the session is read from the ticket itself");
+});
+
+test("game origin: every reconnect asks the bridge for a fresh ticket", async () => {
+  const bridge = fakeBridge((n) => bridgeTicket(S1, n));
+  const t = load({ bridge });
+  t.Hub.connect("/games/bluff/ws", { onState() {} });
+  await flush(); await flush();
+  t.sockets[0].accept(); t.sockets[0].welcome(); t.sockets[0].drop();
+  t.advance(5000); await flush(); await flush();
+  assert.equal(bridge.asked, 2);
+  t.sockets[1].accept();
+  assert.equal(t.sockets[1].sent[0].ticket, bridgeTicket(S1, 2).ticket);
+});
+
+for (const error of ["timeout", "offline", "unavailable"]) {
+  test(`game origin, bridge answers ${error}: no ticketless hello; the request is retried`, async () => {
+    const bridge = fakeBridge((n) => (n === 1 ? { ok: false, error } : bridgeTicket(S1)));
+    const t = load({ bridge });
+    t.Hub.connect("/games/bluff/ws", { onState() {} });
+    await flush(); await flush();
+    assert.equal(t.sockets.length, 0, "a seated player must not come back as a watcher");
+    t.advance(600); await flush(); await flush();
+    assert.equal(bridge.asked, 2);
+    assert.equal(t.sockets.length, 1);
+    t.sockets[0].accept();
+    assert.equal(t.sockets[0].sent[0].ticket, bridgeTicket(S1).ticket);
+  });
+}
+
+test("game origin: a tab that held a ticket and is told no_game shows the ended state", async () => {
+  const bridge = fakeBridge(() => ({ ok: false, error: "no_game" }));
+  const t = load({ bridge, tab: { "avrana-party-session:bluff": S1 } });
+  t.Hub.connect("/games/bluff/ws", { onState() {} });
+  await flush(); await flush();
+  assert.ok(t.ended());
+  assert.equal(t.sockets.length, 0);
+  assert.deepEqual(t.calls, []);
+});
+
+test("game origin: a new round's ticket after the ended state is joined without a reload", async () => {
+  let on = false;
+  const bridge = fakeBridge(() => (on ? bridgeTicket(S2) : { ok: false, error: "no_game" }));
+  const t = load({ bridge, tab: { "avrana-party-session:bluff": S1 } });
+  t.Hub.connect("/games/bluff/ws", { onState() {} });
+  await flush(); await flush();
+  assert.ok(t.ended());
+  on = true;
+  await t.run(5500);
+  assert.equal(t.sockets.length, 1);
+  t.sockets[0].accept();
+  assert.equal(t.sockets[0].sent[0].ticket, bridgeTicket(S2).ticket);
+  assert.ok(!t.ended());
+});
+
+test("game origin: the party is setting up this round: wait for the host, never join alone", async () => {
+  const bridge = fakeBridge(() => ({ ok: false, error: "setup" }));
+  const t = load({ bridge });
+  const setup = [];
+  t.Hub.connect("/games/bluff/ws", { onState() {}, onSetup: (on) => setup.push(on) });
+  await flush(); await flush();
+  assert.deepEqual(setup, [true]);
+  assert.equal(t.sockets.length, 0);
+});
+
+for (const [label, error, view] of [
+  ["not a member", "not_member", { party: true, member: false }],
+  ["an origin the Party does not register for this game", "bad_game_origin", { party: true, member: true }],
+  ["no Party Core behind the bridge", "unavailable", { party: false, member: false }],
+]) {
+  test(`game origin, ${label}: a page that never held a ticket keeps today's hello`, async () => {
+    const t = load({ bridge: fakeBridge(() => ({ ok: false, error }), view) });
+    t.Hub.connect("/games/bluff/ws", { onState() {} });
+    await flush(); await flush();
+    assert.equal(t.sockets.length, 1);
+    t.sockets[0].accept();
+    assert.equal(t.sockets[0].sent[0].ticket, undefined);
+    assert.deepEqual(t.calls, []);
+  });
+}
+
+test("game origin: a ticket whose payload cannot be read is still used; only the memory is skipped", async () => {
+  const t = load({ bridge: fakeBridge(() => ({ ok: true, ticket: "aps0.!!!.SIG", role: "player", expiresIn: 120 })) });
+  t.Hub.connect("/games/bluff/ws", { onState() {} });
+  await flush(); await flush();
+  t.sockets[0].accept();
+  assert.equal(t.sockets[0].sent[0].ticket, "aps0.!!!.SIG");
+  assert.equal(t.tab["avrana-party-session:bluff"], undefined);
 });
 
 let passed = 0;
