@@ -50,6 +50,20 @@ def test_any_change_to_the_content_changes_the_hash(change, monkeypatch):
     assert content.content_hash() != before
 
 
+def test_a_change_to_the_timed_variant_alone_changes_the_hash(monkeypatch):
+    original = content.mission
+
+    def changed(n, timed=False):
+        m = original(n, timed)
+        if n == 16 and timed:
+            m['seconds'] = 120
+        return m
+    before = content.content_hash()
+    monkeypatch.setattr(content, 'mission', changed)
+    assert content.mission(16) == original(16)                       # the untimed definition is the same
+    assert content.content_hash() != before
+
+
 def modifier_change(monkeypatch, number, **fields):
     """The definition of one mission differs in the given fields, as an edit to mission() would."""
     original = content.mission
@@ -294,7 +308,14 @@ def test_a_timed_snapshot_without_a_clock_record_ends_the_attempt(tmp_path, monk
     path = tmp_path / 'crew.json'
     clock = Clock(monkeypatch, wall=1000.0, mono=5000.0)
     timed_table(path, clock)
-    for bad in (None, {}, {'wall': 1000.0}, {'wall': '1000', 'mono': 5000.0}, {'wall': True, 'mono': 5000.0}, [1000.0, 5000.0]):
+    huge = 10 ** 400
+    ok = {'wall': 1000.0, 'mono': 5000.0, 'boot': 'boot-a'}
+    assert restart(path).engine.s['result'] is None                  # the record as written is trusted
+    for bad in (None, {}, {'wall': 1000.0}, [1000.0, 5000.0], dict(ok, wall='1000'), dict(ok, wall=True),
+                dict(ok, wall=float('nan')), dict(ok, mono=float('nan')), dict(ok, wall=float('inf')),
+                dict(ok, mono=float('-inf')), dict(ok, wall=huge), dict(ok, mono=-huge),
+                dict(ok, wall=-huge - 4000, mono=-huge), dict(ok, wall=1e300, mono=1e300),
+                {'wall': 1000.0, 'mono': 5000.0}, dict(ok, boot=None), dict(ok, boot=True), dict(ok, boot=['boot-a'])):
         saved = json.loads(path.read_text(encoding='utf-8'))
         if bad is None:
             del saved['clock']
@@ -427,3 +448,69 @@ def test_a_failed_write_after_a_wall_clock_step_leaves_the_shared_timer_on_the_t
     assert send(s, seat[turn], 'play_card', card=s.engine.playable(turn)[0])[0]['code'] == 'storage'
     assert s.engine.s['expiry'] == 5150.0 and s.engine.s['trick'] == []
     assert s.deadline == clock.wall + 150.0                          # not the moment from before the step
+
+
+@pytest.mark.parametrize('boot', [None, ''])
+def test_a_host_that_never_could_name_its_boot_ends_the_attempt_on_every_restart(boot, tmp_path, monkeypatch):
+    # The snapshot was written with no boot identity and the restart has none either: two
+    # unknowns are not the same boot, even with both clocks exactly where they would be.
+    path = tmp_path / 'crew.json'
+    clock = Clock(monkeypatch, wall=1000.0, mono=5000.0, boot=boot)
+    timed_table(path, clock)
+    assert json.loads(path.read_text(encoding='utf-8'))['clock']['boot'] == boot
+    clock.pass_time(5)
+    again = restart(path)
+    assert again.recovery_error is None
+    assert again.engine.s['result'] == {'status': 'failed', 'reason': game.UNTRUSTED_CLOCK}
+
+
+@pytest.mark.parametrize('expiry', [5150.1, 1e9, 1e18, float('inf'), float('nan'), 10 ** 400, '5150', True])
+def test_a_saved_deadline_later_than_a_full_timer_is_not_resumed(expiry, tmp_path, monkeypatch):
+    # No attempt has more than its 150 seconds from the moment its snapshot was written.
+    path = tmp_path / 'crew.json'
+    clock = Clock(monkeypatch, wall=1000.0, mono=5000.0)
+    timed_table(path, clock)
+    saved = json.loads(path.read_text(encoding='utf-8'))
+    saved['engine']['state']['expiry'] = expiry
+    path.write_text(json.dumps(saved), encoding='utf-8')
+    clock.pass_time(5)
+    again = restart(path)
+    if again.recovery_error:                                         # not a deadline at all: refused
+        assert again.engine is None
+    else:
+        assert again.engine.s['result'] == {'status': 'failed', 'reason': game.UNTRUSTED_CLOCK}
+        assert again.engine.s['expiry'] is None
+
+
+@pytest.mark.parametrize('expiry', [5100.0, 10 ** 400, float('nan'), float('inf'), '5150', True])
+@pytest.mark.parametrize('boot', ['boot-a', 'boot-b', None])
+def test_a_snapshot_with_a_deadline_beside_a_result_is_refused_not_raised(expiry, boot, tmp_path, monkeypatch):
+    path = tmp_path / 'crew.json'
+    clock = Clock(monkeypatch, wall=1000.0, mono=5000.0)
+    timed_table(path, clock)
+    saved = json.loads(path.read_text(encoding='utf-8'))
+    saved['engine']['state'].update(result={'status': 'failed', 'reason': 'x'}, phase='mission_result', expiry=expiry)
+    path.write_text(json.dumps(saved), encoding='utf-8')
+    clock.boot = boot
+    again = restart(path)
+    assert again.recovery_error and again.engine is None and again.deadline is None
+    again.game_tick()
+
+
+def test_an_end_that_could_not_be_written_is_judged_again_and_a_reboot_still_ends_it(tmp_path, monkeypatch):
+    path = tmp_path / 'crew.json'
+    clock = Clock(monkeypatch, wall=1000.0, mono=5000.0)
+    timed_table(path, clock)
+    on_disk = path.read_text(encoding='utf-8')
+    from games.expo.storage import SnapshotStore
+
+    def broken(self, snapshot):
+        raise OSError('disk unavailable')
+    monkeypatch.setattr(SnapshotStore, 'write', broken)
+    clock.wall, clock.mono, clock.boot = 1001.0, 12.0, 'boot-b'       # a reboot; the end cannot be saved
+    again = restart(path)
+    assert again.engine.s['result'] == {'status': 'failed', 'reason': game.UNTRUSTED_CLOCK}
+    assert path.read_text(encoding='utf-8') == on_disk               # the file still shows it running
+    clock.wall, clock.mono = 1030.0, 41.0                            # the service restarts on that boot
+    later = restart(path)
+    assert later.engine.s['result'] == {'status': 'failed', 'reason': game.UNTRUSTED_CLOCK}

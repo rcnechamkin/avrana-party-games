@@ -15,9 +15,17 @@ UNTRUSTED_CLOCK = ('The server restarted and could not tell how much time had pa
                    'so the timed attempt has ended.')
 
 
+CLOCK_RANGE = 1e12                # seconds; a clock reading outside it is not a clock reading
+
+
 def _mono():
-    # Seconds since boot, the same for every process on the host (Linux and Windows).
     return time.monotonic()
+
+
+def _reading(value):
+    # A number a clock could have given. The comparison is false for NaN and the infinities and
+    # exact for an integer too large to be a float.
+    return type(value) in (int, float) and -CLOCK_RANGE < value < CLOCK_RANGE
 
 
 def _boot():
@@ -117,17 +125,21 @@ class ExpoSession(GameSession):
         return None if expiry is None else _wall() + (expiry - _mono())
 
     @staticmethod
-    def _clock_continuous(clock):
+    def _clock_continuous(clock, expiry=None, seconds=None):
         # After a restart the saved deadline still means something only if the monotonic clock
         # is the one the snapshot was written under: the same boot by the kernel's own word, a
         # clock that has not gone backward, and agreement with the wall clock about how long the
         # server was down (no step, no suspend). An appliance without a real-time clock cannot
         # say how long it was off, and its clocks can line up again after a reboot; where the
         # boot cannot be identified, nothing is trusted.
-        if not (isinstance(clock, dict) and all(type(clock.get(k)) in (int, float) for k in ('wall', 'mono'))):
+        if not (isinstance(clock, dict) and _reading(clock.get('wall')) and _reading(clock.get('mono'))):
             return False
         boot = _boot()
         if not (isinstance(boot, str) and boot and clock.get('boot') == boot):
+            return False
+        # A running deadline is never later than a full timer from when the snapshot was written.
+        if expiry is not None and not (_reading(expiry) and _reading(seconds)
+                                       and expiry <= clock['mono'] + seconds):
             return False
         return (_mono() >= clock['mono']
                 and abs((_wall() - _mono()) - (clock['wall'] - clock['mono'])) <= CLOCK_TOLERANCE)
@@ -260,7 +272,7 @@ class ExpoSession(GameSession):
             raise ValueError('Invalid saved seat identity mapping')
         engine.s['away'] = list(engine.s['humans'])
         engine.s['revision'] += 1
-        if self._clock_continuous(saved.get('clock')):
+        if self._clock_continuous(saved.get('clock'), engine.s['expiry'], engine.s['mission']['seconds']):
             engine.observe_time(_mono())
             ended = False
         else:
@@ -270,8 +282,9 @@ class ExpoSession(GameSession):
         self.settings = saved['settings']
         self._sync()
         if ended:
-            # The end must outlive this process too: a later restart on the saved boot would
-            # otherwise find the deadline still running in the file.
+            # The end should outlive this process too: a later restart on the saved boot would
+            # otherwise find the deadline still running in the file. If the write fails, that
+            # restart judges the clocks again; a reboot still ends the attempt.
             try:
                 self._save()
             except OSError:
