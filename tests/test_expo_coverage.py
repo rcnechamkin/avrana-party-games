@@ -20,6 +20,7 @@ import server
 from core.net import GameBinding
 from games.expo.content import TASKS
 from games.expo.engine import Engine, Invalid
+from games.expo import game
 from games.expo.game import ExpoSession
 from games.expo.rules import legal_cards, suit
 from games.expo.tasks import evaluate
@@ -569,7 +570,17 @@ def by_pid(s, tokens):
 
 
 def send(s, token, t, **kwargs):
-    return s.game_action(token, command(s.engine, s.players[token].pid, t, **kwargs))
+    fx = s.game_action(token, command(s.engine, s.players[token].pid, t, **kwargs))
+    fire_hold(s)
+    return fx
+
+
+def fire_hold(s):
+    """The adapter's timer for a resolving trick, fired now instead of after RESOLVE_HOLD: the
+    same path (game_tick) with the hold's moment moved to the present (AVR-246)."""
+    if s.engine and s.engine.s['resolving'] and s._hold:
+        s._hold = (s._hold[0], game._mono())
+        s.game_tick()
 
 
 def agree(s, tokens, kind, **kwargs):
@@ -833,7 +844,10 @@ def drop_and_return(room, phones, stage):
     engine = room.session.engine
     assert victim.game['stage'] == stage
     seat, hand, mine = victim.pid, list(victim.game['me']['hand']), deepcopy(victim.game['me'])
-    table_before = {k: v for k, v in deepcopy(engine.s).items() if k not in ('away', 'revision')}
+    # A return changes who is away, the revision, and adds its own event (AVR-246): nothing else.
+    presence = ('away', 'revision', 'events', 'event_seq')
+    table_before = {k: v for k, v in deepcopy(engine.s).items() if k not in presence}
+    events_before = deepcopy(engine.s['events'])
     victim.close()
     witness.read(lambda p: p.game['away'] == [seat])
     assert engine.s['away'] == [seat]
@@ -846,7 +860,11 @@ def drop_and_return(room, phones, stage):
     assert victim.pid == seat and victim.game['me']['hand'] == hand and victim.game['stage'] == stage
     assert victim.game['me'] == mine                                 # and the same options
     witness.read(lambda p: p.game['away'] == [])
-    assert {k: v for k, v in engine.s.items() if k not in ('away', 'revision')} == table_before
+    assert {k: v for k, v in engine.s.items() if k not in presence} == table_before
+    added = engine.s['events'][len(events_before):]
+    assert engine.s['events'][:len(events_before)] == events_before
+    assert [(x['type'], x['seat']) for x in added] == [('PLAYER_RECONNECTED', seat)]
+    assert witness.game['events'][-1] == added[0]                    # and every viewer is told
     together(room, phones)
 
 

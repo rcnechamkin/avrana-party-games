@@ -1,8 +1,20 @@
-"""Task monitor library. Exact and reversible conditions wait for hand exhaustion."""
+"""Task monitor library. Exact and reversible conditions wait for hand exhaustion.
+
+`evaluate` gives a task's status. `judge` gives the same status and, for a failure, what kind of
+failure the evaluator found (AVR-246): `violated` (something the task forbids happened),
+`unreachable` (what the task needs can no longer happen) or `unmet_at_end` (the deal ended
+without it). The kind is a label on a decision already made; it never changes the status."""
 from .rules import COLORS, DECK, matches, rank, suit
 
 
+VIOLATED, UNREACHABLE, UNMET = 'violated', 'unreachable', 'unmet_at_end'
+
+
 def evaluate(definition, owner, state, prediction=None):
+    return judge(definition, owner, state, prediction)[0]
+
+
+def judge(definition, owner, state, prediction=None):
     hist = state['history']
     won = [h for h in hist if h['winner'] == owner]
     cards = [p['card'] for h in won for p in h['plays']]
@@ -12,17 +24,18 @@ def evaluate(definition, owner, state, prediction=None):
     remaining = state['planned'] - len(hist)
     p = definition['params']
     family = definition['family']
-    ok = fail = False
+    # `broke`: a prohibition was breached. `lost`: a requirement can no longer be met.
+    ok = broke = lost = False
     monotonic = False
     if family == 'capture':
         needed = p['cards']
         ok = all(c in cards for c in needed)
-        fail = any(c in all_cards and c not in cards for c in needed)
+        lost = any(c in all_cards and c not in cards for c in needed)
         monotonic = True
     elif family == 'capture_final':
         c = p['card']
         ok = any(h['index'] == state['planned'] and any(q['card'] == c for q in h['plays']) for h in won)
-        fail = c in all_cards and not ok
+        lost = c in all_cards and not ok
         monotonic = True
     elif family in ('count', 'forbidden'):
         count = sum(matches(c, p['selector']) for c in cards)
@@ -30,21 +43,21 @@ def evaluate(definition, owner, state, prediction=None):
         if p.get('mode') == 'at_least':
             ok, monotonic = count >= k, True
         else:
-            ok, fail = count == k, count > k
+            ok, broke = count == k, count > k
         if 'per_suit' in p:
             counts = [sum(suit(c) == s for c in cards) for s in p['per_suit']]
-            ok, fail = all(x == k for x in counts), any(x > k for x in counts)
+            ok, broke = all(x == k for x in counts), any(x > k for x in counts)
         if p.get('required'):
             ok = ok and p['required'] in cards
-            fail = fail or (p['required'] in all_cards and p['required'] not in cards)
+            lost = p['required'] in all_cards and p['required'] not in cards
         available = sum(matches(c, p['selector']) for c in DECK if c not in all_cards)
         if family == 'count' and 'per_suit' not in p:
-            fail = fail or count + available < k
+            lost = lost or count + available < k
     elif family == 'tricks':
         k = prediction if p.get('predict') else p['count']
         if k is None:
-            return 'pending'
-        ok, fail = n == k, n > k or n + remaining < k
+            return 'pending', None
+        ok, broke, lost = n == k, n > k, n + remaining < k
     elif family in ('streak', 'exact_streak', 'never_streak'):
         run = best = 0
         for h in hist:
@@ -54,20 +67,21 @@ def evaluate(definition, owner, state, prediction=None):
         if family == 'streak':
             ok, monotonic = best >= k, True
         elif family == 'never_streak':
-            ok, fail = best < k, best >= k
+            ok, broke = best < k, best >= k
         else:
-            ok, fail = n == k and best == k, n > k or n + remaining < k
+            ok, broke, lost = n == k and best == k, n > k, n + remaining < k
             # Once wins have been split, an exact-total consecutive run is impossible.
-            fail = fail or (n > best and any(h['winner'] != owner for h in hist[
+            lost = lost or (n > best and any(h['winner'] != owner for h in hist[
                 next((i for i, h in enumerate(hist) if h['winner'] == owner), len(hist)):]))
     elif family == 'indices':
         required = [state['planned'] if i == 'last' else i for i in p.get('required', [])]
         forbidden = p.get('forbidden', [])
         mine = {h['index'] for h in won}
         ok = all(i in mine for i in required) and not mine.intersection(forbidden)
-        fail = any(i <= len(hist) and i not in mine for i in required) or bool(mine.intersection(forbidden))
+        lost = any(i <= len(hist) and i not in mine for i in required)
+        broke = bool(mine.intersection(forbidden))
         if p.get('only'):
-            fail = fail or any(i not in required for i in mine)
+            broke = broke or any(i not in required for i in mine)
         elif forbidden and not required:
             # "Win none of the first N tricks": once trick N is resolved without a win the
             # task can no longer fail, so it is complete (rulebook p10). AVR-241.
@@ -106,7 +120,7 @@ def evaluate(definition, owner, state, prediction=None):
                             (not p.get('target') or any(matches(c, p['target']) and c != instrument for c in cs)))
         monotonic = True
         if family == 'win_with' and p.get('target', {}).get('card'):
-            fail = p['target']['card'] in all_cards and not ok
+            lost = p['target']['card'] in all_cards and not ok
     elif family in ('equal', 'greater'):
         a, b = [sum(suit(c) == s for c in cards) for s in p['suits']]
         ok = a == b > 0 if family == 'equal' else a > b
@@ -115,15 +129,15 @@ def evaluate(definition, owner, state, prediction=None):
     elif family == 'all_color':
         ok, monotonic = any(sum(suit(c) == s for c in cards) == 9 for s in COLORS), True
     elif family == 'no_lead':
-        fail = any(h['leader'] == owner and suit(h['plays'][0]['card']) in p['suits'] for h in hist)
+        broke = any(h['leader'] == owner and suit(h['plays'][0]['card']) in p['suits'] for h in hist)
         if state['trick']:
-            fail = fail or (state['trick'][0]['seat'] == owner and
-                            suit(state['trick'][0]['card']) in p['suits'])
-        ok = not fail
+            broke = broke or (state['trick'][0]['seat'] == owner and
+                              suit(state['trick'][0]['card']) in p['suits'])
+        ok = not broke
     else:
         raise ValueError('Unknown task evaluator: ' + family)
-    if fail or (end and not ok):
-        return 'failed'
+    if broke or lost or (end and not ok):
+        return 'failed', VIOLATED if broke else UNREACHABLE if lost else UNMET
     if ok and (end or monotonic):
-        return 'satisfied'
-    return 'pending'
+        return 'satisfied', None
+    return 'pending', None

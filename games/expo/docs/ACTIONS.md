@@ -27,6 +27,7 @@ or missing fields, wrong types (a boolean is not an integer) and unknown verbs a
 | 4 | request id not already used with another message | `request` | This request ID was already used. |
 | 5 | `attempt` and `revision` are current | `stale` | That moment has passed. Use the latest table state. |
 | 6 | table not closed | `phase` | This table is closed. |
+| 6a | no trick is being resolved (AVR-246) | `resolving` | The trick is being resolved. |
 | 7 | no crew decision pending (except for `confirm`) | `vote` | Confirm or decline the crew decision first. |
 
 **Repeats.** A message identical to one already accepted in this attempt is ignored without error
@@ -453,6 +454,14 @@ is reached (`GameBinding._party_host_confirm`, then `_party_host_action`; AVR-25
   to history, Tonoja's uncovered cards turn face up, the winner becomes leader and next to play.
   Then every pending task and the mission objective are evaluated, failure before success, and the
   phase becomes `mission_result` if the mission is decided.
+- **After a completed trick** (AVR-246): if the mission is not decided the table is resolving and
+  check 6a refuses every seat's command until the server settles it, about 0.8 s later (the
+  owner's value, 2026-10-05, provisional pending real-phone playtesting)
+  ([GAME_STATE](GAME_STATE.md#the-resolving-phase)). The winner then leads, unless a timed
+  mission's deadline passed meanwhile: the hold gives no time (owner decision, 2026-10-05), the
+  deadline is judged at the settle, and the attempt ends by time with no turn opened. A failed attempt
+  carries its `cause` ([GAME_STATE](GAME_STATE.md#failure-causality)); it is reported only after
+  the card that caused it was accepted.
 - **Knowable before**: legality yes (`me.legal_cards`, `me.play_reason`). Outcome no: a legal card
   that loses a task or the mission is accepted and the failure follows (R03, R08).
 - **Client**: each hand card is a button, enabled only when it is the viewer's turn and the card is
@@ -469,6 +478,9 @@ Not commands; they are part of every view ([GAME_STATE](GAME_STATE.md#what-each-
 - The most recent resolved trick is always available; earlier tricks are never sent (R04).
 - Task status is derived and shown; there is no way to mark a task done or failed.
 - Cards won toward a task are not displayed (deferred, E-X2).
+- The events of the most recent resolved trick and of everything after it are in every view
+  (`events`); a client may present them and cannot answer them
+  ([GAME_STATE](GAME_STATE.md#semantic-events)).
 
 ## Things no client can do
 
@@ -481,8 +493,14 @@ for a redeal. Unknown verbs are rejected by common check 3.
 - Preparation of an attempt: terrain draw, task draw, repair, deal, deal-exception redeal, captain.
   In a Party round the first preparation waits for the setup decision; nothing else triggers it.
 - Trick resolution, task and objective evaluation, Tonoja reveals.
+- The settle that ends a resolving trick (`Engine.settle`, AVR-246): called by the adapter when
+  its hold is over, by its timer or at the next command, and at once on a restore. No verb
+  reaches it: `settle` sent by a client is an unknown action.
 - Real-time expiry: checked on every command and on the adapter's timer tick, so it fails the
-  mission with no traffic at all. It is measured on the monotonic clock; a restored timed attempt
+  mission with no traffic at all. The deadline is fixed at Begin and a resolving hold does not
+  move it (owner decision, 2026-10-05). While a trick is resolving the check waits for the
+  settle: the committed trick is settled, then the deadline is judged, before any turn opens.
+  It is measured on the monotonic clock; a restored timed attempt
   whose elapsed time cannot be proven ends at once ([GAME_STATE](GAME_STATE.md#restoration-after-a-server-restart)).
 - Presence changes.
 - Restore from a snapshot.

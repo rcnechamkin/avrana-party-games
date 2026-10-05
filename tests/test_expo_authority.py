@@ -1205,7 +1205,8 @@ def test_the_setup_view_is_public_and_holds_nothing_of_a_deal():
     e = setup_engine(TWO)
     public = e.view(None)
     assert set(public) == {"kind", "attempt", "revision", "stage", "mission", "seats", "away", "proposal",
-                           "result", "expiry", "log", "setup", "me"}
+                           "result", "expiry", "log", "setup", "me",
+                           "resolving", "cause", "events", "event_seq"}       # AVR-246: in every view
     assert public["stage"] == "setup" and public["me"] is None and public["mission"] is None
     assert public["setup"] == {**SETUP, "tonoja_position": SEAT, "tonoja_seat": None, "tonoja": True,
                                "waiting": SEAT_FIRST, "seat_waiting": None, "seat_proposal": None,
@@ -1822,3 +1823,132 @@ def test_when_the_transition_is_over_a_party_without_the_claim_cannot_set_the_ta
         assert t.b.session.phase == "setup" and t.engine.s["mission"] is None
         await t.close()
     run(scenario())
+
+
+# ---- setup and the semantic events (AVR-246) ----------------------------------------------------
+# The events, the resolving hold and failure causality were written for a table that is always
+# dealt. Before the first deal there is no mission, no attempt and no trick: nothing is emitted,
+# nothing resolves, and every view still carries the keys the adapter and the page read.
+
+EVENT_KEYS = {"events": [], "event_seq": 0, "resolving": None, "cause": None, "failures": {}}
+NOTHING_YET = {"resolving": None, "cause": None, "events": [], "event_seq": 0}
+
+
+def test_the_setup_view_carries_the_event_keys_every_view_has():
+    dealt = Engine(TWO, random.Random(7)).view("p1")
+    for e in (setup_engine(), setup_engine(TWO), two_engine()):
+        for viewer in (*e.s["humans"], None):
+            view = e.view(viewer)
+            assert {k: view[k] for k in NOTHING_YET} == NOTHING_YET
+            assert set(NOTHING_YET) <= set(dealt)            # the same names a dealt table sends
+            assert e.events(viewer) == []
+    s, tokens = party_room(("Alice", "Bob"))
+    for token in (*tokens, None):                            # the adapter reads view['resolving']
+        view = s.game_state(token)
+        assert view["stage"] == "setup" and {k: view[k] for k in NOTHING_YET} == NOTHING_YET
+        assert view["begin_at"] is None and view["expiry"] is None
+
+
+def test_a_seat_that_reconnects_during_setup_is_recorded_and_emits_nothing():
+    for e in (setup_engine(), setup_engine(TWO)):
+        assert e.presence("p1", True) is True and e.s["away"] == ["p1"] and e.s["revision"] == 1
+        assert e.presence("p1", True) is False               # already away: nothing changes
+        assert e.presence("p1", False) is True and e.s["away"] == [] and e.s["revision"] == 2
+        assert e.presence("p9", False) is False              # not a seat
+        assert {k: e.s[k] for k in EVENT_KEYS} == EVENT_KEYS and e.s["phase"] == "setup"
+        e.check()
+    # a seat proposal, its answer and a seat dropping in between: still no event before the deal
+    e = setup_engine(TWO)
+    propose_seat(e, "p1", 1)
+    e.presence("p2", True)
+    e.presence("p2", False)
+    answer(e, "p2")
+    assert {k: e.s[k] for k in EVENT_KEYS} == EVENT_KEYS and e.s["setup"]["tonoja_seat"] == 1
+    # through the adapter: the last connection closes and comes back
+    s, tokens = party_room(("Alice", "Bob"))
+    pid = s.players[tokens[1]].pid
+    assert s.leave(tokens[1]) == [] and s.engine.s["away"] == [pid]
+    assert s.game_state(tokens[0])["setup"]["waiting"] == PAUSED
+    s.join(tokens[1])
+    assert s.engine.s["away"] == [] and s.phase == "setup"
+    assert {k: s.engine.s[k] for k in EVENT_KEYS} == EVENT_KEYS
+    view = s.game_state(tokens[1])
+    assert view["events"] == [] and view["me"] == {"seat": pid}
+
+
+def test_the_first_events_of_a_table_set_up_are_those_of_a_table_dealt_directly():
+    """The return of a seat during setup left no event behind, so the log of the first attempt
+    starts at 1 and is the log a direct start writes; a return after the deal is an event."""
+    e = setup_engine(TWO, seed=9)
+    e.presence("p2", True)
+    e.presence("p2", False)
+    agree(e)
+    set_up(e)
+    direct = Engine(TWO, random.Random(9))
+    assert e.s["events"] == direct.s["events"] and e.s["event_seq"] == direct.s["event_seq"]
+    assert all(event["attempt"] == 1 and event["mission"] == 1 for event in e.s["events"])
+    assert e.events("p1") == direct.events("p1")
+    seq = e.s["event_seq"]
+    e.presence("p2", True)
+    e.presence("p2", False)
+    assert e.s["event_seq"] == seq + 1 and e.s["events"][-1]["type"] == "PLAYER_RECONNECTED"
+
+
+def test_nothing_settles_and_no_hold_is_kept_during_setup():
+    for e in (setup_engine(), two_engine()):
+        before = e.snapshot()
+        assert e.settle() is False and e.settle(10 ** 9) is False
+        assert e.observe_time(10 ** 9) is False and e.snapshot() == before
+    s, tokens = party_room(("Alice", "Bob"))
+    before = s.engine.snapshot()
+    assert not s._settle_due() and s._hold is None and s.deadline is None
+    for _ in range(3):
+        assert s.game_tick() == []
+        s.tick(s.gen)
+    assert s.engine.snapshot() == before and s._hold is None and s.deadline is None
+    # commands in setup pass the adapter's settle check untouched
+    room_agree(s, tokens)
+    assert s._hold is None and s.deadline is None and s.phase == "setup"
+    host_setup(s)
+    assert s.phase == "allocation" and s._hold is None and s.engine.s["resolving"] is None
+
+
+def test_a_setup_snapshot_round_trips_with_the_event_keys():
+    for e in (setup_engine(), setup_engine(TWO), two_engine()):
+        saved = json.loads(json.dumps(e.snapshot()))
+        assert {k: saved["state"][k] for k in EVENT_KEYS} == EVENT_KEYS and saved["state"]["version"] == 1
+        back = Engine.restore(saved)
+        assert back.s == e.s and back.view(None) == e.view(None) and back.snapshot() == e.snapshot()
+        # the keys are additive: a setup saved without them is read as a table where nothing happened
+        for key in EVENT_KEYS:
+            del saved["state"][key]
+        assert Engine.restore(saved).s == e.s
+    # through the adapter, with a seat proposal pending
+    s, tokens = party_room(("Alice", "Bob"))
+    assert room_says(s, tokens[0], "propose", "seat", proposal={"kind": "tonoja_seat", "position": 0}) == []
+    back = ExpoSession(random.Random(99))
+    back.restore(json.loads(json.dumps(s.snapshot())))
+    assert back.phase == "setup" and back._hold is None and back.deadline is None
+    assert {k: back.engine.s[k] for k in EVENT_KEYS} == EVENT_KEYS
+    for t in tokens:
+        back.join(t)                                         # every seat returns: still no event
+    assert {k: back.engine.s[k] for k in EVENT_KEYS} == EVENT_KEYS
+    assert back.game_state(tokens[1])["setup"]["seat_proposal"]["position"] == 0
+
+
+@pytest.mark.parametrize("forge", [
+    lambda s: s.update(events=[{"seq": 1, "type": "TURN_STARTED", "attempt": 0, "mission": 1, "trick": 0}], event_seq=1),
+    lambda s: s.update(event_seq=4),
+    lambda s: s.update(event_seq=False),
+    lambda s: s.update(resolving={"trick": 0}),
+    lambda s: s.update(cause={"kind": "task"}),
+    lambda s: s.update(failures={"x": "violated"}),
+    lambda s: s.update(events=None),
+], ids=range(7))
+def test_a_setup_snapshot_in_which_something_happened_is_refused(forge):
+    for e in (setup_engine(), two_engine()):
+        saved = e.snapshot()
+        forge(saved["state"])
+        with pytest.raises(Invalid) as refused:
+            Engine.restore(saved)
+        assert refused.value.code == "snapshot"

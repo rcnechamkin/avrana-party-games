@@ -169,6 +169,10 @@ Sources: R p13 to p14, p17.
   revealed of the conflicting tasks and replace it with another of the same difficulty. R p14's
   example: "win the first trick" and "win the first two tricks" with too few tasks for one seat to
   hold both. If one seat could take both, nothing is replaced.
+- POLICY P16: the replacement is drawn from the task deck; when the deck has none of that
+  difficulty, the used tasks are reshuffled in first (R p8, as for the draw) and the replacement
+  is drawn from there. Owner decision 2026-10-05 (AVR-270): the source game's task-deck behaviour,
+  not an Avrana rule. A mission's own named tasks are not replaced.
 - MUST: some submarine tasks are impossible for certain deals whoever takes them; they are named on
   the cards or in the rulebook. Redeal without recording an attempt (R p14, p17). The list is in
   [MISSION_MODEL](MISSION_MODEL.md#deal-exceptions).
