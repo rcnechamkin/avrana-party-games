@@ -80,6 +80,22 @@ on distress and shared assignments. Who the host is comes from the Party at ever
 Begin, the crew gets a few seconds to ask for distress; nobody confirms anything to start. Under
 a Party from before the claim the crew votes instead, transitionally: logged, and shown.
 
+**Party-round setup (AVR-245, owner decision 2026-10-05).** A Party round has no EXPO lobby,
+so it opens in a `setup` phase with the crew seated and nothing dealt, and the mission, the
+timed setting and Tonoja's seat are chosen inside EXPO before the first deal. The Party launch
+contract is unchanged. The mission and the timed setting are one decision, checked by the
+lobby's own rules, committed by whoever moves that table on: the Party Host, or the whole crew
+under a Party that does not name its host. Tonoja's seat is the two players' (the rulebook's
+rule, and the owner's decision of 2026-10-05): one proposes a seat, the other agrees, and until
+they have nothing is dealt for two; the Party Host cannot set it. Mission 1, untimed, Tonoja
+after both players is offered first, and confirming it (with the players' agreement on that
+seat) deals exactly the table a Party round opened on before. No timer starts an unconfirmed
+table and no seat is agreed by default. The principle: the Party Host controls the flow of the
+party and the game; a game's own decisions stay with whoever its rules give them to.
+The setup was played by script in desktop Chrome (the Party playtest) before the seat became
+the players' decision; the seat agreement has not been run in a browser by its implementer, and
+nothing here has been on a real phone.
+
 **Events, causality and the resolving phase (AVR-246).** The engine keeps a bounded, numbered
 log of what happened as meaning (a card, a resolved trick, a communication, an objective's
 progress and outcome, a modifier, the mission's result, a returning player), says what a failed
@@ -93,7 +109,7 @@ viewer is sent only the latest resolved trick's events and what followed. **The 
 use any of it yet**: [GAME_STATE](docs/GAME_STATE.md#semantic-events-failure-causality-and-the-resolving-phase).
 
 **Still open.** Recovery from an away seat (AVR-240; the Party Host can always end EXPO):
-see the AVR-275 report in RECONCILIATION. Party-round setup: AVR-245.
+see the AVR-275 report in RECONCILIATION.
 Wasteland presentation, including anything drawn from the events: AVR-267, on top of this board.
 
 **Blocked on source material.** Missions 3, 4, 12, 14, 15, 19, 20, 26 and tasks
@@ -157,7 +173,7 @@ node tests/playtest_expo_party.mjs        # starts its own server and plays the 
 | `tests/test_expo_repair.py` | a forced task combination is repaired from the recycled used pile when the deck has no replacement; unchanged draws where it has; mission 32's named tasks left alone |
 | `tests/test_expo_docs.py` | the mission table, task catalog, conflict codes and cited tests in `docs/` equal the code |
 | `tests/test_expo_events.py` | semantic events (order, sequence, determinism, bound), what each viewer is sent and never sent, failure causality and objective states, no signal before a legal losing card, the resolving phase in the engine and the adapter, snapshots with and without the log |
-| `tests/test_expo_authority.py` | Party Host and captain as separate authorities: host-only Begin, Retry and Next and nothing else, prerequisites the host cannot skip, the crew's moment to ask for distress, a watching host, succession, a former host's kept tickets, a Party that does not answer, reconnect, an away seat, a Party without the host claim |
+| `tests/test_expo_authority.py` | Party Host and captain as separate authorities: host-only Begin, Retry and Next and nothing else, prerequisites the host cannot skip, the crew's moment to ask for distress, a watching host, succession, a former host's kept tickets, a Party that does not answer, reconnect, an away seat, a Party without the host claim; and a Party round's setup before the first deal (AVR-245): the same table as before for what is offered, the lobby's own checks, nothing dealt and nothing private, snapshots, an away seat, reloads, who may confirm; and Tonoja's seat as the two players' decision: the host cannot set it, the Deal waits for it, no default, change before the deal, decline, replays, an older Party, three to five humans unchanged |
 | `tests/playtest_expo.mjs` | browser playtest of a standalone table, run by hand: the rules flow plus the one-viewport contract on five phone sizes and the result takeover |
 | `tests/playtest_expo_party.mjs` | browser playtest of a Party round against a simulated Party, run by hand: host and non-host controls and refusals, authority labels, captain who is not host, the distress moment, succession with kept tickets, reloads during a decision, a partly played trick and a result, focus and touch targets, Party-owned end, no route to the LAN Games hub; `EXPO_PARTY=old` runs the transitional fallback |
 | `tests/_expo_phone.mjs` | the measured assertions both playtests use: one viewport, the fullest board, touch targets, focus held by a sheet or the result |

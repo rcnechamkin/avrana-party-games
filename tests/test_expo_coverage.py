@@ -21,7 +21,7 @@ from core.net import GameBinding
 from core.session import HostRefused
 from games.expo import game as expo_game
 from games.expo.content import TASKS
-from games.expo.engine import LIFECYCLE, RESOLVING, Engine, Invalid
+from games.expo.engine import LIFECYCLE, RESOLVING, STEPS, Engine, Invalid
 from games.expo import game
 from games.expo.game import DISTRESS_GRACE, GRACE, HOST_ONLY, ExpoSession
 from games.expo.rules import legal_cards, suit
@@ -1023,7 +1023,7 @@ def rejection(e, actor, t, **kwargs):
 def step_decisions(e):
     """Begin, both retries and Next (to a mission that exists and is open to this crew)."""
     return [{'kind': 'begin'}, {'kind': 'retry', 'keep': True}, {'kind': 'retry', 'keep': False},
-            {'kind': 'next', 'mission': e.s['mission']['id']}]
+            {'kind': 'next', 'mission': e.s['mission']['id'] if e.s['mission'] else 1}]    # (none yet in setup)
 
 
 def lifecycle_rejection(e, decision):
@@ -1047,7 +1047,7 @@ def step_reasons(e):
     the lifecycle authority's commit, and a proposal from each seated crew member. Returns the
     reasons seen."""
     host, crew = e.lifecycle_reasons(True), e.lifecycle_reasons(False)
-    assert set(host) == set(crew) == set(LIFECYCLE)
+    assert set(host) == set(crew) == set(STEPS)          # the setup's own reason is `setup.waiting`
     for decision in step_decisions(e):
         kind = decision['kind']
         assert host[kind] == lifecycle_rejection(e, decision), decision
@@ -1448,6 +1448,9 @@ def test_the_reasons_for_a_prediction_are_the_servers_rejections():
 
 # ---- Begin, Retry and Next at the table itself: the adapter's refusals too (AVR-263) -----------
 
+SETUP_STEPS_SEEN = set()
+
+
 def dealt_table(kind, n, seed, mid):
     """A dealt table without sockets. `host`: a Party round whose Party names its host (the host
     may hold a seat or watch: the table is not told which). `transitional`: a Party round whose
@@ -1467,6 +1470,21 @@ def dealt_table(kind, n, seed, mid):
             s.join(t, t)
         s.party_host = kind == 'host'
     s.tick(s.gen)
+    if kind != 'standalone':
+        # A Party round opens in setup (AVR-245) and the walk starts there: with nothing dealt
+        # every viewer is already given a reason for Begin, Retry and Next, and it is what the
+        # table answers. Two players agree Tonoja's seat (the reasons hold while they do), and
+        # whoever moves this table on deals `mid`.
+        assert s.phase == 'setup' and s.engine.s['mission'] is None
+        SETUP_STEPS_SEEN.update(table_step_reasons(s, tokens))
+        scope = lambda: {'attempt': 0, 'revision': s.engine.s['revision']}
+        if n == 2:
+            assert s.game_action(tokens[0], {'t': 'propose', 'request': 'seat', **scope(),
+                                             'proposal': {'kind': 'tonoja_seat', 'position': 2}}) == []
+            SETUP_STEPS_SEEN.update(table_step_reasons(s, tokens))
+            assert s.game_action(tokens[1], {'t': 'confirm', 'request': 'agree', 'yes': True, **scope()}) == []
+            SETUP_STEPS_SEEN.update(table_step_reasons(s, tokens))
+        s.host_action({'t': 'lifecycle', **scope(), 'decision': {'kind': 'setup', 'mission': mid, 'timed': False}})
     assert s.engine is not None and s.engine.s['away'] == [] and s.engine.s['mission']['id'] == mid
     assert s.lifecycle_authority() == ('host' if kind == 'host' else 'crew')
     return s, tokens
@@ -1515,7 +1533,7 @@ def table_step_reasons(s, tokens):
     views = [s.game_state(t) for t in tokens] + [s.game_state(None), s.game_state('a-stranger'),
                                                  s.state_for(None, spectator=True)['game']]
     reasons = views[0]['lifecycle_reasons']
-    assert set(reasons) == set(LIFECYCLE)
+    assert set(reasons) == set(STEPS)
     for view in views:
         assert view['lifecycle_reasons'] == reasons and view['lifecycle'] == ('host' if host else 'crew')
         # the moment Begin opens is given exactly while the wait for it is the reason
@@ -1751,3 +1769,114 @@ def test_mission_thirty_two_deals_its_four_named_tasks_and_plays_to_a_result(n):
         assert (status == 'failed') == any(v == 'failed' for v in progress.values())
         assert set(fixed) <= set(e.s['used'])                        # and they are used up afterwards
     assert 'failed' in outcomes
+
+
+# ---- the reasons before the first deal (AVR-245 with AVR-263) -----------------------------------
+# A Party round opens in `setup` with nothing dealt. Begin, Retry and Next are refused there in
+# the sentences they always had, every view carries them, and nothing that gives a reason reads
+# a mission, a hand or a trick that does not exist yet.
+
+def setup_table(n, seed=5):
+    return Engine([f'p{i}' for i in range(n)], random.Random(seed), setup=True)
+
+
+def seat_step(e, who, t, **kw):
+    assert e.apply(who, {'t': t, 'attempt': 0, 'revision': e.s['revision'],
+                         'request': f'{t}-{e.s["revision"]}', **kw})
+
+
+NOT_YET = {'begin': 'Finish task allocation and predictions first.',
+           'retry': 'Retry is available after a failed mission.', 'next': 'Complete this mission first.'}
+
+
+@pytest.mark.parametrize('n', (2, 3, 5))
+def test_in_setup_the_reason_for_begin_retry_and_next_is_the_rejection(n):
+    e = setup_table(n)
+    assert e.lifecycle_reasons(True) == e.lifecycle_reasons(False) == NOT_YET
+    seen = step_reasons(e)                                   # refusal == reason, host and every seat
+    e.s['away'] = ['p0']
+    assert set(e.lifecycle_reasons(True).values()) == {'Waiting for the crew to reconnect.'}
+    seen |= step_reasons(e)
+    e.s['away'] = []
+    if n == 2:
+        seat_step(e, 'p0', 'propose', proposal={'kind': 'tonoja_seat', 'position': 1})
+        assert set(e.lifecycle_reasons(True).values()) == {'The crew is deciding something. Wait for their answer.'}
+        assert set(e.lifecycle_reasons(False).values()) == {'Confirm or decline the crew decision first.'}
+        seen |= step_reasons(e)
+        seat_step(e, 'p1', 'confirm', yes=True)
+        assert e.lifecycle_reasons(True) == NOT_YET          # a seat agreed opens no step but the setup
+        seen |= step_reasons(e)
+    assert set(NOT_YET.values()) <= seen
+    # and the setup's own reason, which is not one of these, is still the refusal of the setup
+    for table in (setup_table(n), e):
+        waiting = table.view(None)['setup']['waiting']
+        assert waiting == lifecycle_rejection(table, {'kind': 'setup', 'mission': 1, 'timed': False})
+    assert setup_table(2).view(None)['setup']['waiting'] == 'The two players decide where Tonoja sits first.'
+    assert e.view(None)['setup']['waiting'] is None
+
+
+@pytest.mark.parametrize('n', (2, 3))
+def test_in_setup_no_viewer_makes_the_reasons_raise_and_a_card_is_refused_in_the_servers_words(n):
+    e = setup_table(n)
+    for state in range(3):
+        for actor in (*e.s['humans'], None, 'tonoja', 'stranger'):
+            reasons = e.reasons(actor)
+            assert reasons == {'play': e.reasons('p0')['play'], 'predictions': {}, 'cards': {}, 'tasks': {},
+                               'pass_task': None, 'volunteer': {}, 'offer': None, 'offer_owners': {}}
+            view = e.view(actor)                             # the setup view gives no control of a deal
+            assert view['me'] == ({'seat': actor} if actor in e.s['humans'] else None)
+        for q in e.s['humans']:
+            assert e.reasons(q)['play'] == rejection(e, q, 'play_card', card='blue:1')
+            assert rejection(e, q, 'predict', task='x', count=0) is not None
+        e.check()
+        if state == 0:
+            e.s['away'] = ['p0']
+        elif state == 1:
+            e.s['away'] = []
+            if n == 2:
+                seat_step(e, 'p0', 'propose', proposal={'kind': 'tonoja_seat', 'position': 0})
+    assert setup_table(n).reasons('p0')['play'] == 'This is not a card-play phase.'
+
+
+@pytest.mark.parametrize('kind', ('host', 'transitional'))
+@pytest.mark.parametrize('n', (2, 3))
+def test_in_setup_every_viewer_is_sent_the_step_reasons_and_they_are_the_tables_answers(kind, n, monkeypatch):
+    clock = {'now': 1000.0}
+    monkeypatch.setattr(expo_game, '_mono', lambda: clock['now'])
+    s = ExpoSession(random.Random(3))
+    tokens = [f'seat-{i}' for i in range(n)]
+    s.party_start([(t, t) for t in tokens])
+    for t in tokens:
+        s.join(t, t)
+    s.party_host = kind == 'host'
+    s.tick(s.gen)
+    assert s.phase == 'setup'
+    for viewer in (*tokens, None, 'a-stranger'):             # a seat, a watcher (the host's too), a stranger
+        view = s.game_state(viewer)
+        assert view['stage'] == 'setup' and view['lifecycle_reasons'] == NOT_YET
+        assert view['begin_at'] is None and view['resolving'] is None
+    assert s.state_for(None, spectator=True)['game']['lifecycle_reasons'] == NOT_YET      # a Party spectator
+    assert table_step_reasons(s, tokens) == set(NOT_YET.values())
+    # no moment for distress is kept and no timer is armed before a deal, however long it waits
+    for _ in range(3):
+        clock['now'] += DISTRESS_GRACE
+        s._sync()
+        assert s._grace is None and s.begin_opens() is None and s.deadline is None
+        assert s.game_tick() == [] and s.phase == 'setup'
+    assert table_step_reasons(s, tokens) == set(NOT_YET.values())
+    # a seat away: every step waits for it, the setup too
+    s.leave(tokens[-1])
+    assert table_step_reasons(s, tokens) == {'Waiting for the crew to reconnect.'}
+    assert s.game_state(None)['setup']['waiting'] == 'Waiting for the crew to reconnect.'
+    s.join(tokens[-1])
+    assert table_step_reasons(s, tokens) == set(NOT_YET.values())
+    # the host's own refusals in setup are the reasons, word for word
+    for decision in step_decisions(s.engine):
+        assert host_answer(s, decision) == NOT_YET[decision['kind']]
+
+
+def test_the_walks_of_party_tables_started_in_setup():
+    if not TABLES_SEEN:
+        pytest.skip('needs the table walks in the same run')
+    assert set(NOT_YET.values()) | {'Confirm or decline the crew decision first.',
+                                    'The crew is deciding something. Wait for their answer.'} <= SETUP_STEPS_SEEN

@@ -91,3 +91,10 @@ def catalog(humans=3, timed=False):
             reason = str(e)
         result.append({'id': n, 'enabled': reason is None, 'reason': reason})
     return result
+
+
+def unavailable(number, humans, timed=False):
+    """Why a crew of `humans` cannot open on that mission, in the words shown to them, or None.
+    The one check behind the lobby's Start and a Party round's setup (AVR-245)."""
+    row = next((m for m in catalog(humans, timed) if type(number) is int and m['id'] == number), None)
+    return row['reason'] if row else 'Invalid mission.'

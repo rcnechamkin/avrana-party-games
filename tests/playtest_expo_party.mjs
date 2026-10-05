@@ -1,7 +1,7 @@
 // EXPO in a Party round, in real browsers on phone viewports (AVR-275, AVR-252, AVR-266).
 //
 //   node tests/playtest_expo_party.mjs [outdir]
-//     EXPO_HUMANS=2..5   seated players (default 3; 2 seats Tonoja)
+//     EXPO_HUMANS=2..5   seated players (default 3; 2 seats Tonoja, where the two players agree)
 //     EXPO_HOST=spectator   the Party Host watches instead of playing
 //     EXPO_PARTY=old     a Party from before the host claim: the transitional crew fallback
 //     EXPO_PYTHON=...    the interpreter that runs server.py (default: python3, python on Windows)
@@ -186,6 +186,98 @@ try {
   await post("launch", seal({...base("launch", 30), nonce:crypto.randomBytes(12).toString("hex"), roster:party.members.map(m => ({participant:m.pid, name:m.name, role:m.role}))}));
   for (const [i, m] of party.members.entries()) await openPage(m, PHONES[i % PHONES.length]);
   for (const m of party.members) await m.page.waitForFunction(() => ST?.game && window.AvranaParty, {timeout:25000});
+  // ---- setup (AVR-245): the round opens with nothing dealt. Whoever moves the table on (the
+  // Party Host, or the crew under an older Party) chooses the mission and the clock inside EXPO.
+  // Tonoja's seat is not the host's: with two seated the two players agree it first (one
+  // proposes, the other answers), and until they have nothing can be dealt. This run agrees
+  // the seat that is offered and confirms what is offered, which is the table of before. ----
+  let setupInView = 0;
+  {
+    const SEAT_FIRST = "The two players decide where Tonoja sits first.";
+    const DEAL = {kind:"setup", mission:1, timed:false};
+    const open = (await settle()).game;
+    assert.equal(open.stage, "setup", "a Party round opens in setup"); assert.equal(open.mission, null, "nothing is dealt yet");
+    assert.deepEqual([open.setup.mission, open.setup.timed, open.setup.tonoja_position, open.setup.tonoja, open.setup.tonoja_seat], [1, false, 2, HUMANS === 2, null]);
+    assert.equal(open.setup.waiting, HUMANS === 2 ? SEAT_FIRST : null, "two players: no seat is agreed by default");
+    const chooser = OLD_PARTY ? seated()[0] : party.members.find(m => m.pid === party.host);
+    for (const m of party.members) {
+      const s = await state(m.page), may = OLD_PARTY ? m.role === "player" : m === chooser;
+      assert.deepEqual(s.game.me, m.role === "player" ? {seat: s.you.pid} : null, `${m.name}: a seat and nothing else, no hand before the deal`);
+      const scroll = await m.page.evaluate(() => [document.scrollingElement, document.body, document.getElementById("app")].map(n => [n.scrollHeight - n.clientHeight, n.scrollTop]));
+      for (const [over, top] of scroll) { assert.ok(over <= 1, `${m.name} at setup: the page does not scroll (${over}px)`); assert.equal(top, 0); }
+      // Tonoja's seat: everyone reads where it stands; only a seated player is offered the control.
+      const seatLine = await has(m.page, "tonoja-seat"), seatControl = await has(m.page, "seat-propose");
+      if (HUMANS === 2) {
+        assert.equal(seatLine.text, "Tonoja’s seat is not agreed yet. The two players decide it.", `${m.name} reads that no seat is agreed`);
+        if (m.role === "player") { assert.equal(seatControl.disabled, false, `${m.name} plays and may propose Tonoja's seat`); assert.equal(await m.page.evaluate(() => [...document.querySelectorAll("[data-key]")].find(x => x.dataset.key === "seat-choice").value), "2", "on the seat that is offered"); }
+        else assert.equal(seatControl, null, `${m.name} watches: Tonoja's seat is not the Party Host's`);
+      } else { assert.equal(seatLine, null, "no Tonoja, no seat to agree"); assert.equal(seatControl, null); }
+      const offered = await has(m.page, "setup-confirm");
+      if (!may) { assert.equal(offered, null, `${m.name} does not move the table on and is offered no setup`); continue; }
+      assert.equal(offered.text, "Deal mission 1");
+      if (HUMANS === 2) {
+        assert.equal(offered.disabled, true, `${m.name}: Deal waits for the two players' seat`);
+        assert.equal(await m.page.evaluate(() => document.getElementById("lobby-reason").textContent), SEAT_FIRST, "in the server's words, on the page");
+      } else assert.equal(offered.disabled, false, `${m.name} may set the table up`);
+      assert.equal(await m.page.evaluate(() => [document.getElementById("mission").value, document.getElementById("timed").checked, document.getElementById("tonoja-position").hidden].join()), "1,false,true", "the lobby's mission and clock controls, on what is offered; its seat control is not the setup's");
+      // Whether the control is in the first view without scrolling the panel: measured, reported.
+      if (await m.page.evaluate(() => { const b = [...document.querySelectorAll("[data-key]")].find(x => x.dataset.key === "setup-confirm").getBoundingClientRect(); return b.top >= 0 && b.bottom <= innerHeight; })) setupInView++;
+      else console.log(`note: at ${m.page.viewport().width}x${m.page.viewport().height} the setup control is below the first view of its panel`);
+    }
+    if (!OLD_PARTY) {
+      const seat = seated().find(m => m !== chooser);
+      assert.equal(await refused(seat.page, SEND_SEAT(DEAL)), "Only the Party Host can set up the mission.");
+      assert.equal(await refused(chooser.page, SEND_HOST({kind:"begin"})), "Finish task allocation and predictions first.");
+      // the setup never carries Tonoja's seat, at any crew size, and the seat is no host step
+      assert.equal(await refused(chooser.page, SEND_HOST({...DEAL, tonoja_position:2})), "The two players decide where Tonoja sits. Setup carries the mission and the timed setting only.");
+      assert.equal(await refused(chooser.page, SEND_HOST({kind:"tonoja_seat", position:0})), "The crew decides that together.");
+      if (HUMANS === 2) assert.equal(await refused(chooser.page, SEND_HOST(DEAL)), SEAT_FIRST, "the host's Deal is refused until the players have agreed");
+    }
+    if (HUMANS === 2) {
+      // ---- the two players agree where Tonoja sits: one proposes, the other answers ----
+      const [one, two] = seated(), onePid = (await state(one.page)).you.pid, twoPid = (await state(two.page)).you.pid;
+      const rev = (await settle()).game.revision;
+      await clickKey(one.page, "seat-propose");
+      for (const m of party.members) await waitRevision(m.page, rev);
+      const pending = (await settle()).game;
+      assert.equal(pending.stage, "setup"); assert.deepEqual(pending.proposal.payload, {kind:"tonoja_seat", position:2});
+      assert.deepEqual(pending.setup.seat_proposal, {position:2, by:onePid, asked:[twoPid]}); assert.equal(pending.setup.tonoja_seat, null, "a proposal is not an agreement");
+      for (const k of ["agree","decline"]) assert.equal((await has(two.page, k)).disabled, false, `${two.name} is asked`);
+      assert.match(await two.page.evaluate(() => document.getElementById("status").textContent), /^Your answer is needed: Seat Tonoja after both players\?/);
+      for (const m of party.members.filter(x => x !== two)) {
+        assert.equal(await has(m.page, "agree"), null, `${m.name} is not asked`);
+        assert.match(await m.page.evaluate(() => document.getElementById("setup-box").innerText), /Seat Tonoja after both players\?/, `${m.name} sees the question`);
+        assert.equal(await has(m.page, "setup-confirm"), null, "no Deal while the players are deciding");
+      }
+      if (!OLD_PARTY) assert.equal(await refused(chooser.page, SEND_HOST(DEAL)), "The crew is deciding something. Wait for their answer.");
+      await two.page.screenshot({path:path.join(OUT, "setup-seat-question.png")});
+      await clickKey(two.page, "agree");
+      for (const m of party.members) await waitRevision(m.page, pending.revision);
+      const agreed = (await settle()).game;
+      assert.equal(agreed.stage, "setup", "agreeing a seat deals nothing"); assert.equal(agreed.proposal, null);
+      assert.equal(agreed.setup.tonoja_seat, 2); assert.equal(agreed.setup.waiting, null);
+      for (const m of party.members) {
+        assert.match((await has(m.page, "tonoja-seat")).text, /^Tonoja sits after both players · agreed by /, `${m.name} reads the agreed seat`);
+        assert.equal((await has(m.page, "seat-propose"))?.text ?? null, m.role === "player" ? "Propose another seat" : null);
+      }
+      for (const m of party.members.filter(x => OLD_PARTY ? x.role === "player" : x === chooser)) assert.equal((await has(m.page, "setup-confirm")).disabled, false, `${m.name} may deal now`);
+      console.log(`setup (AVR-245): Tonoja's seat proposed by ${one.name} and agreed by ${two.name}; the host's Deal was refused until then`);
+    }
+    await chooser.page.screenshot({path:path.join(OUT, "setup.png")});
+    const before = (await settle()).game.revision;
+    await clickKey(chooser.page, "setup-confirm");
+    for (const m of party.members) await waitRevision(m.page, before);
+    if (OLD_PARTY) for (const m of seated().filter(x => x !== chooser)) {
+      // no host claim: the crew agrees, each seat once, and nothing is dealt until the last one
+      const pending = (await settle()).game;
+      assert.equal(pending.stage, "setup"); assert.equal(pending.proposal.payload.kind, "setup");
+      await clickKey(m.page, "agree");
+      for (const x of party.members) await waitRevision(x.page, pending.revision);
+    }
+    for (const m of party.members) await m.page.waitForFunction(() => ST?.game?.stage === "allocation" && ST.game.mission.id === 1, {timeout:15000});
+    if (HUMANS === 2) assert.equal((await settle()).game.seats.indexOf("tonoja"), 2, "Tonoja sits where the players agreed");
+    console.log(`setup (AVR-245): confirmed as offered by ${OLD_PARTY ? "the crew" : "the Party Host"}; its control was in the first view on ${setupInView} of ${OLD_PARTY ? seated().length : 1} phone(s)`);
+  }
   const first = (await settle()).game;
   if (OLD_PARTY) {
     // A Party from before the host claim: the crew decides, for now, and everyone is told so.
