@@ -523,6 +523,55 @@ test("game origin: a ticket whose payload cannot be read is still used; only the
   assert.equal(t.tab["avrana-party-session:bluff"], undefined);
 });
 
+// ---- the Party Host's actions (AVR-252): a fresh ticket with every one ------------------------
+
+test("a host action fetches a fresh ticket and sends it with the action, never the connect's ticket", async () => {
+  let n = 0;
+  const t = load({ answer: () => ({ status: 200, body: { game: "bluff", ticket: "aps0.T" + (++n) + ".S", session: "s1" } }) });
+  const conn = t.Hub.connect("/games/bluff/ws", { onState() {} });
+  await flush();
+  t.sockets[0].accept(); t.sockets[0].welcome();
+  const action = { t: "lifecycle", decision: { kind: "begin" }, attempt: 1, revision: 4 };
+  assert.equal(await conn.hostAction(action), true);
+  assert.equal(await conn.hostAction(action), true);
+  const sent = t.sockets[0].sent.filter((m) => m.t === "host");
+  assert.deepEqual(sent, [{ t: "host", ticket: "aps0.T2.S", action }, { t: "host", ticket: "aps0.T3.S", action }]);
+  assert.equal(t.calls.length, 3);                                  // the hello's, then one each
+  assert.ok(t.calls.every((c) => c.url === "/party/api/session/ticket"));
+  assert.equal(t.sockets.length, 1, "a host action never opens a socket");
+});
+
+test("a host action that cannot get a ticket sends nothing and says so", async () => {
+  let n = 0;
+  const t = load({ answer: () => (++n === 1 ? { status: 200, body: { game: "bluff", ticket: "aps0.T.S", session: "s1" } }
+                                            : { status: 403, body: { error: "not_member" } }) });
+  const conn = t.Hub.connect("/games/bluff/ws", { onState() {} });
+  await flush();
+  t.sockets[0].accept(); t.sockets[0].welcome();
+  assert.equal(await conn.hostAction({ t: "lifecycle" }), false);
+  assert.deepEqual(t.sockets[0].sent.filter((m) => m.t === "host"), []);
+});
+
+test("a standalone page has no host action", async () => {
+  const t = load({ integrated: false });
+  const conn = t.Hub.connect("/games/bluff/ws", { onState() {} });
+  await flush();
+  t.sockets[0].accept(); t.sockets[0].welcome();
+  assert.equal(await conn.hostAction({ t: "lifecycle" }), false);
+  assert.deepEqual(t.calls, []);
+});
+
+test("game origin: a host action takes its ticket from the bridge", async () => {
+  let n = 0;
+  const t = load({ bridge: fakeBridge(() => ({ ok: true, ticket: "aps0.B" + (++n) + ".S", role: "player", expiresIn: 120 })) });
+  const conn = t.Hub.connect("/games/bluff/ws", { onState() {} });
+  await flush(); await flush();
+  t.sockets[0].accept(); t.sockets[0].welcome();
+  assert.equal(await conn.hostAction({ t: "lifecycle" }), true);
+  assert.deepEqual(t.sockets[0].sent.filter((m) => m.t === "host"), [{ t: "host", ticket: "aps0.B2.S", action: { t: "lifecycle" } }]);
+  assert.deepEqual(t.calls, [], "no Party API call from the game origin");
+});
+
 let passed = 0;
 for (const [name, fn] of tests) {
   try { await fn(); passed++; console.log("ok", passed, name); }

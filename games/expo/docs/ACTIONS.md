@@ -146,8 +146,23 @@ decision Q8, built 2026-10-04, AVR-251). It is the captain's decision, not the c
   decline. Nobody else can confirm or decline it, the captain included. A declined offer leaves
   every task in the pool and the captain chooses again.
 
-Decided 2026-10-04 and not built yet: routine progression decisions should stop requiring
-everyone (AVR-252).
+Three of the kinds below are routine steps of a table's life, not decisions the rules give the
+crew: `begin`, `retry` and `next` (`engine.LIFECYCLE`). Who commits them depends on the table
+(owner decision 2026-10-04, AVR-252):
+
+- **a Party round whose Party names its host** (the view's `lifecycle` is `host`): the Party Host
+  commits them, at once, with [`host`](#host-ticket-action-the-party-hosts-lifecycle-steps). A
+  seat that proposes one is refused with `host` and the kind's sentence ("Only the Party Host can
+  begin the mission." / "... retry the mission." / "... choose the next mission.");
+- **any other table** (standalone, or a Party from before the host claim; `lifecycle` is `crew`):
+  they are crew decisions like the rest, as below.
+
+`end` in a Party round is the Party's: every seat's `propose end` is refused with `host` "In a
+Party, the Party Host ends EXPO for everyone." and the host ends the session from the Party
+(avrana-party ADR 0011), which releases the room whatever the table was doing.
+
+`distress` and `assign` are never the host's. They stay with the crew, or the captain, in every
+kind of table.
 
 ### `propose {proposal: {kind, ...}}`
 
@@ -175,10 +190,11 @@ everyone (AVR-252).
   offer also stores its `recipient`; a `captain_one` assignment to the captain or Tonoja stores
   nothing and takes effect at once.
 - **Knowable before**: yes for every row.
-- **Client**: buttons appear only in the matching phase ("Begin without passing", "Distress · pass
-  left / right" (hidden for two players), "Offer all tasks", "Propose owner", "Retry · same tasks",
-  "Retry · new tasks", "Next expedition", "End table"). In `captain_one` the offer button is
-  disabled for everyone but the captain.
+- **Client**: controls appear only in the matching phase. In the stage: "Distress ← left" and
+  "Distress → right" (hidden for two players), "Offer all tasks", "Propose owner". In the dock's
+  table zone: "Begin without passing" (or the host's "Begin mission") and "End table". On the
+  result: "Retry same tasks", "Retry new tasks", "Next mission". In `captain_one` the offer
+  button is disabled for everyone but the captain, with the reason in words beside it.
 - A two-player `next` to a mission refused for two players (C11) is accepted as a proposal and
   rejected when the last confirmation tries to prepare it; the proposal then stays pending until
   someone declines. The client does not offer those missions.
@@ -190,12 +206,59 @@ everyone (AVR-252).
 - **Illegal**: `vote` "There is no pending decision for you."
 - **Mutation**: yes adds the sender; when everyone asked has confirmed, the decision takes
   effect in the same command. No clears the proposal with no other effect.
-- **Client**: a decision panel with the proposal in words, the count of confirmations, "Agree" and
-  "Decline" for those who have not answered. For a `captain_one` offer the panel is headed
+- **Client**: the decision takes the stage, the centre of the board, so it is on screen with the
+  hand for whoever must answer (AVR-266): the proposal in words, the count of confirmations,
+  "Agree" and "Decline" for those who have not answered, and who is still asked for the rest. The
+  status line, the page's live region, reads "Your answer is needed: ...". After a mission result
+  the same panel is drawn inside the result. For a `captain_one` offer the panel is headed
   "Captain's offer", names the captain and the recipient, and shows "Accept" and "Decline" to the
   recipient only.
 - **Known defect**: because of common check 2, no decision can be proposed or confirmed while a
   seat is away, including `end` (E-D2, AVR-240).
+
+### `host {ticket, action}`: the Party Host's lifecycle steps
+
+Not a seat's command: a message on the game socket that `core/net.py` answers before the engine
+is reached (`GameBinding._party_host_action`, AVR-252).
+
+```json
+{"t": "host", "ticket": "<a fresh Party ticket>",
+ "action": {"t": "lifecycle", "decision": {"kind": "begin"}, "attempt": 3, "revision": 41}}
+```
+
+- **Who**: the Party Host, from a seat or from a Party spectator's socket. The host is whoever
+  the Party says at that moment: the ticket must be valid for the running session, unspent,
+  minted for this connection's own participant, and carry `host: true` (avrana-party ADR 0006,
+  amendment 2026-10-04). Nothing about the host is stored in the room, the adapter or the
+  engine, so a succession, a transfer or a reconnect needs no message.
+- **Refused before the engine**: `host` "Only the Party Host can do that." (no ticket's
+  participant, another participant's ticket, `host` false or absent, an anonymous watcher, no
+  Party session); `host` "The Party could not confirm its Host. Try again." (a ticket that is
+  forged, expired, spent or for another session); `host` "This table is not a Party round."
+- **`action`**: exactly `t` = `lifecycle`, `decision`, `attempt`, `revision`. `decision` has the
+  shape of a proposal of kind `begin`, `retry {keep}` or `next {mission}` (the same field
+  types). There is no `request`: the ticket is single-use and the revision makes a repeat stale.
+- **Legal** (`Engine.lifecycle`): the decision's own row in the table above; nobody seated is
+  away; `attempt` and `revision` are current; the table is not closed; no crew decision is
+  pending.
+- **Illegal**: `payload` Invalid lifecycle action. / Invalid crew decision.; `strategic` "The
+  crew decides that together." (`distress`, `assign`, `end`); `paused`; `stale`; `phase` with the
+  row's sentence; `mission`; `vote` "The crew is deciding something. Wait for their answer."
+- **Mutation**: the step takes effect in the same command, as one revision. No decision is ever
+  pending and nobody is asked to confirm.
+- **What the host cannot skip**: Begin before every task is allocated and every prediction made;
+  Begin past a distress request the crew has not answered; Retry or Next without a result; a
+  mission that is blocked. The host holds no seat's rights: not the captain's offer, not Tonoja's
+  cards, not a vote the host's own seat does not have.
+- **Open**: the crew's chance to ask for distress before Begin is the pending-decision rule
+  above, not a waiting period. A host who begins at once leaves no time to ask (see
+  RECONCILIATION, AVR-275 report).
+- **Client**: the dock's left zone, "Party Host (table control)". The host sees "Begin mission"
+  while the crew is ready and "End EXPO" otherwise; everyone else sees who the host is and what
+  the table is waiting for. On the result the host sees "Retry same tasks", "Retry new tasks" or
+  "Next mission", and "End EXPO for everyone"; everyone else sees "Waiting for <host> to choose
+  what's next." The page draws these from `AvranaParty.isHost()`, which decides nothing: the
+  server reads the ticket.
 
 ## Distress exchange
 
@@ -241,8 +304,9 @@ everyone (AVR-252).
   `currents`, where only its author's own view carries it.
 - **Knowable before**: yes; `me.communication_options` lists exactly the legal card and
   declaration pairs.
-- **Client**: a sonar panel with a card selector and a meaning selector built from those options;
-  when none exist it explains why sonar is unavailable.
+- **Client**: the Sonar sheet, with the eligible cards and the meanings built from those options;
+  when none exist it explains why sonar is unavailable. The Sonar tab is outlined while the
+  viewer may communicate.
 
 ## Play
 
@@ -271,8 +335,11 @@ everyone (AVR-252).
 - **Knowable before**: legality yes (`me.legal_cards`, `me.play_reason`). Outcome no: a legal card
   that loses a task or the mission is accepted and the failure follows (R03, R08).
 - **Client**: each hand card is a button, enabled only when it is the viewer's turn and the card is
-  legal; a disabled card's title gives the reason. Tonoja's face-up cards are buttons for the
-  captain only ("Only the captain plays for Tonoja.").
+  legal. Tapping a card chooses it; "Play <card>" in the dock sends it, so a small card is never
+  played by a slip. A disabled card's title gives the reason and the same words stand beside the
+  hand. Tonoja's face-up cards replace the captain's hand on Tonoja's turn and are buttons for
+  the captain only ("Only the captain plays for Tonoja."); the other player can look at them.
+  A legal card is never marked, warned about or confirmed for what it may do to the mission.
 
 ## Looking at information
 

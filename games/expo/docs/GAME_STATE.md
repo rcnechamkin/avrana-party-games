@@ -136,6 +136,7 @@ retry or go on. Only `closed` hands control back to the platform (`game_end`).
 | Tonoja's face-up cards | | |
 | distress flag, attempts, log, result, deadline, who is away | | |
 | the pending crew decision and who confirmed | | |
+| `lifecycle`: who moves the table on, `host` or `crew` (added by the adapter) | | who the Party Host is: the game is never told |
 
 Requirements met: no viewer receives another seat's legal cards; unseated viewers cannot act;
 identity is the authenticated connection, never a field in the message. In currents the
@@ -255,6 +256,18 @@ When Party launches EXPO (`core/party_session.py`, Party ADR 0006 and 0010):
   lobby and settings are skipped (E-P1, AVR-245).
 - Players are admitted by Party ticket; a browser token only watches.
 - Party spectators receive the public view.
-- When the table closes, the adapter reports `completed` if a mission result stood when the crew
-  ended the table, and `abandoned` if the table was ended mid-mission. It carries no score.
-- Results stay on screen until the Party Host moves the party on.
+- **Two authorities** (AVR-252, AVR-275). The Party Host owns the table's routine steps (Begin,
+  Retry, Next) and ends EXPO; the EXPO captain owns what the rules give the captain (the first
+  lead, Tonoja's cards, the offer in missions 10 and 13) and nothing else; the crew still decides
+  together what the rules say it decides together (distress, shared assignments). The host may be
+  the captain, another seat or a spectator.
+- **Who the host is** is never stored here. `GameSession.party_host` only records that this
+  Party says who its host is (a ticket carried the claim). Each host action brings a fresh
+  ticket and the claim is read from that one ([ACTIONS](ACTIONS.md#crew-decisions)). The view's
+  `lifecycle` is `host` then, and `crew` under a Party that does not say or at a standalone
+  table, where the crew agrees on those steps as before.
+- No seat ends a Party round from inside the game. The host ends it from the Party, whose signed
+  `end` releases the room; the Party records `ended_by_host`. A standalone table still closes by
+  the crew's `end`, reporting `completed` if a mission result stood and `abandoned` otherwise.
+- A mission result is not the end of the Party session: the table stays, the result takes over
+  every phone, and the host retries, moves on or ends EXPO.
