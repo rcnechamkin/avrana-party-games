@@ -795,7 +795,7 @@ class Phone:
 
     def send(self, t, **fields):
         scope = {'attempt': self.game['attempt'], 'revision': self.game['revision'],
-                 'request': '%s-%s-%d' % (self.pid, t, len(self.fx) + self.game['revision'])} if self.state.get('game') else {}
+                 'request': '%s-%s-%d' % (self.pid, t.replace('_', '-'), len(self.fx) + self.game['revision'])} if self.state.get('game') else {}
         self.ws.send(json.dumps({'t': t, **fields, **scope}))
 
     def plain(self, t, **fields):
