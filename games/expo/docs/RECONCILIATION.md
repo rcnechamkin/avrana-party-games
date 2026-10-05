@@ -1037,9 +1037,11 @@ Still open:
   and the used pile does, the used pile is put back into the deck, the used pile is emptied and
   the deck is shuffled with the table's own random generator: the three steps the draw takes when
   it cannot reach the difficulty (P04). The replacement is then drawn at random from the deck and
-  the conflicting task goes to the end of the deck, as before. `feasibility` remains for a
-  combination that no task in either pile can repair; in that case nothing is shuffled. Which
-  tasks conflict is unchanged. A mission with named tasks (32) is not examined at all.
+  the conflicting task goes to the end of the deck, as before. The used pile is recycled only
+  when the deck holds no task of that difficulty that may be the replacement. `feasibility`
+  remains when neither pile holds one, and in the case under "Open" below. A refused `next` or
+  `retry` is rolled back whole, so the piles and the random state are as they were before it.
+  Which tasks conflict is unchanged. A mission with named tasks (32) is not examined at all.
 - **An earlier version of this branch** took the replacement out of the used pile and left the
   rest of the pile where it was. That is not what the draw does and not what was decided, and it
   was never merged.
@@ -1048,7 +1050,7 @@ Still open:
   `main` at `9f9aa41` as well: 600 seeded tables (150 seeds at 2, 3, 4 and 5 humans, 40 missions
   each), 24,000 `next` decisions; 23,997 gave the same table, random state included; `main`
   refused the other three, which are the recorded tables.
-- **Tests** (`tests/test_expo_repair.py`, 128 cases):
+- **Tests** (`tests/test_expo_repair.py`, 155 cases):
   `test_the_recorded_tables_reach_the_mission_that_was_refused` (3),
   `test_a_table_repaired_from_the_used_pile_is_stored_restored_and_played_on_the_same` (3),
   `test_the_same_seed_recycles_the_used_pile_the_same_way` (3),
@@ -1056,26 +1058,44 @@ Still open:
   at 2, 3, 4 and 5 humans, 40 missions each; after every step every enabled task is in exactly
   one of the deck, the used pile and the mission, `Engine.check` passes, and the table equals the
   old repair's; none of these 100 tables needs the used pile, the recorded three do),
+  `test_a_long_table_with_retries_keeps_every_task_in_one_place_and_draws_as_before` (5 seeds at
+  2, 3, 4 and 5 humans, 60 steps each of `next`, `retry` with the same tasks and `retry` with new
+  ones, checked the same way),
   `test_the_used_pile_is_shuffled_into_the_deck_and_the_replacement_drawn_from_it`,
   `test_recycling_the_used_pile_is_decided_by_the_seed_alone`,
   `test_a_replacement_in_the_deck_is_taken_as_before_and_the_used_pile_is_untouched`,
   `test_no_replacement_in_either_pile_is_still_refused_and_nothing_is_shuffled`,
   `test_a_comparison_task_forced_on_the_captain_is_replaced_from_the_recycled_used_pile` (three
-  draw orders, by `next` and by `retry` with new tasks, through the crew decision),
+  draw orders, by `next` and by `retry` with new tasks, as the crew's decision and as the Party
+  Host's `lifecycle` command),
+  `test_known_limit_a_deck_whose_only_replacements_conflict_again_is_refused_without_recycling`
+  (pins the open case below; the refusal leaves state and random state as they were),
   `test_a_comparison_task_is_never_the_replacement_for_one_forced_on_the_captain`,
   `test_the_named_tasks_of_mission_thirty_two_are_never_looked_at_for_repair` (2 to 5 humans),
   `test_named_tasks_are_not_exchanged_even_if_they_would_make_a_forced_combination`,
   `test_mission_thirty_two_keeps_its_tasks_out_of_a_recycled_pile` (3).
 
-Each new test was seen to fail: with the engine of `main` 26 of the 28 that are not the long walk
-fail; without the exemption for named tasks 5 do; without the shuffle 1 does.
+The tests of the first 128 were seen to fail: with the engine of `main` 26 of the 28 that are not
+the long walk fail; without the exemption for named tasks 5 do; without the shuffle 1 does. The
+known-limit test and the walk with retries pass on `main`'s repair too, by design: they pin what
+did not change.
+
+**Open, for the owner.** The recycle fires only when the deck holds no candidate of the
+difficulty. A deck can hold candidates that all conflict again. Example at three seats: the draw
+is `firstThreeTrick` and `firstTrick` (and a third task), the deck's only other task of difficulty
+1 is `firstTwoTrick`, and the used pile holds ordinary tasks of difficulty 1. `firstTrick` is
+exchanged for `firstTwoTrick`, which conflicts with `firstThreeTrick` as well and is exchanged
+back, a hundred times, and the setup is refused with `feasibility` ("Task combination needs a
+fresh task deck."), every time it is tried. `main` refuses it too; it did not occur in the
+24,000 seeded `next` decisions above or the 1,200 steps of the walk with retries. Question: should the used pile also be recycled when the
+deck's candidates are exhausted, not only when it has none? Not built: it is wider than the
+decision of 2026-10-05.
 
 On Windows 11, with `main` at `9f9aa41` merged in, `pytest -q tests/test_expo_*.py
-tests/test_expo.py`: 1,194 passed, 2 skipped, 2 expected failures. `tests/test_no_private_data.py`,
+tests/test_expo.py`: 1,221 passed, 2 skipped, 2 expected failures. `tests/test_no_private_data.py`,
 `ops/export_avrana_catalog.py --check provider/catalog.json`, `ops/check_docs.py` and
 `ops/check_static.sh`: clean.
 
 Not covered: the whole repository suite, the browser playtests, a live socket, a Party round,
-real phones, the appliance, the timed variant, tables longer than 40 missions, the Party Host's
-`lifecycle` path to `next` and `retry` (the tests use the crew decision; both reach the same
-`prepare`).
+real phones, the appliance, the timed variant, tables longer than 60 steps, the Party Host's
+command over a live socket (the tests call `Engine.lifecycle`).

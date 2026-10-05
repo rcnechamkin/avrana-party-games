@@ -157,6 +157,41 @@ def test_a_long_table_is_never_refused_keeps_every_task_in_one_place_and_draws_a
     assert len(list(walk(n, seed))) == STEPS
 
 
+@pytest.mark.parametrize('n', [2, 3, 4, 5])
+@pytest.mark.parametrize('seed', range(5))
+def test_a_long_table_with_retries_keeps_every_task_in_one_place_and_draws_as_before(n, seed):
+    # As the walk above, with failed missions retried: the same tasks kept, or new ones drawn.
+    e = Engine(humans(n), random.Random(seed), 1)
+    old = DeckOnly(humans(n), random.Random(seed), 1)
+    r = random.Random(1000 + seed)
+    enabled = [m['id'] for m in catalog(n, False) if m['enabled']]
+    lead = e.s['humans'][0]
+    seen = set()
+    for step in range(60):
+        move = r.choice(['next', 'keep', 'new'])
+        fields = {'mission': r.choice(enabled)} if move == 'next' else {'keep': move == 'keep'}
+        kind = 'next' if move == 'next' else 'retry'
+        kept = list(e.s['selected'])
+        for table in (e, old):
+            table._finish('success' if move == 'next' else 'failed', 't')
+        piles(e)
+        decide(e, lead, kind, **fields)
+        piles(e)
+        e.check()
+        if move == 'keep':
+            assert e.s['selected'] == kept
+        if e.s['mission']['id'] == 32:
+            assert e.s['selected'] == FIXED
+        try:
+            decide(old, lead, kind, **fields)
+            assert old.snapshot() == e.snapshot(), (n, seed, step, move)
+        except Invalid as x:
+            assert x.code == 'feasibility'
+            old = DeckOnly.restore(e.snapshot())
+        seen.add(move)
+    assert seen == {'next', 'keep', 'new'}
+
+
 # --- the exchange itself -------------------------------------------------------------------
 
 def overlapping():
@@ -236,6 +271,36 @@ def test_no_replacement_in_either_pile_is_still_refused_and_nothing_is_shuffled(
     assert e.rng.getstate() == before
 
 
+def test_known_limit_a_deck_whose_only_replacements_conflict_again_is_refused_without_recycling():
+    # A known limit, recorded as an open question for the owner (RECONCILIATION, AVR-270), not a
+    # rule: the used pile is recycled only when the deck holds NO task of the difficulty. Here the
+    # deck holds one, `firstTwoTrick`, which conflicts with `firstThreeTrick` just as `firstTrick`
+    # did; the two are exchanged for each other until the repair gives up, although the used pile
+    # holds ordinary tasks of that difficulty. The engine did the same before AVR-270.
+    for cls in (Engine, DeckOnly):
+        e = cls(['a', 'b', 'c'], random.Random(3), 1)
+        e._finish('success', 't')
+        done = set(e.s['selected'])
+        ordinary = [k for k in sorted(ENABLED) if TASKS[k]['difficulty']['3'] == 1 and k not in done
+                    and TASKS[k]['family'] != 'indices']
+        two = next(k for k in sorted(ENABLED) if TASKS[k]['difficulty']['3'] == 2 and k not in done
+                   and TASKS[k]['family'] != 'indices' and k not in COMPARISON)
+        drawn = ['firstThreeTrick', 'firstTrick', two]               # 2 + 1 + 2: mission 5
+        assert sum(TASKS[k]['difficulty']['3'] for k in drawn) == mission(5)['target']
+        used = ordinary + sorted(done)
+        assert len(ordinary) >= 5 and not done & set(drawn + ['firstTwoTrick'])
+        deck = [k for k in sorted(ENABLED) if k not in drawn + used + ['firstTwoTrick']
+                and TASKS[k]['difficulty']['3'] != 1]
+        e.s['deck'] = drawn + deck + ['firstTwoTrick']
+        e.s['used'] = used + [k for k in sorted(ENABLED) if k not in drawn + deck + used + ['firstTwoTrick']]
+        piles(e)
+        before = e.snapshot()
+        with pytest.raises(Invalid) as x:
+            host(e, 'next', mission=5)
+        assert (x.value.code, str(x.value)) == ('feasibility', 'Task combination needs a fresh task deck.')
+        assert e.snapshot() == before                # state and random state rolled back
+
+
 # --- the captain's repair (C20) from the used pile, through a crew decision ---------------------
 
 def captain_forced(cls, kind, order):
@@ -255,19 +320,27 @@ def captain_forced(cls, kind, order):
     return e, conflict, d
 
 
-def go(e, kind):
-    if kind == 'retry':
-        decide(e, 'a', 'retry', keep=False)
+def host(e, kind, **fields):
+    """The Party Host's word (AVR-252): committed at once, nobody votes."""
+    return e.lifecycle({'t': 'lifecycle', 'decision': {'kind': kind, **fields},
+                        'attempt': e.s['attempt'], 'revision': e.s['revision']})
+
+
+def go(e, kind, by='crew'):
+    fields = {'keep': False} if kind == 'retry' else {'mission': 11}
+    if by == 'host':
+        host(e, kind, **fields)
     else:
-        decide(e, 'a', 'next', mission=11)
+        decide(e, 'a', kind, **fields)
 
 
+@pytest.mark.parametrize('by', ['crew', 'host'])
 @pytest.mark.parametrize('kind', ['next', 'retry'])
 @pytest.mark.parametrize('order', [COMPARISON, COMPARISON[::-1], [COMPARISON[0], COMPARISON[2], COMPARISON[1]]])
-def test_a_comparison_task_forced_on_the_captain_is_replaced_from_the_recycled_used_pile(kind, order):
+def test_a_comparison_task_forced_on_the_captain_is_replaced_from_the_recycled_used_pile(kind, order, by):
     e, conflict, d = captain_forced(Engine, kind, order)
     assert sum(TASKS[k]['difficulty']['3'] for k in order) == mission(11)['target']
-    go(e, kind)
+    go(e, kind, by)
     s = e.s
     assert s['mission']['id'] == 11 and s['phase'] == 'allocation'
     kept = [k for k in order if k != conflict]
@@ -285,10 +358,13 @@ def test_a_comparison_task_forced_on_the_captain_is_replaced_from_the_recycled_u
     # Before the change this decision was refused, and rolled back, every time.
     old, _, _ = captain_forced(DeckOnly, kind, order)
     tasks = (list(old.s['deck']), list(old.s['used']), list(old.s['selected']))
+    before = old.snapshot()
     with pytest.raises(Invalid) as x:
-        go(old, kind)
+        go(old, kind, by)
     assert x.value.code == 'feasibility'
     assert (old.s['deck'], old.s['used'], old.s['selected']) == tasks
+    if by == 'host':                             # one command: the whole table is as it was
+        assert old.snapshot() == before
 
 
 def test_a_comparison_task_is_never_the_replacement_for_one_forced_on_the_captain():

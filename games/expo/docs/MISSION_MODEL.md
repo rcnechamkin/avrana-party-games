@@ -271,9 +271,11 @@ selected.
   into the deck, exactly as the draw does it (P04: the pile joins the deck, the pile is empty, the
   deck is shuffled), and the replacement is drawn from there. The replaced task goes to the deck.
   This follows the source game's task-deck behaviour (The Crew: Mission Deep Sea, R p8 and p14);
-  it is not an Avrana rule. If neither pile holds such a task the setup is refused
-  (`feasibility`) and nothing is shuffled. A table whose deck has a replacement is dealt exactly
-  as before this policy.
+  it is not an Avrana rule. The recycle happens only when the deck holds no candidate of that
+  difficulty. If the used pile holds none either, or the deck's candidates all conflict again
+  (an open question, [RECONCILIATION](RECONCILIATION.md), AVR-270), the setup is refused
+  (`feasibility`); the refused `next` or `retry` is rolled back, so the piles and the random state
+  are as they were. A table whose deck has a replacement is dealt exactly as before this policy.
 - Fixed tasks are exempt: a mission that names its tasks (mission 32) keeps them. They are never
   examined for repair and never replaced, and while the mission is in play they are in neither
   pile, so they are never drawn as a replacement and never shuffled back in. Once the mission has
