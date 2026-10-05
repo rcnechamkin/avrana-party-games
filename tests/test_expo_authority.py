@@ -157,6 +157,10 @@ async def table(host=ALICE, claims=True, players=PLAYERS, mission=1, seed=1, wat
     if claims:
         role = "spectator" if host in dict(watchers) else "player"
         assert await early.host(host, "setup", role=role, **chosen) == []
+        for _ in range(500):                               # the Party answers on another thread
+            if b.session.phase != "setup":
+                break
+            await settle()
     elif expo_game.HOST_CLAIM_TRANSITION:
         assert await early.act(players[0][0], "propose", proposal={"kind": "setup", **chosen}) == []
         for p, _ in players[1:]:
