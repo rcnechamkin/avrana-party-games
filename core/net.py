@@ -37,6 +37,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from core import avatars, party_protocol, party_result, party_session
 from core.events import event
+from core.session import HostRefused
 
 log = logging.getLogger("gamehub.net")
 
@@ -351,17 +352,55 @@ class GameBinding:
         await self.push_all([])
 
     def _party_hello(self, hello):
-        """(token, name, spectator) for an admitted player; (None, None, spectator) to watch,
-        where `spectator` is True only for a Party spectator ticket (AVR-129). Raises Invalid for
-        a ticket that is refused. The ticket itself is never logged."""
+        """(token, name, spectator, participant) for an admitted player; (None, None, spectator,
+        participant) to watch, where `spectator` is True only for a Party spectator ticket
+        (AVR-129) and `participant` is the ticket's participant id (None without a ticket).
+        Raises Invalid for a ticket that is refused. The ticket itself is never logged."""
         ticket = hello.get("ticket")
         if ticket is None:
-            return None, None, False            # a browser-minted token: watch only (public)
-        token, role = self.party.admit(ticket)
-        entry = self.party_roster.get(token)
-        if role != "player" or entry is None:
-            return None, None, role == "spectator"
-        return token, entry["name"], False
+            return None, None, False, None      # a browser-minted token: watch only (public)
+        who = self.party.present(ticket)
+        if who["host"] is not None:
+            # this party says who its host is (avrana-party ADR 0006, amendment 2026-10-04): the
+            # game may give the host things to do. Who that is, is asked again with every action.
+            self.session.party_host = True
+        entry = self.party_roster.get(who["token"])
+        if who["role"] != "player" or entry is None:
+            return None, None, who["role"] == "spectator", who["participant"]
+        return who["token"], entry["name"], False, who["participant"]
+
+    async def _party_host_action(self, ws, participant, msg):
+        """{"t": "host", "ticket": <a fresh ticket>, "action": {...}}: something only the Party
+        Host may do in this game (AVR-252). Under the lock. The party's word is that one ticket:
+        it must be valid for the running session, unspent, minted for this connection's own
+        participant, and say `host: true`. Nothing about the host is kept here, so the next
+        action is asked again and succession needs no message. A player or a Party spectator may
+        be the host; an anonymous watcher never is. What the action means is the game's
+        (GameSession.host_action). The ticket is never logged."""
+        async def refuse(text, code="host"):
+            await self._send(ws, {"type": "fx", "kind": "invalid", "code": code, "msg": text})
+        action = msg.get("action")
+        if self.party is None or participant is None or not isinstance(action, dict)                 or self.party_room_sid is None or self.party.sid != self.party_room_sid:
+            await refuse("Only the Party Host can do that.")
+            return
+        try:
+            who = self.party.present(msg.get("ticket"))
+        except party_protocol.Invalid as e:
+            event(self.slug, "host_refused", reason=str(e))
+            await refuse("The Party could not confirm its Host. Try again.")
+            return
+        if who["participant"] != participant or who["host"] is not True:
+            event(self.slug, "host_refused", reason="not_host")
+            await refuse("Only the Party Host can do that.")
+            return
+        self.session.party_host = True
+        event(self.slug, "host_action", t=action.get("t") if isinstance(action.get("t"), str) else None)
+        try:
+            fxs = self.session.host_action(action)
+        except HostRefused as e:
+            await refuse(str(e), e.code)
+            fxs = []
+        await self.push_all(fxs)
 
     # ---- websocket endpoint ----
 
@@ -371,6 +410,7 @@ class GameBinding:
         room = None                             # the room this connection joined (AVR-25)
         watching = False
         spectating = False                      # a Party spectator (AVR-129)
+        participant = None                      # this connection's Party participant, by ticket
         try:
             raw = await asyncio.wait_for(ws.receive_text(), timeout=15)
             hello = json.loads(raw)
@@ -386,7 +426,7 @@ class GameBinding:
             try:
                 if self.party is None:
                     raise party_protocol.Invalid("no party side")
-                token, name, spectating = self._party_hello(hello)
+                token, name, spectating, participant = self._party_hello(hello)
             except party_protocol.Invalid as e:
                 event(self.slug, "ticket_refused", reason=str(e))
                 await self._send(ws, {"type": "fx", "kind": "invalid",
@@ -480,6 +520,20 @@ class GameBinding:
                 if msg.get("t") == "ping":
                     await self._send(ws, {"type": "pong",
                                           "now": int(time.time() * 1000)})
+                    continue
+                if msg.get("t") == "host":
+                    # the Party Host's own actions: by ticket, from a seat or from the audience
+                    async with self.lock:
+                        if room is not None and self.session is not room:
+                            event(self.slug, "stale_message_dropped")
+                            await self._close_all([ws])
+                            break
+                        try:
+                            await self._party_host_action(ws, participant, msg)
+                        except Exception:
+                            log.exception("[%s] host action error", self.slug)
+                            self._sync_timer()
+                            self._sync_bot()
                     continue
                 if watching or token is None:
                     continue

@@ -3,9 +3,9 @@ from copy import deepcopy
 import os
 import time
 
-from core.session import GameSession, Player
+from core.session import GameSession, HostRefused, Player
 from .content import catalog, mission
-from .engine import Engine, Invalid
+from .engine import LIFECYCLE, Engine, Invalid
 from .storage import SnapshotStore
 
 # A timed mission runs on the monotonic clock (E-D7, AVR-242): a step of the wall clock, in
@@ -16,6 +16,14 @@ UNTRUSTED_CLOCK = ('The server restarted and could not tell how much time had pa
 
 
 CLOCK_RANGE = 1e12                # seconds; a clock reading outside it is not a clock reading
+
+# Who moves a table through its routine steps (AVR-252). In a Party round they are the Party
+# Host's: a seat that proposes one is told so. The words are shown to the player as they are.
+HOST_ONLY = {'begin': 'Only the Party Host can begin the mission.',
+             'retry': 'Only the Party Host can retry the mission.',
+             'next': 'Only the Party Host can choose the next mission.'}
+PARTY_END = 'In a Party, the Party Host ends EXPO for everyone.'
+assert set(HOST_ONLY) == set(LIFECYCLE)
 
 
 def _mono():
@@ -148,9 +156,53 @@ class ExpoSession(GameSession):
         if not isinstance(msg, dict) or not self.engine:
             return [self.fx('invalid', to=token, code='payload', msg='No active mission.')]
         actor = self.players[token].pid if token in self.participants and token in self.players else None
+        refusal = self._host_owned(msg)
+        if refusal:
+            return [self.fx('invalid', to=token, code='host', msg=refusal)]
+        return self._commit(token, lambda: self.engine.apply(actor, msg, _mono()))
+
+    def _host_owned(self, msg):
+        # A Party round belongs to the Party (avrana-party ADR 0011): its host ends it, there,
+        # for everyone. Where the Party also says who its host is, Begin, Retry and Next are the
+        # host's too (host_action) and no seat may propose them. A Party that does not say
+        # leaves them to the crew, as a standalone table does. Decisions the rules give the crew
+        # or the captain (distress, assignments) are never the host's.
+        if not self.party_round or msg.get('t') != 'propose' or not isinstance(msg.get('proposal'), dict):
+            return None
+        kind = msg['proposal'].get('kind')
+        if kind == 'end':
+            return PARTY_END
+        return HOST_ONLY.get(kind) if self.party_host and isinstance(kind, str) else None
+
+    def lifecycle_authority(self):
+        return 'host' if self.party_round and self.party_host else 'crew'
+
+    def host_action(self, action):
+        # core.net has the Party's word, on a fresh ticket, that the sender is its host now. The
+        # host may be the captain, another seat or a spectator: none of that matters here, and
+        # nothing here makes the host the captain. The engine still refuses a step whose
+        # prerequisites the rules set (Engine.lifecycle).
+        if not self.party_round:
+            raise HostRefused('This table is not a Party round.')
+        if not self.engine or not isinstance(action, dict):
+            raise HostRefused('No active mission.', 'payload')
+        refused = []
+        fxs = self._commit(None, lambda: self.engine.lifecycle(action, _mono()), refused)
+        if refused:
+            raise HostRefused(*refused)
+        return fxs
+
+    def _commit(self, token, change, refused=None):
+        # One engine command with its save. A refusal goes back to `token`, or into `refused`
+        # (message, code) for a caller that has no seat to answer.
+        def invalid(code, text):
+            if refused is not None:
+                refused.extend((text, code))
+                return []
+            return [self.fx('invalid', to=token, code=code, msg=text)]
         before = self.engine.snapshot()
         try:
-            self.engine.apply(actor, msg, _mono())
+            change()
             self._sync()
             self._save()
         except Invalid as e:
@@ -159,13 +211,13 @@ class ExpoSession(GameSession):
             try:
                 self._save()
             except OSError:
-                return [self.fx('invalid', to=token, code='storage', msg='The table could not be saved. Try again.')]
-            return [self.fx('invalid', to=token, code=e.code, msg=str(e))]
+                return invalid('storage', 'The table could not be saved. Try again.')
+            return invalid(e.code, str(e))
         except OSError:
             self.engine = Engine.restore(before)
             self.rng = self.engine.rng
             self._sync()
-            return [self.fx('invalid', to=token, code='storage', msg='The table could not be saved. Try again.')]
+            return invalid('storage', 'The table could not be saved. Try again.')
         if self.phase == 'closed':
             self._outcome = 'abandoned' if self.engine.s['result']['status'] == 'abandoned' else 'completed'
             return self.end_game()
@@ -189,6 +241,8 @@ class ExpoSession(GameSession):
         viewer = self.players.get(viewer_token)
         view = self.engine.view(viewer.pid if viewer and viewer_token in self.participants else None)
         view['expiry'] = self._wall_moment(view['expiry'])
+        # 'host': the Party Host begins, retries and moves on; 'crew': the seated crew agrees.
+        view['lifecycle'] = self.lifecycle_authority()
         return view
 
     def state_for(self, viewer_token=None, spectator=False):

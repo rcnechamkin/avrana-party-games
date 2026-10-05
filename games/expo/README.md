@@ -62,8 +62,16 @@ card of a color is communicated only as "only" (AVR-248), the task `5with7` is e
 two players share one sonar token in the shared-sonar and unfamiliar-terrain missions (AVR-250),
 and in missions 10 and 13 the captain decides and only the recipient consents (AVR-251).
 
-**Waiting on the owner.** The rule for routine progression decisions: AVR-252, tied to AVR-240.
-Party-round setup: AVR-245. Presentation contract: AVR-246.
+**Phone play and authority (AVR-275, AVR-252, AVR-266).** The client is one viewport: mission,
+turn, trick, hand and dock are always on screen; crew, tasks, sonar and history are sheets; a
+mission result takes over the screen. In a Party round the Party Host begins, retries, moves on
+and ends EXPO, the captain keeps only what the rules give the captain, and the crew still votes
+on distress and shared assignments. The host rules need the Party's ticket host claim
+(avrana-party ADR 0006, amendment 2026-10-04); under a Party without it the crew votes as before.
+
+**Waiting on the owner.** How much room the crew gets to ask for distress before the host begins,
+and away handling (AVR-240): see the AVR-275 report in RECONCILIATION. Party-round setup: AVR-245.
+Presentation contract: AVR-246. Wasteland presentation: AVR-267, on top of this board.
 
 **Blocked on source material.** Missions 3, 4, 12, 14, 15, 19, 20, 26 and tasks
 `moreRedThanGreen`, `moreYellowThanBlue`, `4with8`, `6with6`: AVR-244. With two
@@ -80,13 +88,15 @@ presentation events.
 | `content.py`, `content/tasks.json` | mission and task definitions, blocked content, content hash |
 | `tasks.py` | task status from resolved tricks |
 | `engine.py` | authoritative state, command validation, transitions, per-viewer views, snapshots |
-| `game.py` | platform adapter: seats, lobby settings, timer tick, presence, optional snapshot file, Party outcome |
+| `game.py` | platform adapter: seats, lobby settings, timer tick, presence, optional snapshot file, Party outcome, who moves the table on (Party Host or crew) |
 | `storage.py` | atomic single-file snapshot store |
-| `web/` | client: draws the view it is sent and sends intentions |
+| `web/` | client: one-viewport board (stage, sheets, hand, dock, result takeover); draws the view it is sent and sends intentions |
 
 Shared files EXPO touches: `games/registry.py` (its entry), `core/party_session.py` (`expo` in
 `GAMES`), `ops/export_avrana_catalog.py` (`FIRST_PARTY`), `provider/` (catalog and contract). No
-session, networking or protocol code is EXPO-specific.
+session, networking or protocol code is EXPO-specific: the Party Host's action path
+(`core/net.py`, `GameSession.host_action`, `conn.hostAction` in `web/hubnet.js`) is there for any
+game.
 
 ## Running
 
@@ -113,6 +123,7 @@ are owner operations.
 .venv\Scripts\python.exe -m pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_docs.py -q
 $env:EXPO_HUMANS='3'   # 2 to 5
 node tests/playtest_expo.mjs http://127.0.0.1:8196
+node tests/playtest_expo_party.mjs        # starts its own server and plays the Party's part
 ```
 
 | File | What it proves |
@@ -121,7 +132,10 @@ node tests/playtest_expo.mjs http://127.0.0.1:8196
 | `tests/test_expo_party.py` | Party roster seating, ticket reconnect, spectators, outcome vocabulary |
 | `tests/test_expo_contract.py` | rules that had no direct test before the reconciliation, and the pinned defects |
 | `tests/test_expo_docs.py` | the mission table, task catalog, conflict codes and cited tests in `docs/` equal the code |
-| `tests/playtest_expo.mjs` | browser playtest, run by hand |
+| `tests/test_expo_authority.py` | Party Host and captain as separate authorities: host-only Begin, Retry and Next, prerequisites the host cannot skip, a watching host, succession, reconnect, a Party without the host claim |
+| `tests/playtest_expo.mjs` | browser playtest of a standalone table, run by hand: the rules flow plus the one-viewport contract on five phone sizes and the result takeover |
+| `tests/playtest_expo_party.mjs` | browser playtest of a Party round against a simulated Party, run by hand: host and non-host controls and refusals, captain who is not host, succession, host reload, Party-owned end, no route to the LAN Games hub |
+| `tests/_expo_phone.mjs` | the measured one-viewport assertions both playtests use |
 
 The rule-to-test matrix, with what is still thin, is in
 [IMPLEMENTATION_PLAN](docs/IMPLEMENTATION_PLAN.md#deterministic-test-matrix). The exact runs

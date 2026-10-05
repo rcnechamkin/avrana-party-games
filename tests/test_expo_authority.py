@@ -1,0 +1,486 @@
+"""EXPO in a Party round: the Party Host and the EXPO captain are two authorities (AVR-252, AVR-275).
+
+The Party Host owns the table's routine life (Begin, Retry, Next) and ends EXPO from the Party.
+The captain owns what the rules give the captain. The crew still decides together what the rules
+say it decides together. Who the host is comes from the Party alone: a fresh ticket with every
+host action (avrana-party ADR 0006, amendment 2026-10-04), so succession and reconnects need
+nothing kept here. Harness: test_party_session.py.
+"""
+from __future__ import annotations
+
+import time
+import random
+
+import pytest
+
+from core import party_protocol as proto
+from core.net import GameBinding
+from core.session import HostRefused
+from games.expo.engine import Engine, Invalid
+from games.expo.game import HOST_ONLY, PARTY_END, ExpoSession
+
+from test_party_session import ALICE, BOB, CAROL, KEY, SID, connect, roster, run, settle, shutdown
+
+DANA = "participant-" + "d" * 32
+PLAYERS = ((ALICE, "Alice"), (BOB, "Bob"), (CAROL, "Carol"))
+
+
+def ticket(participant, host=None, role="player"):
+    return proto.mint_ticket(KEY, "expo", SID, participant, role, host=host)
+
+
+class Table:
+    """A launched Party round with every phone connected and the mission dealt."""
+
+    def __init__(self, b, socks):
+        self.b, self.socks = b, socks                     # participant -> (ws, task)
+
+    @property
+    def engine(self):
+        return self.b.session.engine
+
+    def pid(self, participant):
+        return self.b.session.players[proto.game_token(KEY, SID, participant)].pid
+
+    def participant(self, pid):
+        return next(p for p in self.socks if p in dict(PLAYERS) and self.pid(p) == pid)
+
+    def cmd(self, t, **kw):
+        s = self.engine.s
+        return {"t": t, "attempt": s["attempt"], "revision": s["revision"],
+                "request": f"r{s['revision']}-{random.random()}", **kw}
+
+    async def send(self, participant, msg):
+        """One message from that phone; returns what the phone was told (invalid fx, if any)."""
+        ws = self.socks[participant][0]
+        mark = len(ws.sent)
+        await ws.inbox.put(msg)
+        await settle()
+        return [m for m in ws.sent[mark:] if m.get("type") == "fx" and m.get("kind") == "invalid"]
+
+    async def act(self, participant, t, **kw):
+        return await self.send(participant, self.cmd(t, **kw))
+
+    async def host(self, participant, kind, host=True, role="player", **kw):
+        """A host action carrying a fresh ticket that says `host` for that participant."""
+        s = self.engine.s
+        return await self.send(participant, {
+            "t": "host", "ticket": ticket(participant, host, role),
+            "action": {"t": "lifecycle", "decision": {"kind": kind, **kw},
+                       "attempt": s["attempt"], "revision": s["revision"]}})
+
+    async def prepare(self):
+        """Allocate every task and commit every prediction: the crew is ready to begin."""
+        for _ in range(40):
+            s = self.engine.s
+            if s["phase"] == "allocation":
+                seat = self.engine.selector()
+                task = next((k for k in s["pool"] if self.engine.eligible(k, seat)), None)
+                who = self.participant(self.engine.controller(seat))
+                assert not await (self.act(who, "choose_task", task=task) if task
+                                  else self.act(who, "pass_task"))
+            elif s["phase"] == "prediction":
+                k = next(k for k in s["assignments"] if k not in s["predictions"])
+                who = self.participant(self.engine.controller(s["assignments"][k]))
+                assert not await self.act(who, "predict", task=k, count=0)
+            else:
+                break
+        assert self.engine.s["phase"] == "assistance"
+
+    async def close(self):
+        await shutdown(self.b, *self.socks.values())
+
+
+async def table(host=ALICE, claims=True, players=PLAYERS, mission=1, seed=1, watchers=()):
+    b = GameBinding("expo", ExpoSession(rng=random.Random(seed)), party=proto.GameSide(KEY, "expo"))
+    entries = [(p, n, "player") for p, n in players] + [(p, n, "spectator") for p, n in watchers]
+    await b.party_launch(proto.launch_message(KEY, "expo", SID, roster(*entries)))
+    b.session.settings["mission"] = mission
+    socks = {}
+    for p, _ in players:
+        socks[p] = await connect(b, {"t": "hello", "ticket": ticket(p, (p == host) if claims else None)})
+    for p, _ in watchers:
+        socks[p] = await connect(b, {"t": "hello", "ticket": ticket(p, (p == host) if claims else None,
+                                                                    "spectator")})
+    async with b.lock:                                     # the 3-2-1, without the wait
+        await b.push_all(b.session.tick(b.session.gen))
+    assert b.session.engine is not None and b.session.party_round
+    return Table(b, socks)
+
+
+def other_than(t, pid):
+    return next(p for p, _ in PLAYERS if t.pid(p) != pid)
+
+
+# ---- the Party says who the host is ------------------------------------------------------------
+
+def test_a_party_round_says_who_moves_the_table_on():
+    async def scenario():
+        t = await table()
+        state = t.socks[BOB][0].last_state()
+        assert state["party_round"] and state["party_host"]
+        assert state["game"]["lifecycle"] == "host"
+        await t.close()
+    run(scenario())
+
+
+def test_the_host_begins_at_once_and_nobody_votes():
+    async def scenario():
+        t = await table()
+        await t.prepare()
+        attempts = t.engine.s["attempts"]
+        assert await t.host(ALICE, "begin") == []
+        s = t.engine.s
+        assert s["phase"] == "before_trick" and s["proposal"] is None and s["attempts"] == attempts + 1
+        await t.close()
+    run(scenario())
+
+
+def test_no_other_crew_member_can_move_the_table_on():
+    async def scenario():
+        t = await table()
+        await t.prepare()
+        before = t.engine.s["revision"]
+        # a seat's own proposal, the old way
+        said = await t.act(BOB, "propose", proposal={"kind": "begin"})
+        assert [(m["code"], m["msg"]) for m in said] == [("host", HOST_ONLY["begin"])]
+        # the host message with a ticket that says "not the host"
+        assert [m["code"] for m in await t.host(BOB, "begin", host=False)] == ["host"]
+        # ... with a ticket that says nothing about the host
+        assert [m["code"] for m in await t.host(BOB, "begin", host=None)] == ["host"]
+        # ... with the host's own fresh ticket, sent from another phone
+        stolen = {"t": "host", "ticket": ticket(ALICE, True),
+                  "action": {"t": "lifecycle", "decision": {"kind": "begin"},
+                             "attempt": t.engine.s["attempt"], "revision": before}}
+        assert [m["code"] for m in await t.send(BOB, dict(stolen))] == ["host"]
+        # ... and a ticket this server already saw is spent
+        used = ticket(ALICE, True)
+        t.b.party.present(used)
+        assert [m["code"] for m in await t.send(ALICE, dict(stolen, ticket=used))] == ["host"]
+        assert [m["code"] for m in await t.send(ALICE, dict(stolen, ticket="aps0.forged.ticket"))] == ["host"]
+        # ... a host ticket for another game, another session, or one that has run out
+        for bad in (proto.mint_ticket(KEY, "bluff", SID, ALICE, "player", host=True),
+                    proto.mint_ticket(KEY, "expo", "another-session", ALICE, "player", host=True),
+                    proto.mint_ticket(KEY, "expo", SID, ALICE, "player", host=True, now=time.time() - 3600)):
+            assert [m["code"] for m in await t.send(ALICE, dict(stolen, ticket=bad))] == ["host"]
+        assert t.engine.s["revision"] == before and t.engine.s["phase"] == "assistance"
+        await t.close()
+    run(scenario())
+
+
+# ---- host and captain are different people -----------------------------------------------------
+
+def test_a_captain_who_is_not_the_host_cannot_begin_and_stays_captain():
+    async def scenario():
+        t = await table()
+        captain = t.engine.s["captain"]
+        host = other_than(t, captain)
+        cap = t.participant(captain)
+        await t.prepare()
+        assert [m["msg"] for m in await t.act(cap, "propose", proposal={"kind": "begin"})] == [HOST_ONLY["begin"]]
+        assert [m["code"] for m in await t.host(cap, "begin", host=False)] == ["host"]
+        assert await t.host(host, "begin") == []
+        s = t.engine.s
+        assert s["phase"] == "before_trick" and s["captain"] == captain
+        assert s["turn"] == captain                       # the captain still opens the first trick
+        await t.close()
+    run(scenario())
+
+
+def test_a_host_who_is_not_the_captain_gets_none_of_the_captains_mechanics():
+    async def scenario():
+        # Mission 10: the captain alone decides who takes the tasks (AVR-251).
+        t = await table(mission=10)
+        captain = t.engine.s["captain"]
+        host = other_than(t, captain)
+        owner = t.pid(host)
+        said = await t.act(host, "propose", proposal={"kind": "assign", "owner": owner, "task": "all"})
+        assert [m["code"] for m in said] == ["captain"]
+        # nor does the host's lifecycle authority reach a decision the rules give someone else
+        s = t.engine.s
+        for decision in ({"kind": "assign", "owner": owner, "task": "all"},
+                         {"kind": "distress", "direction": "left"}, {"kind": "end"}):
+            said = await t.send(host, {"t": "host", "ticket": ticket(host, True),
+                                       "action": {"t": "lifecycle", "decision": decision,
+                                                  "attempt": s["attempt"], "revision": s["revision"]}})
+            assert [m["code"] for m in said] == ["strategic"]
+        assert t.engine.s["pool"] and not t.engine.s["assignments"]
+        # the captain's own decision is untouched by any of it
+        cap = t.participant(captain)
+        assert await t.act(cap, "propose", proposal={"kind": "assign", "owner": captain, "task": "all"}) == []
+        assert set(t.engine.s["assignments"].values()) == {captain}
+        await t.close()
+    run(scenario())
+
+
+def test_with_tonoja_only_the_captain_plays_tonojas_cards_host_or_not():
+    async def scenario():
+        t = await table(players=PLAYERS[:2], seed=3)
+        captain = t.engine.s["captain"]
+        host = next(p for p, _ in PLAYERS[:2] if t.pid(p) != captain)
+        await t.prepare()
+        assert await t.host(host, "begin") == []
+        s = t.engine.s
+        s["turn"] = s["leader"] = "tonoja"                # Tonoja to lead
+        s["revision"] += 1
+        card = next(c["top"] for c in s["columns"] if c["top"])
+        assert [m["code"] for m in await t.act(host, "play_card", card=card)] == ["turn"]
+        assert await t.act(t.participant(captain), "play_card", card=card) == []
+        await t.close()
+    run(scenario())
+
+
+def test_a_host_who_is_watching_moves_the_table_on_and_holds_no_seat():
+    async def scenario():
+        t = await table(host=DANA, watchers=((DANA, "Dana"),))
+        await t.prepare()
+        ws = t.socks[DANA][0]
+        assert ws.last_state()["game"]["me"] is None      # a spectator: no hand, no seat
+        assert await t.host(DANA, "begin", host=False, role="spectator")   # not the host: refused
+        assert t.engine.s["phase"] == "assistance"
+        assert await t.host(DANA, "begin", role="spectator") == []
+        assert t.engine.s["phase"] == "before_trick"
+        assert len(t.engine.s["humans"]) == 3 and ws.last_state()["game"]["me"] is None
+        # a watcher without a ticket is nobody, whatever it sends
+        anon = await connect(t.b, {"t": "hello", "name": "Mallory"})
+        mark = t.engine.s["revision"]
+        await anon[0].inbox.put({"t": "host", "ticket": ticket(DANA, True, "spectator"),
+                                 "action": {"t": "lifecycle", "decision": {"kind": "retry", "keep": True},
+                                            "attempt": t.engine.s["attempt"], "revision": mark}})
+        await settle()
+        assert t.engine.s["revision"] == mark
+        t.socks["anon"] = anon
+        await t.close()
+    run(scenario())
+
+
+# ---- the host cannot skip what the rules require first ------------------------------------------
+
+def test_the_host_cannot_begin_before_the_tasks_are_allocated():
+    async def scenario():
+        t = await table()
+        assert t.engine.s["phase"] == "allocation"
+        assert [m["code"] for m in await t.host(ALICE, "begin")] == ["phase"]
+        assert t.engine.s["phase"] == "allocation"
+        await t.close()
+    run(scenario())
+
+
+def test_a_distress_request_stops_the_hosts_begin_until_the_crew_has_answered():
+    async def scenario():
+        t = await table()
+        await t.prepare()
+        assert await t.act(BOB, "propose", proposal={"kind": "distress", "direction": "left"}) == []
+        assert [m["code"] for m in await t.host(ALICE, "begin")] == ["vote"]
+        assert t.engine.s["phase"] == "assistance" and t.engine.s["proposal"]
+        # distress is the crew's: everyone agrees, the host's word is one vote like any other
+        assert await t.act(ALICE, "confirm", yes=True) == []
+        assert t.engine.s["proposal"] and t.engine.s["phase"] == "assistance"
+        assert await t.act(CAROL, "confirm", yes=True) == []
+        assert t.engine.s["phase"] == "passing" and t.engine.s["distress"]
+        await t.close()
+    run(scenario())
+
+
+def test_one_decline_still_cancels_a_strategic_decision_and_then_the_host_may_begin():
+    async def scenario():
+        t = await table()
+        await t.prepare()
+        await t.act(BOB, "propose", proposal={"kind": "distress", "direction": "right"})
+        assert await t.act(CAROL, "confirm", yes=False) == []
+        assert t.engine.s["proposal"] is None and not t.engine.s["distress"]
+        assert await t.host(ALICE, "begin") == []
+        assert t.engine.s["phase"] == "before_trick"
+        await t.close()
+    run(scenario())
+
+
+# ---- retry and next ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("keep", [True, False])
+def test_after_a_failure_only_the_host_retries_and_chooses_the_tasks(keep):
+    async def scenario():
+        t = await table()
+        await t.prepare()
+        await t.host(ALICE, "begin")
+        tasks, attempt = list(t.engine.s["selected"]), t.engine.s["attempt"]
+        t.engine._finish("failed", "fixture")
+        t.engine.s["revision"] += 1
+        said = await t.act(BOB, "propose", proposal={"kind": "retry", "keep": keep})
+        assert [m["msg"] for m in said] == [HOST_ONLY["retry"]]
+        assert [m["code"] for m in await t.host(ALICE, "next", mission=2)] == ["phase"]
+        assert await t.host(ALICE, "retry", keep=keep) == []
+        s = t.engine.s
+        assert s["attempt"] == attempt + 1 and s["result"] is None and s["mission"]["id"] == 1
+        if keep:
+            assert s["selected"] == tasks
+        await t.close()
+    run(scenario())
+
+
+def test_after_a_success_only_the_host_chooses_the_next_mission():
+    async def scenario():
+        t = await table()
+        await t.prepare()
+        await t.host(ALICE, "begin")
+        t.engine._finish("success", "fixture")
+        t.engine.s["revision"] += 1
+        said = await t.act(CAROL, "propose", proposal={"kind": "next", "mission": 2})
+        assert [m["msg"] for m in said] == [HOST_ONLY["next"]]
+        assert [m["code"] for m in await t.host(ALICE, "retry", keep=True)] == ["phase"]
+        assert [m["code"] for m in await t.host(ALICE, "next", mission=999)] == ["mission"]
+        assert await t.host(ALICE, "next", mission=2) == []
+        assert t.engine.s["mission"]["id"] == 2 and t.engine.s["result"] is None
+        await t.close()
+    run(scenario())
+
+
+# ---- succession and reconnect ------------------------------------------------------------------
+
+def test_when_the_party_moves_the_host_role_the_game_follows_with_no_message():
+    async def scenario():
+        t = await table(host=ALICE)
+        await t.prepare()
+        # the Party made Bob its host: his next ticket says so, and Alice's no longer does
+        assert [m["code"] for m in await t.host(ALICE, "begin", host=False)] == ["host"]
+        assert t.engine.s["phase"] == "assistance"
+        assert await t.host(BOB, "begin") == []
+        assert t.engine.s["phase"] == "before_trick"
+        t.engine._finish("failed", "fixture")
+        t.engine.s["revision"] += 1
+        assert [m["code"] for m in await t.host(ALICE, "retry", host=False, keep=True)] == ["host"]
+        assert await t.host(BOB, "retry", keep=True) == []
+        assert not hasattr(t.b.session, "host") and not hasattr(t.engine, "host")   # nothing kept
+        assert "host" not in t.engine.s
+        await t.close()
+    run(scenario())
+
+
+def test_a_host_who_reconnects_is_still_the_host_and_the_table_waits_meanwhile():
+    async def scenario():
+        t = await table()
+        await t.prepare()
+        ws, task = t.socks[ALICE]
+        await ws.close()
+        await task
+        await settle()
+        assert t.pid(ALICE) in t.engine.s["away"]
+        # nobody takes the role by being present: the Party has not moved it
+        assert [m["code"] for m in await t.host(BOB, "begin", host=False)] == ["host"]
+        t.socks[ALICE] = await connect(t.b, {"t": "hello", "ticket": ticket(ALICE, True)})
+        assert t.engine.s["away"] == []
+        assert await t.host(ALICE, "begin") == []
+        assert t.engine.s["phase"] == "before_trick"
+        await t.close()
+    run(scenario())
+
+
+def test_the_table_does_not_move_on_while_a_crew_member_is_away():
+    async def scenario():
+        t = await table()
+        await t.prepare()
+        ws, task = t.socks.pop(CAROL)
+        await ws.close()
+        await task
+        await settle()
+        assert [m["code"] for m in await t.host(ALICE, "begin")] == ["paused"]
+        assert t.engine.s["phase"] == "assistance"
+        await t.close()
+    run(scenario())
+
+
+# ---- ending, and a Party that does not say who its host is -------------------------------------
+
+@pytest.mark.parametrize("claims", [True, False])
+def test_no_seat_ends_a_party_round_from_inside_the_game(claims):
+    async def scenario():
+        t = await table(claims=claims)
+        said = await t.act(ALICE, "propose", proposal={"kind": "end"})
+        assert [(m["code"], m["msg"]) for m in said] == [("host", PARTY_END)]
+        assert t.engine.s["proposal"] is None and t.b.session.phase == "allocation"
+        # the Party's own end releases the room whatever the table was doing
+        await t.b.party_end(proto.end_message(KEY, "expo", SID))
+        assert t.b.session.engine is None and t.b.party_room_sid is None
+        assert any(m.get("kind") == "party_ended" for m in t.socks[BOB][0].sent)
+        await t.close()
+    run(scenario())
+
+
+def test_under_a_party_that_does_not_name_its_host_the_crew_still_agrees():
+    async def scenario():
+        t = await table(claims=False)
+        state = t.socks[ALICE][0].last_state()
+        assert state["party_round"] and not state["party_host"]
+        assert state["game"]["lifecycle"] == "crew"
+        await t.prepare()
+        assert [m["code"] for m in await t.host(ALICE, "begin", host=None)] == ["host"]
+        assert await t.act(ALICE, "propose", proposal={"kind": "begin"}) == []
+        assert await t.act(BOB, "confirm", yes=True) == []
+        assert t.engine.s["phase"] == "assistance"
+        assert await t.act(CAROL, "confirm", yes=True) == []
+        assert t.engine.s["phase"] == "before_trick"
+        await t.close()
+    run(scenario())
+
+
+def test_a_standalone_table_has_no_party_host():
+    s = ExpoSession(random.Random(4))
+    for name in ("a-token-1", "b-token-2", "c-token-3"):
+        s.join(name, name)
+        s.set_ready(name, True)
+    s.start("a-token-1")
+    s.tick(s.gen)
+    assert s.game_state("a-token-1")["lifecycle"] == "crew"
+    with pytest.raises(HostRefused):
+        s.host_action({"t": "lifecycle", "decision": {"kind": "begin"}, "attempt": 1, "revision": 0})
+
+
+# ---- the engine's lifecycle command ------------------------------------------------------------
+
+def lifecycle(e, kind, **kw):
+    over = {k: kw.pop(k) for k in ("attempt", "revision") if k in kw}
+    return {"t": "lifecycle", "decision": {"kind": kind, **kw},
+            "attempt": e.s["attempt"], "revision": e.s["revision"], **over}
+
+
+def ready_engine():
+    e = Engine(["p1", "p2", "p3"], random.Random(7))
+    while e.s["phase"] == "allocation":
+        seat = e.selector()
+        task = next((k for k in e.s["pool"] if e.eligible(k, seat)), None)
+        e.apply(seat, {"t": "choose_task" if task else "pass_task", "attempt": e.s["attempt"],
+                       "revision": e.s["revision"], "request": str(e.s["revision"]),
+                       **({"task": task} if task else {})})
+    assert e.s["phase"] == "assistance"
+    return e
+
+
+@pytest.mark.parametrize("msg,code", [
+    (lambda e: lifecycle(e, "begin", revision=e.s["revision"] - 1), "stale"),
+    (lambda e: lifecycle(e, "begin", attempt=e.s["attempt"] + 1), "stale"),
+    (lambda e: lifecycle(e, "retry", keep=True), "phase"),
+    (lambda e: lifecycle(e, "next", mission=2), "phase"),
+    (lambda e: lifecycle(e, "retry"), "payload"),
+    (lambda e: lifecycle(e, "begin", extra=1), "payload"),
+    (lambda e: lifecycle(e, "end"), "strategic"),
+    (lambda e: lifecycle(e, "distress", direction="left"), "strategic"),
+    (lambda e: {**lifecycle(e, "begin"), "request": "x"}, "payload"),
+    (lambda e: {**lifecycle(e, "begin"), "t": "propose"}, "payload"),
+    (lambda e: "begin", "payload"),
+])
+def test_a_refused_lifecycle_command_changes_nothing(msg, code):
+    e = ready_engine()
+    before = e.snapshot()
+    with pytest.raises(Invalid) as refused:
+        e.lifecycle(msg(e))
+    assert refused.value.code == code and e.snapshot() == before
+
+
+def test_the_lifecycle_command_is_one_revision_and_leaves_no_decision_behind():
+    e = ready_engine()
+    revision = e.s["revision"]
+    assert e.lifecycle(lifecycle(e, "begin"), now=5) is True
+    assert e.s["phase"] == "before_trick" and e.s["proposal"] is None and e.s["revision"] == revision + 1
+    with pytest.raises(Invalid) as again:
+        e.lifecycle(lifecycle(e, "begin"))
+    assert again.value.code == "phase"

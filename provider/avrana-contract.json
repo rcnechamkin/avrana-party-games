@@ -5,9 +5,9 @@
   "session_protocol": {
     "version": "avrana.party-session/v0",
     "vendored": "core/party_protocol.py",
-    "vendored_sha256": "41bb7a2dd875ec865437b5b063641762f693a05b60e7ca9e89e94fed422ac2f7",
+    "vendored_sha256": "57e9833060dd74a06ddc36eeb0202caae9356141e15ad4cfdf184e817874983b",
     "vectors": "tests/vectors/party-session.v0.json",
-    "vectors_sha256": "b6c7f347aa39d8d54c7df2f37a9d5fd62a41f6312dbd1377be4fee208e579245"
+    "vectors_sha256": "07474dde39d46ecbc8c2f989db4c748ed63eb98f8740a6250807dc668493f794"
   },
   "result": {
     "schema": "avrana.game-result/v1",

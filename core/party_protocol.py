@@ -46,6 +46,13 @@ a fresh ticket. The policy for handling steps is AVR-79, not this file.
 Tickets are single-use at the game side (SpentTickets, used by GameSide.admit): the second
 presentation of the same ticket string is Invalid('replay'). Reconnects fetch a fresh ticket.
 
+The host claim: a ticket may carry `host`, true or false: whether its participant was the Party
+Host when the party minted it. The party is the only authority for its host (succession
+included), and a game never keeps a host of its own: for something only the host may do, the
+browser fetches a fresh ticket and the game reads the claim from that one ticket
+(GameSide.present). A ticket without the field comes from a party that does not say; a verifier
+that predates the field ignores it.
+
 Results: `ended` may carry one optional `result` object, the game's structured result for that
 session. Its format is versioned on its own (`avrana.game-result/v1`, avrana.party.result,
 ADR 0015) and is not part of this protocol's version: this file only carries it, signed, bound to
@@ -217,9 +224,14 @@ def _base(typ, iss, aud, sid, now, ttl):
 
 
 # ---- tickets (party -> browser -> game) --------------------------------------------------------
-def mint_ticket(key, game, sid, participant, role, now=None, ttl=TICKET_TTL):
+def mint_ticket(key, game, sid, participant, role, now=None, ttl=TICKET_TTL, host=None):
     """What the party hands one browser for one game session. Carries no device or member id,
-    and no name: the game already has display names from the launch roster."""
+    and no name: the game already has display names from the launch roster.
+
+    `host` (True or False) says whether this participant was the Party Host when the ticket was
+    minted. It is the only way a game learns who the host is, and it is true only of that moment:
+    a game that lets the host do something asks for a fresh ticket with the request
+    (GameSide.present) and keeps no host of its own. None leaves the claim out."""
     if role not in ROLES or not PID.match(participant) or not GAME_ID.match(game):
         raise ValueError('bad ticket fields')
     payload = _base('ticket', 'party', game, sid, now, ttl)
@@ -227,12 +239,18 @@ def mint_ticket(key, game, sid, participant, role, now=None, ttl=TICKET_TTL):
     # so a single-use ledger (AVR-52) never mistakes a fresh reconnect ticket for a replay. An
     # older verifier ignores the field; the vectors (minted without it) still verify.
     payload.update({'pid': participant, 'role': role, 'jti': secrets.token_hex(8)})
+    if host is not None:
+        if type(host) is not bool:
+            raise ValueError('bad ticket fields')
+        payload['host'] = host
     return seal(key, payload)
 
 
 def verify_ticket(key, ticket, game, current_sid, now=None):
-    """Game side, at the WebSocket hello. Returns {'participant', 'role', 'sid'} or raises Invalid.
-    `current_sid` is the session this game server is running now (None: no party session)."""
+    """Game side. Returns {'participant', 'role', 'sid', 'host'} or raises Invalid.
+    `current_sid` is the session this game server is running now (None: no party session).
+    `host` is the ticket's claim (True or False), or None for a ticket that says nothing about
+    the host: a party from before the claim. None is never read as False or as True."""
     p = unseal(key, ticket, 'ticket', game, now)
     if p.get('iss') != 'party':
         raise Invalid('issuer')
@@ -240,7 +258,9 @@ def verify_ticket(key, ticket, game, current_sid, now=None):
         raise Invalid('session')
     if p.get('role') not in ROLES or not isinstance(p.get('pid'), str) or not PID.match(p['pid']):
         raise Invalid('participant')
-    return {'participant': p['pid'], 'role': p['role'], 'sid': p['sid']}
+    host = p.get('host')
+    return {'participant': p['pid'], 'role': p['role'], 'sid': p['sid'],
+            'host': host if type(host) is bool else None}
 
 
 def game_token(key, sid, participant):
@@ -362,6 +382,7 @@ class GameSide:
         side = GameSide(read_key(path), 'bluff')
         roster = side.on_launch(msg)          # reset the room; seat these players your way
         token, role = side.admit(ticket)      # at hello: stable per participant, None if refused
+        who = side.present(ticket)            # the same, with the participant and the host claim
         side.on_end(msg)                      # party ended it: back to a non-running state
         report = side.ended('completed')      # then POST it to the party's ended route
         report = side.ended('completed', result=…)   # the same, with a structured result
@@ -389,13 +410,23 @@ class GameSide:
         self.sid, self.roster = None, []
         return p['sid']
 
-    def admit(self, ticket, now=None):
-        """(game token, role) for a valid ticket of the running session, else raises Invalid.
-        A ticket is single-use: presenting it again raises Invalid('replay')."""
+    def present(self, ticket, now=None):
+        """A valid ticket of the running session, spent: {'token', 'role', 'participant',
+        'host'}, else raises Invalid. A ticket is single-use: presenting it again raises
+        Invalid('replay'). `host` is the party's word at the moment it minted this ticket (True,
+        False, or None from a party that does not say), so a host's action carries a fresh
+        ticket of its own and the game keeps no copy of who the host is."""
         t = verify_ticket(self.key, ticket, self.game, self.sid, now)
         exp = unseal(self.key, ticket, 'ticket', self.game, now)['exp']
         self.spent.spend(ticket, exp, now)
-        return game_token(self.key, t['sid'], t['participant']), t['role']
+        return {'token': game_token(self.key, t['sid'], t['participant']), 'role': t['role'],
+                'participant': t['participant'], 'host': t['host']}
+
+    def admit(self, ticket, now=None):
+        """(game token, role) for a valid ticket of the running session, else raises Invalid.
+        A ticket is single-use: presenting it again raises Invalid('replay')."""
+        t = self.present(ticket, now)
+        return t['token'], t['role']
 
     def ended(self, outcome, now=None, result=None):
         """The report for the party; the session stops being admissible here at once."""
