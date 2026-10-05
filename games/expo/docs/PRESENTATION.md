@@ -50,11 +50,12 @@ status line moves between the two top-bar buttons so that its row goes to the bo
 **The status line is always read whole** (owner direction 2026-10-05). It is the one live
 instruction. Three things make that true at every size, 360x600 included:
 
-- *Sentences of bounded length.* A sentence that waits for people names one and counts the rest
-  ("Waiting for Ava and 2 more to reconnect. Your table is preserved."); the crew strip and the
-  crew sheet name every seat. A decision's status asks its question without the sentence of
-  consequence ("Your answer is needed: Activate distress and pass one color card left?"); the
-  decision itself, in the trick's place, shows both sentences.
+- *Sentences of bounded length, in the status line only.* There, a sentence that waits for people
+  names one and counts the rest ("Waiting for Ava and 2 more to reconnect. Your table is
+  preserved."); the crew strip and the crew sheet name every seat, and a decision in the trick's
+  place lists everyone who has not answered, by name. A decision's status asks its question
+  without the sentence of consequence ("Your answer is needed: Activate distress and pass one
+  color card left?"); the decision itself shows both sentences.
 - *Its own place first.* A strip above the board (two lines), or between the top-bar buttons on a
   screen of 700 px or less (three lines).
 - *Room taken from the mission stage when that is not enough.* `fitStatus` (client.js) measures
@@ -63,8 +64,20 @@ instruction. Three things make that true at every size, 360x600 included:
   mission's title, trick counter and clock, which stay. Those lines come back with the next
   shorter sentence. The mission stage's size does not change.
 
-In the trick's place a decision shows its question, its count and its answers; its heading is
-for a screen reader only. The reason the hand cannot be played wraps instead of being cut.
+**A decision's answers are in the dock.** In the trick's place a decision is its sentences: the
+question, then for someone who must answer the count and "Your answer is below, beside your
+hand.", and for someone waiting the full list of who has not answered. Its heading is for a
+screen reader only. The two answers (Agree or Accept, and Decline) take the place of Radio and
+Play in the dock, under "Your answer (decision)", until the decision is answered: there they are
+whole 44 px targets at every size and seat count and can never be scrolled out of reach, and the
+sentences have the whole of the trick's place. (On the result, the answers stay under the
+question.) `longestStatusesFit` asserts both answers on screen and full targets wherever the
+viewer must answer. The reason the hand cannot be played wraps instead of being cut.
+
+While a long sentence is over the mission stage on a short screen, a lost connection is said
+("Reconnecting…") in the place between the top-bar buttons that the status line left. `fitStatus`
+runs after every draw, when the connection's words appear or go, and on the Party's countdown
+tick.
 `criticalTextWhole` (tests/_expo_phone.mjs) asserts that the status line, a decision's sentences,
 the radio's sentence and rule and the hand's reason are not cut by an ellipsis, a line clamp,
 their box, a scrolled panel or the screen; `longestStatusesFit` draws the longest status
@@ -75,19 +88,25 @@ same, with the one-viewport contract.
 name's row carries the turn marker, the Captain mark and the name, and nothing else: the hand
 size and tricks are abbreviated ("8c · 0t"), the radio state is its icon and one word, and the
 Party Host tag is the letter H on the second line (the tile's label for a screen reader and the
-crew sheet say "Party Host" in full). With two or three seats the tag reads HOST beside the name
-and the roles are spelled out under it. The playtests require every name whole and at least
+crew sheet say "Party Host" in full). With three seats it is the letter H beside the name (HOST
+did not leave a four-letter name whole at 360 px beside the turn marker and the Captain mark),
+with two it reads HOST, and on screens taller than 700 px the roles are spelled out under it. The playtests require every name whole and at least
 28 px of the row left for it.
 
 **Who is winning an unfinished trick** is the view's `trick_leading`, the server's word (the
 function that resolves a trick, asked about the cards on the table: see
 [GAME_STATE](GAME_STATE.md#the-seat-leading-an-unfinished-trick)). That seat's place in the trick
 carries the word WINNING, with an outline; the lead keeps LEAD, and a seat can carry both. The
-live region says "Ava is winning the trick." after the news, so a screen reader hears it when it
-changes and not with every card. The page compares seats with that field and never looks at a
-card to decide anything (a static test bans turning a card's number into a number, comparing it
-or sorting by it in `client.js`). It is public table state: nothing in the hand changes
-appearance because of it, and `trickShows` asserts that.
+live region carries "Ava is winning the trick." after the news. The intent is that a screen
+reader hears it when it changes and not with every card; that is not established: `#status` is
+`role="status"`, which is announced whole by default, so a reader may repeat the sentence with
+each change of the line, and no screen reader has been listened to. The page compares seats with
+that field and never looks at a card to decide anything. What guards that is behaviour:
+`trickShows` requires the tag on exactly the seat the view names, in a real browser, and the
+field comes from the server. A static test also catches the obvious forms of card arithmetic in
+`client.js` (a card's number made into a number, compared or sorted); it is a tripwire and can be
+written around. It is public table state: nothing in the hand changes appearance because of it,
+and `trickShows` asserts that.
 
 **A timed mission's clock.** The deadline never moves (owner decision 2026-10-05). The chip reads
 "Clock running" until `expiry` is reached on the server's clock and "Clock at zero" after, and

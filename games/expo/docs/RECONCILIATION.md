@@ -1485,14 +1485,17 @@ the layout continues provisionally); the others stand.
   the first card, during the hold, with a result, and outside play. Not in the snapshot. No
   mission hides a played card, so no mission withholds it. Five engine tests
   ([GAME_STATE](GAME_STATE.md#the-seat-leading-an-unfinished-trick)). The page shows it as the
-  word WINNING on that seat's place and says it in the live region when it changes; `trickShows`
+  word WINNING on that seat's place and puts it in the live region (meant to be heard when it
+  changes; not established, no screen reader was used); `trickShows`
   asserts the tag is on the seat the view names and on no other, and that nothing in the hand is
-  marked; a static test bans card arithmetic in `client.js`.
+  marked; a static test catches the obvious forms of card arithmetic in `client.js` (it can be
+  written around; the guard is `trickShows` and the server's field).
 - **The status line is read whole** at every size: bounded sentences, three lines between the
   top-bar buttons on short screens, and room taken from the mission stage's lesser lines when a
   sentence still does not fit ([PRESENTATION](PRESENTATION.md#the-five-zones)). Words changed to
   make that possible, for the owner to accept or send back: a sentence that waits for several
-  people names one and counts the rest ("Ava and 2 more") in the status line and in a decision;
+  people names one and counts the rest ("Ava and 2 more") in the status line (a decision lists
+  every name, as before);
   a decision's status asks the question without its second sentence; a decision's heading is no
   longer shown (a screen reader still has it); the hand's reason wraps.
 - **The fixed deadline on the page**: "Clock at zero" and "The mission clock is at zero" once
@@ -1516,8 +1519,57 @@ viewport sizes on Windows 11, by the author, with `EXPO_MISSION=1`:
 | 4 humans, mission 9, watching host, old Party, whole-repository `pytest`, Linux CI | not run in this round |
 | A real phone, Safari, a screen reader, accessibility validation | not run |
 
+The orchestrator ran the same set at `7c77b29` (this branch with the updated base merged, `main`
+with AVR-273): director 21, EXPO pytest 1203 passed, gates clean, playtests high 3, 2 and 5,
+medium, low, reduced motion, director off, Party 3 and 5, all PASS. An independent review there
+checked `trick_leading` against 5,454 partial tricks and 25,868 permutations with no discrepancy.
+
 Not verified in this round: a real deadline passing during a real hold in a browser (the page's
 reading of it is checked on a drawn view whose `expiry` passes while the page watches, and the
 engine's side by the AVR-246 tests); `say()` rebuilding the live region (read, not exercised);
 how a screen reader speaks "is winning the trick".
 
+**Round 3, 2026-10-05: repairs after the review of `7c77b29`** (passed with findings, none
+important). Client, tests and documents only.
+
+- **A decision's answers could be cut off** at 360x600 with two players when the question took
+  three lines (the captain's offer with two long names): the panel scrolled and the buttons slid
+  under its edge. The answers are now in the dock, in the place of Radio and Play, until the
+  decision is answered; the trick's place holds the sentences. `longestStatusesFit` asserts both
+  answers on screen and as full targets wherever the viewer must answer, and
+  `criticalTextWhole` covers the answers and the dock's labels. The drawn cases are reachable
+  ones (two players are asked to begin, not for distress).
+- **A decision lists everyone who has not answered again**, by name; the bounded form is the
+  status line's only. Someone who is only waiting is shown that list and not the count.
+- **`fitStatus` also runs** when the connection's words appear or go and on the Party's countdown
+  tick under a sheet. While a long sentence is over the mission stage, "Reconnecting…" is said
+  between the top-bar buttons. Checked in the lost-connection step of the standalone playtest.
+- **More sentences in `longestStatusesFit`**: the Party's countdown to Begin, the captain to play
+  for Tonoja, and the "Watching · " forms of those and of the clock at zero.
+- **Found while doing it:** with three seats the HOST tag did not leave a four-letter name whole
+  at 360 px on a tile that is also the Captain's and whose turn it is (the check added in the
+  first repairs caught it when the deal made that seat the captain). The tag is the letter H from
+  three seats up. The dock's label "Captain · Tonoja (game role)" was cut; it reads "For Tonoja
+  (game role)". The standalone playtest now prints its failure before its cleanup, which could
+  hide it.
+- Documents corrected: what `trick_leading` reads; the static test is a tripwire; the live
+  region's behaviour with a screen reader is intent, not fact.
+
+**For the owner, from rounds 2 and 3** (built provisionally; none changed without your word):
+
+1. The WINNING tag's prominence (a word and an outline on the seat's place, over the lower part
+   of the card when the same seat also carries LEAD).
+2. "Ava and 2 more" in the status line, where every name was listed.
+3. A decision's heading ("Crew decision", "Captain's offer") is not shown to sighted users.
+4. A decision's status line asks the question without its sentence of consequence; the full
+   text is in the decision.
+5. A long status covers the mission stage's objective line and both chips (attempt or clock,
+   and radio) while it is up.
+6. "The mission clock is at zero" replaces the turn sentence after the deadline, until the
+   server sends the result.
+7. A deadline's failure arriving in one batch with a trick suppresses that trick's beats.
+8. New in round 3: a decision's answers are in the dock, apart from the question; someone
+   waiting on a decision sees who is missing and not the count; the Party Host tag is H with
+   three seats; "For Tonoja (game role)".
+
+The runs of this round are recorded in the commit that follows it.

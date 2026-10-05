@@ -148,7 +148,7 @@ async function labels(member, g) {
     tiles: [...document.querySelectorAll("#seats .seat")].map(n => ({seat: n.dataset.key.slice(5), said: n.getAttribute("aria-label")})), me: ST.you?.pid || null, seat: ST.game.me?.seat || null}));
   if (g.lifecycle === "host") assert.match(s.host, /^Party Host \(table control\)/, `${member.name}: table control is the Party Host's`);
   else assert.match(s.host, /^Crew \(decides (for now|together)\)/);
-  if (s.action) assert.match(s.action, !s.seat ? /^Watching \(no seat\)/ : s.seat === g.captain ? /^Captain( · Tonoja)? \(game role\)/ : /^Crew member \(game role\)/, `${member.name}: the in-game role is named as one`);
+  if (s.action) assert.match(s.action, !s.seat ? /^Watching \(no seat\)/ : s.seat === g.captain ? /^(Captain|For Tonoja) \(game role\)/ : /^Crew member \(game role\)/, `${member.name}: the in-game role is named as one`);
   const hostSeat = (await state(party.members.find(m => m.pid === party.host).page)).you?.pid ?? null;
   for (const tile of s.tiles) {
     assert.equal(/Captain/.test(tile.said), tile.seat === g.captain, "only the captain's tile says Captain");

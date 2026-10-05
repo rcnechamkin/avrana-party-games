@@ -340,7 +340,17 @@ try{
     assert.deepEqual(await words(),{text:"Connected",shown:false});
     await pg.evaluate(()=>{window.__ws=conn.ws;conn.ws=null;});
     assert.deepEqual(await words(),{text:"Reconnecting…",shown:true},"a lost connection is said in words on a short screen");
-    await oneViewport(pg,"while reconnecting");
+    await oneViewport(pg,"while reconnecting");await criticalTextWhole(pg,"while reconnecting");
+    // The words narrow the status line with no new view: a long sentence is still whole.
+    {
+      const real=await state(pg);
+      await pg.evaluate(st=>render({...st,players:st.players.map(p=>({...p,name:"WWWWWWWWWWWWWW"})),game:{...st.game,away:st.game.seats.filter(s=>s!=="tonoja"&&s!==st.game.me.seat).slice(0,1)}}),real);
+      await pg.evaluate(()=>{conn.ws=window.__ws;updateConnection();});await criticalTextWhole(pg,"a long status, connected");
+      await pg.evaluate(()=>{conn.ws=null;updateConnection();});await criticalTextWhole(pg,"a long status, the connection just lost");
+      assert.deepEqual(await pg.evaluate(()=>{const n=document.getElementById("conn"),b=n.getBoundingClientRect(),top=document.elementFromPoint(b.left+b.width/2,b.top+b.height/2);return [n.textContent,getComputedStyle(n).display!=="none",b.top>=0&&b.left>=0&&b.right<=innerWidth,top===n];}),["Reconnecting…",true,true,true],"and the lost connection is still said in words, uncovered");
+      await pg.screenshot({path:path.join(OUT,"status-long-reconnecting.png")});await oneViewport(pg,"a long status, the connection just lost");
+      await pg.evaluate(st=>render(st),real);
+    }
     await pg.evaluate(()=>{conn.ws=window.__ws;});
     assert.deepEqual(await words(),{text:"Connected",shown:false});
   }
@@ -565,6 +575,9 @@ try{
   console.log(`PASS: live ${HUMANS}-player mission, one-viewport play on ${PHONES.length} phone sizes, result takeover, hostile request, masked frames and reload; refusals checked: ${Object.keys(checked).filter(k=>checked[k]).join(", ")}; `+
     `presentation ${EXPECT_FX||"off"}${process.env.EXPO_MOTION==="reduced"?" (reduced motion)":""}: five zones, crew strip, trick, card states, radio ${pres.radio?"transmitted":"unavailable"}${pres.marker?" with marker":""}, `+
     `${pres.hold} resolving hold(s) checked${pres.heldReload?", reconnect during a hold":""}, cause shown, director sent nothing`,OUT);
+}catch(e){
+  console.error("FAILED:",e);                    // said before the cleanup, which may fail too
+  throw e;
 }finally{
   try{if(!finished)await endTable();}
   finally{await browser.close();}

@@ -197,7 +197,7 @@ export async function withLongText(pg, check) {
 export async function criticalTextWhole(pg, label) {
   const cut = await pg.evaluate(() => {
     const out = [], app = document.getElementById("app").getBoundingClientRect();
-    const sel = ["#status", "#status-now", "#hand-reason", ".decision > p", ".decision .why", ".radio-ask", ".radio-console .why"];
+    const sel = ["#status", "#status-now", "#hand-reason", '[data-key="agree"]', '[data-key="decline"]', ".dock-label", ".decision .choice-row", ".decision > p", ".decision .why", ".radio-ask", ".radio-console .why"];
     for (const s of sel) for (const n of document.querySelectorAll(s)) {
       if (!n.textContent.trim() || n.offsetParent === null || n.closest("[hidden]")) continue;
       const b = n.getBoundingClientRect(), why = [];
@@ -224,25 +224,38 @@ export async function criticalTextWhole(pg, label) {
    every phone size: each is drawn from a copy of the real state with one thing changed, and each
    is whole, with everything else still on one screen. Returns the sentences that were checked. */
 export async function longestStatusesFit(pg, label, shots = null) {
-  const real = await pg.evaluate(() => ST), size = pg.viewport(), said = new Set();
+  const real = await pg.evaluate(() => ST), size = pg.viewport(), said = new Set(); let answered = 0;
   const cases = await pg.evaluate(st => {
     const g = st.game, me = g.me && g.me.seat, others = g.seats.filter(s => s !== "tonoja" && s !== me);
     const idle = {proposal: null, away: [], result: null, resolving: null};
     const ask = (payload, more = {}) => ({...idle, proposal: {payload, votes: [], recipient: null, ...more}});
     const stuck = reason => g.me ? {me: {...g.me, legal_cards: [], play_reason: reason}} : {};
+    const crew = g.seats.filter(s => s !== "tonoja").length > 2, open = crew ? {kind: "distress", direction: "right"} : {kind: "begin"};
+    const preparing = {...idle, stage: "assistance", trick: [], last_trick: null, ...stuck("Finish mission preparation before playing.")};
+    const late = {...idle, stage: "before_trick", trick: [], expiry: 1, resolving: g.last_trick ? {trick: g.last_trick.index, until: 2} : null, ...stuck("The trick is being resolved.")};
+    const watching = {me: null};
     const list = [
       ["one seat away", {...idle, away: others.slice(0, 1), ...stuck("Waiting for the crew to reconnect.")}],
       ["every other seat away", {...idle, away: others, ...stuck("Waiting for the crew to reconnect.")}],
-      ["distress asked", ask({kind: "distress", direction: "right"})],
+      // Distress is a crew of three or more; two players are asked to begin.
+      [crew ? "distress asked" : "begin asked", ask(open)],
       ["all tasks to one seat asked", ask({kind: "assign", task: "all", owner: others[0]})],
       ["next mission asked", ask({kind: "next", mission: 32})],
-      ["waiting for one answer", ask({kind: "distress", direction: "left"}, {votes: g.seats.filter(s => s !== "tonoja" && s !== others[0])})],
-      ["waiting for every other answer", ask({kind: "distress", direction: "left"}, {votes: me ? [me] : []})],
+      ["waiting for one answer", ask(open, {votes: g.seats.filter(s => s !== "tonoja" && s !== others[0])})],
+      ["waiting for every other answer", ask(open, {votes: me ? [me] : []})],
       ["a captain who decides", {...idle, stage: "allocation", trick: [], selector: g.captain, mission: {...g.mission, allocation: "captain_one"}, ...stuck("Finish mission preparation before playing.")}],
       ["tasks assigned", {...idle, stage: "assistance", trick: [], begin_at: null, ...stuck("Finish mission preparation before playing.")}],
       ["another seat to play", {...idle, stage: "in_trick", turn: others[0], ...stuck("It is another crew member’s turn.")}],
-      ["a held trick after the deadline", {...idle, stage: "before_trick", trick: [], expiry: 1, resolving: g.last_trick ? {trick: g.last_trick.index, until: 2} : null, ...stuck("The trick is being resolved.")}],
+      ["a held trick after the deadline", late],
+      // Someone with no seat reads the same sentences after "Watching · ".
+      ["watching: a held trick after the deadline", {...late, ...watching}],
+      ["watching: one seat away", {...idle, away: others.slice(0, 1), ...watching}],
+      // A Party round: the host's Begin opens after a moment in which the crew may ask for distress.
+      ["the host's Begin is counting down", {...preparing, lifecycle: "host", begin_at: Date.now() / 1000 + 9}],
+      ["watching: the host's Begin is counting down", {...preparing, lifecycle: "host", begin_at: Date.now() / 1000 + 9, ...watching}],
     ];
+    if (g.seats.includes("tonoja")) list.push(["the captain to play for Tonoja", {...idle, stage: "in_trick", turn: "tonoja", ...stuck("It is another crew member’s turn.")}],
+      ["watching: the captain to play for Tonoja", {...idle, stage: "in_trick", turn: "tonoja", ...watching}]);
     if (me && me !== g.captain) list.push(["the captain's offer", ask({kind: "assign", task: "all", owner: me}, {recipient: me})]);
     return list.map(([what, patch]) => [what, {...st, players: st.players.map(p => ({...p, name: "WWWWWWWWWWWWWW"})), game: {...g, ...patch}}]);
   }, real);
@@ -254,11 +267,17 @@ export async function longestStatusesFit(pg, label, shots = null) {
         const where = `${label}: ${what}`;
         await criticalTextWhole(pg, where);
         await oneViewport(pg, where);
+        // A decision this viewer must answer: both answers are whole, on screen and full targets.
+        if (await pg.evaluate(() => Boolean(ST.game.proposal && !ST.game.result && mustAnswer(ST.game)))) {
+          for (const k of ["agree", "decline"]) await onScreen(pg, k, where);
+          await touchTargets(pg, where); answered++;
+        }
         said.add(await pg.evaluate(() => document.getElementById("status-now").textContent));
         if (shots) await pg.screenshot({path: `${shots}/status-${phone.width}x${phone.height}-${what.replace(/[^a-z]+/gi, "-")}.png`});
       }
     }
   } finally { await pg.setViewport(size); await pg.evaluate(st => render(st), real); }
+  if (real.game.me) assert.ok(answered >= PHONES.length, `${label}: a decision to answer was drawn at every size`);
   return [...said];
 }
 
@@ -324,7 +343,7 @@ export async function crewLegible(pg, label, host = null) {
     assert.ok(t.room >= 28, `${who}: the name keeps at least 28 px of its row (${Math.round(t.room)} px)`);
     assert.equal(Boolean(t.crown), t.seat === m.g.captain, `${who}: the Captain mark is on the captain and nobody else`);
     assert.equal(Boolean(t.hostTag), host !== null && t.seat === host, `${who}: the Party Host tag is on the host and nobody else`);
-    if (t.hostTag) assert.ok(t.hostTag.shown && t.hostTag.text === (m.g.seats.length > 3 ? "H" : "HOST") && t.hostTag.size >= 8 && !t.hostTag.clipped, `${who}: the host tag is readable`);
+    if (t.hostTag) assert.ok(t.hostTag.shown && t.hostTag.text === (m.g.seats.length > 2 ? "H" : "HOST") && t.hostTag.size >= 8 && !t.hostTag.clipped, `${who}: the host tag is readable`);
     assert.equal(Boolean(t.pip) && t.active, playing && t.seat === m.g.turn, `${who}: turn emphasis is on the seat whose turn it is`);
     if (m.g.away.includes(t.seat)) assert.equal(t.count.text, "Reconnecting…", `${who} says it is reconnecting`);
     else assert.match(t.count.text, new RegExp(`^${m.g.counts[t.seat]}(c| cards) `), `${who} shows the hand size the view gives`);

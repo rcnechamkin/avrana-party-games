@@ -21,7 +21,7 @@ const $ = id => document.getElementById(id);
 let ST = null, pending = false, pendingTimer = null;
 const ui = { sheet: null, opener: null, selected: null, handView: "mine", turnKey: "",
              radio: false, radioCard: null, radioMeaning: null, resultKey: "", resultHidden: false, armed: null,
-             grace: 0, modal: null, partySig: "" };
+             grace: 0, modal: null, partySig: "", clockOut: false, connUp: true, radioBack: null };
 const symbols = {blue:"○",green:"△",pink:"□",yellow:"×",submarine:"◆"};
 const suitNames = {blue:"blue",green:"green",pink:"pink",yellow:"yellow",submarine:"sub"};
 const OBJECTIVES = {
@@ -588,10 +588,11 @@ function drawCrew(g) {
     if (turn) top.append(el("span", "▶", "turn-pip"));
     if (seat === g.captain) top.append(el("span", "♛", "crown"));
     top.append(el("b", name(seat)));
-    // The Party Host's tag never costs a narrow tile its name: with four or five seats it sits
+    // The Party Host's tag never costs a tile its name: it is the letter H from three seats up
+    // (HOST with two), and with four or five seats it sits
     // on the second line as the letter H (the tile's label, and the crew sheet, say Party Host).
     const tight = g.seats.length > 3;
-    const tag = seat === host ? el("span", tight ? "H" : "HOST", "host-tag") : null;
+    const tag = seat === host ? el("span", g.seats.length > 2 ? "H" : "HOST", "host-tag") : null;
     if (tag) tag.title = "Party Host";
     if (tag && !tight) top.append(tag);
     const roles = [seat === g.captain ? "Captain" : null, seat === host ? "Party Host" : null].filter(Boolean);
@@ -628,16 +629,25 @@ function drawStage(g) {
   stage.append(node);
 }
 
-function decisionNode(g) {
+// A pending decision. In the trick's place it is the question and who it waits for, and the two
+// answers are in the dock, beside the hand, where they are whole at every size and can never be
+// scrolled out of reach. On the result (`inline`) the answers stay under the question.
+function answers(g) {
+  const row = el("div", undefined, "choice-row");
+  row.append(button(g.proposal.recipient ? "Accept" : "Agree", () => send("confirm",{yes:true}), "agree", false, "", "btn-primary"), button("Decline", () => send("confirm",{yes:false}), "decline"));
+  return row;
+}
+function decisionNode(g, inline=false) {
   const box = el("section", undefined, "decision"); box.setAttribute("aria-label", "Crew decision");
   const asked = g.proposal.recipient;
   if (asked) box.append(el("h2","Captain’s offer"), el("p",`${name(g.captain)} offers all tasks to ${name(asked)}.`), el("p",`Only ${name(asked)} can accept or decline.`,"muted"));
-  else box.append(el("h2","Crew decision"), el("p",question(g)), el("p",`${g.proposal.votes.length} / ${g.seats.filter(s=>s!=="tonoja").length} confirmed · everyone must agree`,"muted"));
-  if (mustAnswer(g)) {
-    const row = el("div",undefined,"choice-row");
-    row.append(button(asked?"Accept":"Agree",()=>send("confirm",{yes:true}),"agree",false,"","btn-primary"),button("Decline",()=>send("confirm",{yes:false}),"decline"));
-    box.append(row);
-  } else if (!g.away.length) box.append(why(`Waiting for ${whoOf(stillAsked(g))}.`));
+  else {
+    // The count is for whoever still has to answer; someone waiting is told who is missing.
+    box.append(el("h2","Crew decision"), el("p",question(g)));
+    if (mustAnswer(g) || g.away.length) box.append(el("p",`${g.proposal.votes.length} / ${g.seats.filter(s=>s!=="tonoja").length} confirmed · everyone must agree`,"muted"));
+  }
+  if (mustAnswer(g)) { if (inline) box.append(answers(g)); else box.append(el("p", "Your answer is below, beside your hand.", "muted answer-below")); }
+  else if (!g.away.length) box.append(why(`Waiting for ${names(stillAsked(g))}.`));
   return box;
 }
 
@@ -912,8 +922,15 @@ function tableZone(g) {
 }
 
 function actionZone(g) {
+  if (g.proposal && !g.result && mustAnswer(g)) {
+    // A decision this player must answer comes before a card: the two answers take the place
+    // of Radio and Play until it is answered.
+    const z = zone("Your answer", "decision"); z.id = "dock-action"; z.classList.add("answering");
+    z.append(answers(g));
+    return z;
+  }
   const tonoja = ui.handView === "tonoja";
-  const z = zone(!g.me ? "Watching" : g.me.seat === g.captain ? (tonoja ? "Captain · Tonoja" : "Captain") : "Crew member", g.me ? "game role" : "no seat");
+  const z = zone(!g.me ? "Watching" : g.me.seat === g.captain ? (tonoja ? "For Tonoja" : "Captain") : "Crew member", g.me ? "game role" : "no seat");
   z.id = "dock-action";
   const row = el("div", undefined, "action-row");
   if (g.me) {
@@ -1036,7 +1053,7 @@ function drawResult(g, st) {
   }
   if (facts.children.length) card.append(facts);
   const controls = el("div", undefined, "result-actions");
-  if (g.proposal) controls.append(decisionNode(g));
+  if (g.proposal) controls.append(decisionNode(g, true));
   else if (g.away.length) controls.append(why(`Waiting for ${names(g.away)} to reconnect.`));
   else if (mayMoveOn(g)) {
     if (hostOwned(g)) controls.append(el("p", "You are the Party Host: you choose what happens next.", "result-who"));
@@ -1195,6 +1212,8 @@ function updateConnection() {
   if ($("conn").textContent !== text) $("conn").textContent = text;
   $("conn-dot").classList.toggle("down", !up);
   $("conn").classList.toggle("down", !up);        // a lost connection is always said in words
+  // On a short screen the words share the status line's place and narrow it: fit it again.
+  if (up !== ui.connUp) { ui.connUp = up; fitStatus(); }
 }
 setInterval(() => {
   updateTimer(); updateConnection();
@@ -1205,7 +1224,7 @@ setInterval(() => {
   const moved = sig !== ui.partySig; ui.partySig = sig;
   const ticked = Boolean(ST?.game && !$("game").hidden && graceLeft(ST.game) !== ui.grace);
   if (ST && moved) draw();
-  else if (ticked && modalTop()) { ui.grace = graceLeft(ST.game); drawStatus(ST.game); drawDock(ST.game); }   // leave what is on top alone
+  else if (ticked && modalTop()) { ui.grace = graceLeft(ST.game); drawStatus(ST.game); drawDock(ST.game); fitStatus(); }   // leave what is on top alone
   else if (ticked) draw();
   if (ST?.phase === "countdown") $("cd").textContent = String(Math.max(1, Math.ceil((ST.deadline - conn.now())/1000)));
 }, 250);

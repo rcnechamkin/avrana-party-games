@@ -296,7 +296,8 @@ viewer including one with no seat: the seat whose card is winning the trick on t
 - **One rule, one function.** It is `rules.winner`, the function that resolves a completed trick,
   asked about the cards played so far (`Engine.trick_leading`). No second copy of the rule
   exists, in the engine or in the client; the code that resolves a trick was not touched.
-- **Public by construction.** It reads `trick` and nothing else. Every card on the table is face
+- **Public by construction.** It reads `trick`, `result`, `resolving` and `phase`, all of them
+  public, and nothing else: no hand and no covered card. Every card on the table is face
   up for everyone in every mission (currents hides a declaration, never a played card; no mission
   hides a played card or its strength), so no mission needs it withheld. If a mission ever hides
   a played card, this field must be none there.
