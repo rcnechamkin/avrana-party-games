@@ -4,7 +4,7 @@ import os
 import time
 
 from core.session import GameSession, HostRefused, Player
-from .content import catalog, mission
+from .content import catalog, mission, unavailable
 from .engine import LIFECYCLE, Engine, Invalid
 from .storage import SnapshotStore
 
@@ -19,7 +19,8 @@ CLOCK_RANGE = 1e12                # seconds; a clock reading outside it is not a
 
 # Who moves a table through its routine steps (AVR-252). In a Party round they are the Party
 # Host's: a seat that proposes one is told so. The words are shown to the player as they are.
-HOST_ONLY = {'begin': 'Only the Party Host can begin the mission.',
+HOST_ONLY = {'setup': 'Only the Party Host can set up the mission.',
+             'begin': 'Only the Party Host can begin the mission.',
              'retry': 'Only the Party Host can retry the mission.',
              'next': 'Only the Party Host can choose the next mission.'}
 PARTY_END = 'In a Party, the Party Host ends EXPO for everyone.'
@@ -112,18 +113,21 @@ class ExpoSession(GameSession):
     def start(self, token):
         if self.recovery_error:
             return [self.fx('invalid', to=token, msg=self.recovery_error)]
-        n = len(self._connected_ready())
-        choice = next((m for m in catalog(n, self.settings['timed']) if m['id'] == self.settings['mission']), None)
-        if not choice or not choice['enabled']:
-            return [self.fx('invalid', to=token, msg=choice['reason'] if choice else 'Invalid mission.')]
+        reason = unavailable(self.settings['mission'], len(self._connected_ready()), self.settings['timed'])
+        if reason:
+            return [self.fx('invalid', to=token, msg=reason)]
         return super().start(token)
 
     def game_start(self):
         self._grace = None
         humans = [self.players[t].pid for t in self.participants]
         try:
+            # A Party round skips the lobby, so its crew chooses in the game instead: the table
+            # opens in `setup` and nothing is dealt until that is confirmed (AVR-245, owner
+            # decision 2026-10-05). The settings are what is offered first. Nothing starts it by
+            # itself: no timer is armed and an unconfirmed table stays where it is.
             self.engine = Engine(humans, self.rng, self.settings['mission'], self.settings['timed'],
-                                 self.settings['tonoja_position'])
+                                 self.settings['tonoja_position'], setup=self.party_round)
         except ValueError as e:
             self.engine = None
             self.phase = 'lobby'
@@ -246,9 +250,10 @@ class ExpoSession(GameSession):
                 refused.extend((text, code))
                 return []
             return [self.fx('invalid', to=token, code=code, msg=text)]
-        before = self.engine.snapshot()
+        before, settings = self.engine.snapshot(), dict(self.settings)
         try:
             change()
+            self._adopt_setup(before['state'])
             self._sync()
             self._save()
         except Invalid as e:
@@ -262,12 +267,21 @@ class ExpoSession(GameSession):
         except OSError:
             self.engine = Engine.restore(before)
             self.rng = self.engine.rng
+            self.settings = settings
             self._sync()
             return invalid('storage', 'The table could not be saved. Try again.')
         if self.phase == 'closed':
             self._outcome = 'abandoned' if self.engine.s['result']['status'] == 'abandoned' else 'completed'
             return self.end_game()
         return []
+
+    def _adopt_setup(self, before):
+        # The setup just confirmed is the table's settings from here on, as a lobby's would be.
+        s = self.engine.s
+        if before['phase'] == 'setup' and s['phase'] != 'setup':
+            self.settings.update(mission=s['mission']['id'], timed=s['timed'])
+            if 'tonoja' in s['seats']:
+                self.settings['tonoja_position'] = s['seats'].index('tonoja')
 
     def game_tick(self):
         if self.engine:
@@ -376,7 +390,9 @@ class ExpoSession(GameSession):
             raise ValueError('Invalid saved seat identity mapping')
         engine.s['away'] = list(engine.s['humans'])
         engine.s['revision'] += 1
-        if self._clock_continuous(saved.get('clock'), engine.s['expiry'], engine.s['mission']['seconds']):
+        # A table saved before its first deal has no mission yet, and so no deadline.
+        seconds = engine.s['mission']['seconds'] if engine.s['mission'] else None
+        if self._clock_continuous(saved.get('clock'), engine.s['expiry'], seconds):
             engine.observe_time(_mono())
             ended = False
         else:

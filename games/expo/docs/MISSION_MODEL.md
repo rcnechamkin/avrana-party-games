@@ -146,6 +146,18 @@ Notes on the table:
 - The tutorial deal in R p12 (one task of difficulty 1) is not a separate entry; mission 1 has the
   same target and selection.
 
+### Which mission a table opens on
+
+A table opens on a mission its crew chose, with the table's `timed` setting and, for two
+players, Tonoja's seat (R p22). A standalone table chooses them in its lobby. A Party-launched
+table has no lobby and chooses them in EXPO's `setup` phase before the first deal (owner
+decision 2026-10-05, AVR-245, POLICY P24 in [RECONCILIATION](RECONCILIATION.md#digital-policy-audit);
+[ACTIONS](ACTIONS.md#setup-before-the-first-deal-a-party-round)). Both ask the same function,
+`content.unavailable(mission, humans, timed)`: a mission is refused when it does not exist, is
+blocked (its conflict code is the reason), or is the volunteer mission with two players. The
+first thing offered is mission 1, untimed, Tonoja after both players. The same mission, setting
+and seat give the same preparation whichever way they were chosen.
+
 ### Two players
 
 With two humans and Tonoja the following are refused (DEFERRED C11): the `volunteer`

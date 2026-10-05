@@ -52,7 +52,7 @@ These belong to the platform; EXPO only constrains them.
 |---|---|---|---|---|
 | join (hello) | lobby with room (5 humans), or an existing seat's credential | a new credential during a table becomes a watcher (a bounded number); a Party round admits players only by ticket | seat restored with nothing changed, or watcher added | join screen; a watcher sees "Watching" |
 | `ready`, `start` | lobby; 2 to 5 ready humans; the chosen mission is enabled for that count; no unrecovered snapshot | start refused with the mission's conflict reason or the recovery message; in a Party round both are refused ("The Party Host starts rounds from the Party.") | countdown, then seats are fixed in joining order and the first deal is prepared | Start disabled until the sender is ready and two are ready |
-| `settings` (`mission`, `timed`, `tonoja_position`) | lobby only, valid values | ignored silently; ignored in a Party round (E-P1) | settings stored | blocked missions are listed as unavailable and cannot be chosen |
+| `settings` (`mission`, `timed`, `tonoja_position`) | lobby only, valid values | ignored silently; ignored in a Party round, which has no lobby and chooses the same three things in [setup](#setup-before-the-first-deal-a-party-round) | settings stored | blocked missions are listed as unavailable and cannot be chosen |
 | `profile` | any time | platform rules | name or avatar | name field, avatar grid |
 | `again` | platform results screen only | no effect on a live table | back to the lobby | not offered during a table |
 | leave / disconnect | any time | | seat kept, marked away; table paused | status line names who is away |
@@ -147,14 +147,16 @@ decision Q8, built 2026-10-04, AVR-251). It is the captain's decision, not the c
   decline. Nobody else can confirm or decline it, the captain included. A declined offer leaves
   every task in the pool and the captain chooses again.
 
-Three of the kinds below are routine steps of a table's life, not decisions the rules give the
-crew: `begin`, `retry` and `next` (`engine.LIFECYCLE`). Who commits them depends on the table
-(owner decision 2026-10-04, AVR-252):
+Four of the kinds below are routine steps of a table's life, not decisions the rules give the
+crew: `setup`, `begin`, `retry` and `next` (`engine.LIFECYCLE`). Who commits them depends on the
+table (owner decision 2026-10-04, AVR-252; `setup` joined them on 2026-10-05, AVR-245, see
+[setup](#setup-before-the-first-deal-a-party-round)):
 
 - **a Party round whose Party names its host** (the view's `lifecycle` is `host`): the Party Host
   commits them, at once, with [`host`](#host-ticket-action-the-party-hosts-lifecycle-steps). A
   seat that proposes one is refused with `host` and the kind's sentence ("Only the Party Host can
-  begin the mission." / "... retry the mission." / "... choose the next mission.");
+  set up the mission." / "... begin the mission." / "... retry the mission." / "... choose the
+  next mission.");
 - **a standalone table** (`lifecycle` is `crew`): they are crew decisions like the rest, as below;
 - **a Party from before the host claim** (`lifecycle` is `crew`, `lifecycle_transitional` true):
   the same, for now. This is a deploy-order allowance (`game.HOST_CLAIM_TRANSITION`), not a
@@ -179,11 +181,12 @@ kind of table.
 | `assign {owner, task}` | phase `allocation` in mode `one`, `captain_one` or `free`; owner is a seat; every affected task is in the pool and the owner is eligible; in `captain_one` the proposer is the captain | `phase` Use the current task selector. / `owner` Choose a crew member. / `captain` The captain must offer these tasks. / `task` Every task needs an eligible owner. | the task, or all tasks, go to the owner; in `captain_one` with another owner, sonar is limited to before the first trick; phase advances when the pool is empty. In `captain_one` "all confirm" means the recipient alone, and nobody when the owner is the captain or Tonoja |
 | `retry {keep}` | phase `mission_result` after a failure; `keep` is a boolean (R p11) | `phase` Retry is available after a failed mission. / `payload` Choose whether to keep the tasks. | a new attempt of the same mission: new deal, sonar and progress reset, distress kept; same tasks or a new draw |
 | `next {mission}` | phase `mission_result` after a success; the mission exists and is not blocked | `phase` Complete this mission first. / `mission` with the blocking conflict's reason | the log entry was already written at success; distress and attempts reset; the new mission is prepared |
-| `end` | any phase | none | result `abandoned` unless a mission result already stands; phase `closed`; the platform shows its results screen and reports the outcome |
+| `setup {mission, timed, tonoja_position}` | phase `setup` (a Party round before its first deal); the mission is one this crew may open on, by the lobby's own check (`content.unavailable`: it exists, is not blocked, and is not the volunteer mission for two players); `tonoja_position` is 0, 1 or 2 | `phase` The mission is already set up. / `mission` with the lobby's sentence (the blocking conflict's reason, or Invalid mission.) / `seat` Choose Tonoja's clockwise position. | the table's `timed` setting is stored; with two humans Tonoja is seated at that position (otherwise the value is unused); the mission is prepared exactly as a table that starts on it: terrain, tasks, repair, deal, captain |
+| `end` | any phase after the first deal | `phase` Set up the mission first. (in `setup`; a Party round's seats are refused earlier, as below) | result `abandoned` unless a mission result already stands; phase `closed`; the platform shows its results screen and reports the outcome |
 
 - **Actor**: any seated human.
-- **Field types**: `kind`, `direction`, `owner` and `task` are strings, `mission` is an integer
-  and `keep` is a boolean. A proposal with a key missing, a key too many or a value of another
+- **Field types**: `kind`, `direction`, `owner` and `task` are strings, `mission` and
+  `tonoja_position` are integers, and `keep` and `timed` are booleans. A proposal with a key missing, a key too many or a value of another
   type (a number, a list, an object, null; a boolean is not an integer) is rejected with
   `payload` Invalid crew decision. in every phase and every allocation mode, before the proposal
   itself is looked at. The checks common to every action come first (a seated actor, nobody
@@ -204,6 +207,46 @@ kind of table.
 - A two-player `next` to a mission refused for two players (C11) is accepted as a proposal and
   rejected when the last confirmation tries to prepare it; the proposal then stays pending until
   someone declines. The client does not offer those missions.
+
+### Setup before the first deal (a Party round)
+
+Owner decision 2026-10-05 (AVR-245): a Party-launched table chooses its mission, its timed
+setting and Tonoja's seat **inside EXPO before the first deal**. The Party launch contract and
+the Party's pregame are unchanged, and the lobby verbs stay refused in a Party round.
+
+- **When**: a Party round opens in phase `setup` when its countdown ends. The crew is seated and
+  nothing is dealt: no cards, no tasks, no captain, and the random generator has not been used.
+  A standalone table never has this phase; its lobby makes the same choice.
+- **The decision**: one `setup {mission, timed, tonoja_position}`, the row in the table above.
+  Nothing is stored while someone is choosing: the choice is made on a phone and sent whole, as
+  the next mission is after a success.
+- **Who**: whoever moves this table on, by the rule for Begin, Retry and Next above. Where the
+  Party names its host, the Party Host commits it at once with
+  [`host`](#host-ticket-action-the-party-hosts-lifecycle-steps), from a seat or while watching,
+  and a seat's `propose setup` is refused with `host` "Only the Party Host can set up the
+  mission." Under a Party from before the host claim, a seat proposes it and every seat
+  confirms; one decline leaves the table in `setup`.
+- **What is offered first**: mission 1, untimed, Tonoja after both players (the adapter's default
+  settings). Confirming those gives, for the same random seed, exactly the table a Party round
+  opened on before this phase existed
+  (`test_setting_up_what_is_offered_deals_exactly_the_table_a_direct_start_deals`).
+- **What may be chosen** is what a standalone lobby allows, by the same function
+  (`test_setup_allows_exactly_what_the_standalone_lobby_allows`). The timed setting may be on
+  with any mission, as in the lobby; it changes mission 16 only.
+- **Nothing starts it by itself.** No timer is armed in `setup` and an unconfirmed table stays
+  there (`test_an_unconfirmed_table_waits_and_no_timer_ever_starts_it`).
+- **Everything else is refused** in `setup`: cards, tasks, predictions, sonar, distress, Begin,
+  Retry, Next (`test_no_card_task_or_table_command_works_before_the_deal`).
+- **An away seat** stops the setup like every other command (`paused`). The Party Host's end is
+  the Party's and works throughout
+  (`test_during_setup_no_seat_ends_expo_and_the_partys_end_still_releases_the_room`).
+- **Client**: the lobby's three controls (mission, "Play mission 16 against the clock",
+  Tonoja's seat for two players) and "Deal mission N", drawn for whoever may set the table up.
+  A mission the crew cannot open on is listed as unavailable and cannot be chosen; when the
+  setup cannot be confirmed the button is disabled and the server's sentence
+  (`setup.waiting`) is shown. Everyone else sees the crew and who is choosing. A proposed setup
+  under an older Party is the usual decision panel, in words, with "Agree" and "Decline". The
+  Party Host also has "End EXPO for everyone".
 
 ### `confirm {yes}`
 
@@ -248,8 +291,8 @@ is reached (`GameBinding._party_host_confirm`, then `_party_host_action`; AVR-25
   Party within 2 s; an answer that is forged or is not to this question); `host` "This table is
   not a Party round."
 - **`action`**: exactly `t` = `lifecycle`, `decision`, `attempt`, `revision`. `decision` has the
-  shape of a proposal of kind `begin`, `retry {keep}` or `next {mission}` (the same field
-  types). There is no `request`: the ticket is single-use and the revision makes a repeat stale.
+  shape of a proposal of kind `setup {mission, timed, tonoja_position}`, `begin`, `retry {keep}`
+  or `next {mission}` (the same field types). There is no `request`: the ticket is single-use and the revision makes a repeat stale.
 - **Legal** (`Engine.lifecycle`): the decision's own row in the table above; nobody seated is
   away; `attempt` and `revision` are current; the table is not closed; no crew decision is
   pending.
@@ -258,7 +301,8 @@ is reached (`GameBinding._party_host_confirm`, then `_party_host_action`; AVR-25
   row's sentence; `mission`; `vote` "The crew is deciding something. Wait for their answer."
 - **Mutation**: the step takes effect in the same command, as one revision. No decision is ever
   pending and nobody is asked to confirm.
-- **What the host cannot skip**: Begin before every task is allocated and every prediction made;
+- **What the host cannot skip**: the setup itself (Begin before it is `phase`), or a mission the
+  lobby would refuse; Begin before every task is allocated and every prediction made;
   Begin past a distress request the crew has not answered; Retry or Next without a result; a
   mission that is blocked. The host holds no seat's rights: not the captain's offer, not Tonoja's
   cards, not a vote the host's own seat does not have.
@@ -269,9 +313,10 @@ is reached (`GameBinding._party_host_confirm`, then `_party_host_action`; AVR-25
   is the moment it opens. Nobody confirms or says "ready": when the time has passed and no
   request is pending, the host begins alone. A request made in that time blocks Begin by the
   pending-decision rule until the crew answers it; a declined request starts no new wait.
-- **Scope**: `begin`, `retry` and `next` are everything this message can do. Any other `t`, any
-  other decision kind and any extra field are refused and change nothing
-  (`test_the_host_gets_begin_retry_and_next_and_nothing_else`).
+- **Scope**: `setup` (once, before the first deal), `begin`, `retry` and `next` are everything
+  this message can do. Any other `t`, any other decision kind and any extra field are refused
+  and change nothing (`test_the_host_gets_begin_retry_and_next_and_nothing_else`,
+  `test_a_party_round_opens_in_setup_and_only_the_party_host_sets_it_up`).
 - **Client**: the dock's left zone, "Party Host (table control)". The host sees "Begin in N"
   (disabled) during the crew's moment, then "Begin mission", and "End EXPO" otherwise; everyone else sees who the host is and what
   the table is waiting for. On the result the host sees "Retry same tasks", "Retry new tasks" or
@@ -377,6 +422,7 @@ for a redeal. Unknown verbs are rejected by common check 3.
 ## Server events that are not player actions
 
 - Preparation of an attempt: terrain draw, task draw, repair, deal, deal-exception redeal, captain.
+  In a Party round the first preparation waits for the setup decision; nothing else triggers it.
 - Trick resolution, task and objective evaluation, Tonoja reveals.
 - Real-time expiry: checked on every command and on the adapter's timer tick, so it fails the
   mission with no traffic at all. It is measured on the monotonic clock; a restored timed attempt

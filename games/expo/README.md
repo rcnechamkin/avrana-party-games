@@ -74,8 +74,18 @@ on distress and shared assignments. Who the host is comes from the Party at ever
 Begin, the crew gets a few seconds to ask for distress; nobody confirms anything to start. Under
 a Party from before the claim the crew votes instead, transitionally: logged, and shown.
 
+**Party-round setup (AVR-245, owner decision 2026-10-05).** A Party round has no EXPO lobby,
+so it opens in a `setup` phase with the crew seated and nothing dealt, and the mission, the
+timed setting and Tonoja's seat are chosen inside EXPO before the first deal. The Party launch
+contract is unchanged. It is one decision, checked by the lobby's own rules, committed by
+whoever moves that table on: the Party Host, or the whole crew under a Party that does not name
+its host. Mission 1, untimed, Tonoja after both players is offered first, and confirming it
+deals exactly the table a Party round opened on before. No timer starts an unconfirmed table.
+Not yet played in a browser or on a phone.
+
 **Still open.** Recovery from an away seat (AVR-240; the Party Host can always end EXPO):
-see the AVR-275 report in RECONCILIATION. Party-round setup: AVR-245.
+see the AVR-275 report in RECONCILIATION. Who confirms a Party round's setup is an owner
+question recorded in the AVR-245 report there.
 Presentation contract: AVR-246. Wasteland presentation: AVR-267, on top of this board.
 
 **Blocked on source material.** Missions 3, 4, 12, 14, 15, 19, 20, 26 and tasks
@@ -137,7 +147,7 @@ node tests/playtest_expo_party.mjs        # starts its own server and plays the 
 | `tests/test_expo_party.py` | Party roster seating, ticket reconnect, spectators, outcome vocabulary |
 | `tests/test_expo_contract.py` | rules that had no direct test before the reconciliation, and the pinned defects |
 | `tests/test_expo_docs.py` | the mission table, task catalog, conflict codes and cited tests in `docs/` equal the code |
-| `tests/test_expo_authority.py` | Party Host and captain as separate authorities: host-only Begin, Retry and Next and nothing else, prerequisites the host cannot skip, the crew's moment to ask for distress, a watching host, succession, a former host's kept tickets, a Party that does not answer, reconnect, an away seat, a Party without the host claim |
+| `tests/test_expo_authority.py` | Party Host and captain as separate authorities: host-only Begin, Retry and Next and nothing else, prerequisites the host cannot skip, the crew's moment to ask for distress, a watching host, succession, a former host's kept tickets, a Party that does not answer, reconnect, an away seat, a Party without the host claim; and a Party round's setup before the first deal (AVR-245): the same table as before for what is offered, the lobby's own checks, nothing dealt and nothing private, snapshots, an away seat, reloads, who may confirm |
 | `tests/playtest_expo.mjs` | browser playtest of a standalone table, run by hand: the rules flow plus the one-viewport contract on five phone sizes and the result takeover |
 | `tests/playtest_expo_party.mjs` | browser playtest of a Party round against a simulated Party, run by hand: host and non-host controls and refusals, authority labels, captain who is not host, the distress moment, succession with kept tickets, reloads during a decision, a partly played trick and a result, focus and touch targets, Party-owned end, no route to the LAN Games hub; `EXPO_PARTY=old` runs the transitional fallback |
 | `tests/_expo_phone.mjs` | the measured assertions both playtests use: one viewport, the fullest board, touch targets, focus held by a sheet or the result |

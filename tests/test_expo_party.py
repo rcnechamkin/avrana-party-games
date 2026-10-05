@@ -49,6 +49,16 @@ async def seated_table():
     await settle()
     await a[0].inbox.put({"t": "start"})
     await asyncio.sleep(3.3)                        # the 3-2-1 countdown
+    # A Party round opens in setup (AVR-245). These tickets do not say who the Party Host is, so
+    # the crew agrees on what is offered: mission 1, untimed, Tonoja after both players.
+    assert b.session.phase == "setup"
+    scope = {"attempt": 0, "revision": b.session.engine.s["revision"]}
+    await a[0].inbox.put({"t": "propose", "request": "setup", **scope, "proposal": {
+        "kind": "setup", "mission": 1, "timed": False, "tonoja_position": 2}})
+    await settle()
+    await c[0].inbox.put({"t": "confirm", "request": "agree", "yes": True, "attempt": 0,
+                          "revision": b.session.engine.s["revision"]})
+    await settle()
     assert b.session.phase == "allocation"
     assert set(b.session.participants) == {ALICE_TOKEN, BOB_TOKEN}
     return b, a, c
@@ -141,7 +151,12 @@ def test_a_party_round_never_inherits_or_writes_a_standalone_snapshot(tmp_path):
     assert room.engine is None and room.store is None and room.recovery_error is None
     assert list(room.players) == [ALICE_TOKEN, BOB_TOKEN] and room.party_round
     room.tick(room.gen)                                # arrival deadline: the round starts
-    assert room.phase == "allocation" and set(room.engine.s["humans"]) == {p.pid for p in room.players.values()}
+    assert room.phase == "setup" and set(room.engine.s["humans"]) == {p.pid for p in room.players.values()}
+    for token in (ALICE_TOKEN, BOB_TOKEN):             # the seats arrive; the Party Host sets it up
+        room.join(token)
+    room.host_action({"t": "lifecycle", "attempt": 0, "revision": room.engine.s["revision"], "decision": {
+        "kind": "setup", "mission": 1, "timed": False, "tonoja_position": 2}})
+    assert room.phase == "allocation"
     assert path.read_bytes() == before                 # the standalone save is untouched
 
 

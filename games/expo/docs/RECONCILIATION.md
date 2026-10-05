@@ -31,12 +31,14 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
   (AVR-241), and E-D5 and E-D7, the content hash scope and the timed clock (AVR-242). E-D6 was
   settled by amending the contract (AVR-242). Of the two that remain, one affects play and needs
   an owner decision on the remedy: a table cannot be ended while someone is away (AVR-240).
-- Twenty-three digital policies are in force. The owner decided the open ones on 2026-10-04
+- Twenty-four digital policies are in force. The owner decided the open ones on 2026-10-04
   (AVR-243, questions Q1 to Q8 below). Four decisions change behaviour. All four are implemented:
   single-card communication (AVR-248), the task `5with7` (AVR-249), one shared sonar token for
   two players (AVR-250) and the captain's authority in missions 10 and 13 (AVR-251). A fifth,
   routine progression, was decided on 2026-10-04 and is built for Party rounds: the Party Host
-  owns Begin, Retry and Next (AVR-252, with AVR-275).
+  owns Begin, Retry and Next (AVR-252, with AVR-275). A sixth was decided on 2026-10-05 and is
+  built: a Party round chooses its mission, timed setting and Tonoja's seat inside EXPO before
+  the first deal (AVR-245, P24).
 - Eight missions and four tasks stay blocked on source material (AVR-244).
 - The earlier specification was wrong or stale in eleven places (E-S1 to E-S11).
 
@@ -152,8 +154,9 @@ a source's wording makes the choice non-obvious and the owner has not confirmed 
 | P19 | Durable restoration is opt-in, atomic, and fails closed; Party rounds do not use it | platform has no store | `test_atomic_store_session_restart_and_fail_closed`, `test_storage_failure_rejects_action_without_losing_table`, `test_closed_snapshot_restores_shared_lobby_reset_and_rejects_corrupt_phase`, `test_a_party_round_never_inherits_or_writes_a_standalone_snapshot`, `test_a_snapshot_from_other_content_or_rules_is_refused` | uncontested |
 | P20 | A secret prediction is revealed to everyone at the mission result | R is silent | `test_prediction_zero_is_locked_and_secret_is_private` (privacy before the result only) | uncontested |
 | P21 | Ending the table is `abandoned` unless a mission result already stood, in which case the outcome reported to Party is `completed` | Party protocol vocabulary | `test_ending_the_table_is_abandoned`, `test_ending_the_table_after_a_decided_mission_is_completed` | uncontested |
-| P22 | The dummy's seat is a lobby setting, default after both players | R p22: the players decide where it sits | `test_deals_conserve_and_captain` | uncontested standalone; unavailable in Party (Q11) |
+| P22 | The dummy's seat is a lobby setting, default after both players | R p22: the players decide where it sits | `test_deals_conserve_and_captain` | uncontested standalone; in a Party round it is part of the setup (P24, Q11) |
 | P23 | Mission 8 is offered to two players and counts the dummy in the balance | C11 | the same evaluator on mission 21: `test_mission_twenty_one_counts_tonoja_in_the_balance_of_color_ones` | confirmed 2026-10-04 (Q6): the dummy is the third crew member for crew-count mechanics |
+| P24 | A Party round opens in `setup` with the crew seated and nothing dealt. One `setup` decision (mission, timed setting, Tonoja's seat), checked by the standalone lobby's own rules, is committed by whoever moves that table on: the Party Host, or the whole crew under a Party that does not name its host. Mission 1, untimed, Tonoja after both players is offered first. No timer starts an unconfirmed table | owner decision 2026-10-05 (AVR-245): setup inside EXPO before the first deal, no change to the Party launch contract. Who confirms is not in that decision: it follows the rule already in force for the next mission (AVR-252) | `test_setting_up_what_is_offered_deals_exactly_the_table_a_direct_start_deals`, `test_setup_allows_exactly_what_the_standalone_lobby_allows`, `test_a_party_round_opens_in_setup_and_only_the_party_host_sets_it_up`, `test_under_a_party_that_does_not_name_its_host_the_crew_agrees_on_the_setup`, `test_an_unconfirmed_table_waits_and_no_timer_ever_starts_it`, `test_a_standalone_table_has_no_setup_step` | where it happens: decided 2026-10-05 (Q11). Who confirms, and whether an unconfirmed table ever starts by itself: open, see the AVR-245 report |
 
 ## Stale or incorrect earlier specification
 
@@ -185,7 +188,7 @@ they were wrong or have been overtaken; the committed documents carry the correc
 | E-X5 | Two players with distress or volunteers | refused. Decided 2026-10-04 (Q6): distress and volunteer missions stay deferred. Shared sonar left this list on 2026-10-04 (AVR-250): one token, humans only |
 | E-X6 | A TV presentation, bots, solo play | not planned in this scope |
 | E-X7 | Campaign history across tables | Party owns durable history; EXPO keeps none |
-| E-P1 | In a Party round the starting mission, timed mode and the dummy's seat cannot be chosen | AVR-245 (Q11); `test_a_party_round_locks_settings_so_the_table_opens_on_mission_one` |
+| E-P1 | In a Party round the starting mission, timed mode and the dummy's seat could not be chosen | BUILT 2026-10-05 (AVR-245, Q11, P24): chosen inside EXPO before the first deal. The lobby's `settings` verb stays refused in a Party round: `test_a_party_round_refuses_lobby_settings_and_opens_in_setup_with_nothing_dealt` |
 
 ## Owner decisions
 
@@ -426,6 +429,10 @@ period; an automatic timeout. BLUFF uses 60 seconds and 5 minutes. The result mu
 **Q11 (AVR-245). Should a Party-launched crew choose its starting mission, timed mode and the
 dummy's seat?** Now: fixed at mission 1, untimed, dummy after both players. R p22 makes the
 dummy's seat a player choice.
+Decided 2026-10-05 (owner, on AVR-245): yes, **inside EXPO before the first deal**, game-side,
+with no change to the Party launch contract or pregame unless a later product decision moves
+setup into Party. Built as P24. The decision does not say who confirms the setup; what was built
+and what is still the owner's is in the [AVR-245 report](#avr-245-2026-10-05).
 
 **Q12 (AVR-246). Presentation drafts.** Commit them as non-canonical drafts or keep them out; and
 whether a causality record is wanted in results.
@@ -988,7 +995,7 @@ Still open:
 
 - **Recovery from an away seat** (AVR-240).
 - **Mission, timed mode and Tonoja's seat** cannot be chosen in a Party round (AVR-245). The
-  host's Next is the only way to another mission.
+  host's Next is the only way to another mission. (Built on 2026-10-05: see AVR-245 below.)
 - **Causality in the result** (AVR-246) and **the service worker** (AVR-274).
 - **Turning `HOST_CLAIM_TRANSITION` off.** Not part of the first deployment. Order agreed with
   the owner: avrana-party#75 merges, then this repository's hardening PR; both are deployed
@@ -1008,4 +1015,65 @@ Still open:
 | `EXPO_PARTY=old node tests/playtest_expo_party.mjs` (no host claim) | PASS |
 | `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check | OK |
 | Party `tools/contract_check.py --games` against this branch | compatible |
+| A real phone | not run |
+
+### AVR-245, 2026-10-05
+
+Owner decision (Linear AVR-245, 2026-10-05): "For now, Party-launched EXPO should handle its
+mission choice, timed-mode choice and Tonoja seat choice **inside EXPO before the first deal**,
+rather than extending the Party launch contract/pregame. Keep this game-side and avoid a
+Party↔Games contract change unless a later product decision deliberately moves setup into
+Party."
+
+Built as policy P24. Changed: `games/expo/engine.py`, `games/expo/game.py`,
+`games/expo/content.py` (one function), `games/expo/web/client.js`, the tests named below, one
+playtest and these documents. Not changed: `core/`, `provider/`, the vendored session protocol
+and its vectors, the launch message, the result envelope, the catalog, and anything in
+avrana-party.
+
+- **The phase.** `Engine(..., setup=True)` seats the humans and stops in phase `setup` with no
+  mission, no deal and an untouched random generator. The adapter asks for it in a Party round
+  only (`ExpoSession.game_start`). A `setup {mission, timed, tonoja_position}` decision then
+  stores the setting, seats Tonoja and calls the ordinary preparation.
+- **One check, shared.** `content.unavailable` is what the lobby's Start already did inline; the
+  lobby now calls it too. Tonoja's seat is validated by the function the constructor used.
+- **Who confirms.** `setup` was added to `engine.LIFECYCLE`, so it travels the existing path
+  for Next: the Party Host's ticketed `host` message where the Party names its host, a crew
+  decision where it does not, and nothing at all once `HOST_CLAIM_TRANSITION` is off and the
+  Party names nobody. No new authority was written and `core/net.py` did not change. **This is
+  the implementation's reading, not an owner decision** (see the open questions).
+- **Same table as before.** For what is offered first the state, the random state and every
+  view equal a table dealt directly, except `revision`, which is 1 instead of 0 because the
+  confirmation is one accepted change. Checked in the tests for 25 seeds at each crew size, and
+  by hand against `origin/main` (9f9aa41) loaded beside this branch: 160 engine tables and
+  three Party rounds through the adapter, identical but for that counter.
+- **No draft on the server.** The choice lives on the choosing phone until it is sent. A reload
+  during setup shows what is offered again; nothing can be half-chosen in the table's state.
+- **Client.** The setup screen is the lobby panel with its three controls, for whoever may set
+  the table up, and a waiting line for everyone else. It reuses the lobby's elements in place:
+  `index.html` and `expo.css` did not change. It was written without a browser: see the table.
+
+Open owner questions (nothing below is decided):
+
+1. **Who confirms the setup.** Built: the Party Host alone, as for Next. The decision of
+   2026-10-05 says where setup happens, not who decides it. The alternative is the crew
+   agreeing together (as it does for distress), or the host choosing and the crew consenting.
+2. **Tonoja's seat.** R p22 says the players decide where the dummy sits. Under the built rule
+   a Party Host who is watching, or is one of the two players, decides it alone.
+3. **An unconfirmed table.** Built: it waits for ever, with no default start and no timer; the
+   Party Host can end EXPO from the Party. Whether it should ever start by itself on mission 1
+   is the packet's open point and was not invented here.
+4. **An away seat during setup** blocks it, like Begin (AVR-240 owns recovery).
+5. **A Party that names no host, after the transition flag is turned off,** cannot set a table
+   up at all, exactly as it could not Begin. Turning the flag off is its own change.
+6. **The timed setting** is offered with any mission, as in the lobby, and only changes
+   mission 16. Whether the Party screen should hide it elsewhere is a presentation question.
+
+| Check | Result (Windows 11) |
+|---|---|
+| `pytest -q tests/test_expo_*.py tests/test_expo.py` | 1111 passed, 2 skipped, 2 xfailed |
+| `tests/test_expo_authority.py` | 87 passed |
+| `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check, `node --check games/expo/web/client.js` | OK |
+| `git diff --stat origin/main -- core provider deploy tests/vectors web` | empty |
+| `tests/playtest_expo_party.mjs`, `tests/playtest_expo.mjs` | **not run** by the implementer (no browser in that session); the Party playtest was edited to pass through setup |
 | A real phone | not run |
