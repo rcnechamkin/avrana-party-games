@@ -135,7 +135,7 @@ function cardNode(card, action, enabled=false, reason="") {
   const n = el(action ? "button" : "div", undefined, "card " + s);
   n.append(el("span",r,"rank"),el("span",symbols[s],"symbol"),el("span",suitNames[s],"suit"));
   n.setAttribute("aria-label", `${s} ${r}`); n.dataset.key = "card:" + card; n.dataset.card = card;
-  if (action) { n.type = "button"; n.disabled = !enabled; n.title = reason; n.onclick = action; }
+  if (action) { n.type = "button"; n.disabled = !enabled; n.title = enabled ? "" : reason; n.onclick = action; }      // a reason belongs to a card that cannot be chosen
   return n;
 }
 // A card this seat has shown the crew keeps a public marker until it leaves the hand.
@@ -529,9 +529,9 @@ function seatRadio(g, seat) {
   if (seat === "tonoja") return null;
   const e = exposureOf(g, seat);
   if (e) return {key:"sent", text:exposureMark(e), said:`radioed ${cardLabel(e.card)}${e.assertion ? " as their " + e.assertion : ", meaning hidden"}`};
-  if (g.communication === "none") return {key:"off", text:"radio off", said:"radio off"};
+  if (g.communication === "none") return {key:"off", text:"radio off", short:"off", said:"radio off"};
   if (g.shared_sonar !== null) return {key:g.shared_sonar ? "ready" : "spent", text:`shared ${g.shared_sonar}`, said:`shared radio, ${g.shared_sonar} left`};
-  return g.sonar_spent.includes(seat) ? {key:"spent", text:"radio used", said:"radio used"} : {key:"ready", text:"radio ready", said:"radio unused"};
+  return g.sonar_spent.includes(seat) ? {key:"spent", text:"radio used", short:"used", said:"radio used"} : {key:"ready", text:"radio ready", short:"ready", said:"radio unused"};
 }
 
 // ---- zone B: the crew strip ------------------------------------------------------------------------
@@ -556,8 +556,11 @@ function drawCrew(g) {
     if (roles.length && g.seats.length <= 3) tile.append(el("span", roles.join(" · "), "seat-role"));
     tile.append(away ? el("span", "Reconnecting…", "seat-count warn")
       : el("span", g.seats.length > 3 ? `${cards}c · ${tricks}t` : `${cards} cards · ${tricks} trick${tricks===1?"":"s"}`, "seat-count"));
-    if (radio) tile.append(el("span", radio.text, "seat-radio " + radio.key));
-    else tile.append(el("span", `by ${name(g.captain)}`, "seat-radio"));
+    // Four or five tiles share a phone's width: the radio's icon stands for the word "radio".
+    const line = el("span", undefined, "seat-radio " + (radio ? radio.key : ""));
+    if (radio && g.seats.length > 3 && radio.short) line.append(icon("expo-slot-radio"), el("span", radio.short));
+    else line.textContent = radio ? radio.text : `by ${name(g.captain)}`;
+    tile.append(line);
     tile.append(fx());
     tile.setAttribute("aria-label", `${name(seat)}${roles.length ? ", " + roles.join(", ") : ""}: ${cards} cards, ${tricks} tricks${radio ? ", " + radio.said : ""}${turn ? ", their turn" : ""}${away ? ", away, reconnecting" : ""}. Open crew.`);
     strip.append(tile);

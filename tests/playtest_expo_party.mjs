@@ -5,6 +5,7 @@
 //     EXPO_HOST=spectator   the Party Host watches instead of playing
 //     EXPO_PARTY=old     a Party from before the host claim: the transitional crew fallback
 //     EXPO_PYTHON=...    the interpreter that runs server.py (default: python3, python on Windows)
+//     EXPO_FX=high|medium|low|off, EXPO_MOTION=reduced   the presentation tier (AVR-267)
 //
 // The script is the Party. It starts its own game server with a party key, launches a signed
 // roster the way Party Core does, answers each page's ticket request with a ticket that says
@@ -19,7 +20,9 @@
 // in the page and at the server; the crew's moment to ask for distress before Begin; host
 // succession (a former host is refused at once, whatever tickets it kept); reloads during a
 // pending decision, a partly played trick and a result; focus held by what is on top; full
-// touch targets; no route to the LAN Games hub.
+// touch targets; no route to the LAN Games hub. AVR-267: the five zones, the crew strip with
+// Captain and Party Host on different seats, the shared trick, card states, a result met on a
+// reload shown statically, and a director that sends nothing at whatever tier the run asks for.
 // A simulated Party and a desktop Chrome are not a real phone (avrana-party docs/TESTING.md).
 import os from "os";
 import fs from "fs";
@@ -31,7 +34,8 @@ import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import assert from "node:assert/strict";
 import { puppeteer, CHROME_PATH } from "./_resolve.mjs";
-import { PHONES, oneViewport, onScreen, has, clickKey, playCard, resultOwnsTheScreen, withLongText, touchTargets, modalHolds, focused } from "./_expo_phone.mjs";
+import { PHONES, oneViewport, onScreen, has, clickKey, playCard, resultOwnsTheScreen, withLongText, touchTargets, modalHolds, focused,
+  FX, EXPECT_FX, presentation, directorSentNothing, crewLegible, trickShows, legalCardsLookAlike } from "./_expo_phone.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = process.argv[2] || path.join(os.tmpdir(), "expo-party-playtest");
@@ -163,6 +167,7 @@ async function openPage(member, viewport) {
   await pg.setViewport({...viewport, deviceScaleFactor:1, isMobile:true, hasTouch:true});
   pg.on("pageerror", e => errors.push(e.message));
   pg.on("framenavigated", f => { if (f === pg.mainFrame() && f.url().startsWith("http")) visited.add(new URL(f.url()).pathname); });
+  await presentation(pg);
   await pg.setRequestInterception(true);
   pg.on("request", req => {
     const url = new URL(req.url());
@@ -314,7 +319,13 @@ try {
     const s = await settle(); if (s.game.result) break;
     const actor = await byPid(s.game.turn === "tonoja" ? s.game.captain : s.game.turn), g = (await state(actor.page)).game;
     if (plays < 2 * s.game.seats.length) {
-      for (const m of party.members) { await oneViewport(m.page, `${m.name} during trick play`); if (plays < 2) { await touchTargets(m.page, `${m.name} during trick play`); await labels(m, s.game); } }
+      // The seat the Party Host sits in, if the host is seated: the crew strip tags it for everyone.
+      const hostSeat = seated().includes(host) ? (await state(host.page)).you.pid : null;
+      for (const m of party.members) {
+        await oneViewport(m.page, `${m.name} during trick play`); await crewLegible(m.page, `${m.name} during trick play`, hostSeat); await trickShows(m.page, `${m.name} during trick play`);
+        if (plays < 2) { await touchTargets(m.page, `${m.name} during trick play`); await labels(m, s.game); }
+      }
+      if (s.game.turn !== "tonoja") await legalCardsLookAlike(actor.page, `${actor.name} to play`);
       assert.match(await actor.page.evaluate(() => document.getElementById("status").textContent), /^Your turn/);
       const waiting = party.members.find(m => m !== actor);
       assert.match(await waiting.page.evaluate(() => document.getElementById("status").textContent), /to (play|lead)/);
@@ -379,6 +390,9 @@ try {
     for (const m of [host, crew]) {
       await reload(m);
       const keys = (await resultOwnsTheScreen(m.page, `${m.name}: the result after a reload`)).keys.map(k => k.key);
+      // AVR-267: a result met on a reload is the state, not news: no cinematic beat is replayed.
+      assert.equal(await m.page.evaluate(() => document.getAnimations().filter(a => String(a.id).startsWith("expo-fx:cine") && a.playState === "running").length), 0, `${m.name}: nothing is replayed after a reload`);
+      if (FX !== "off") assert.deepEqual(await m.page.evaluate(() => director.stats.performed.map(p => p.effect).filter(e => e !== "reconnect")), [], `${m.name}: the director showed nothing stale`);
       assert.deepEqual(NEXT.filter(k => keys.includes(k)), m === host ? NEXT : [], `${m.name} after a reload`);
     }
     // "Look at the table": the way back is the whole dock, it says what it leads to, and for the
@@ -447,6 +461,8 @@ try {
     if (m !== host) { await m.page.click("#sheet-close"); assert.equal(await m.page.evaluate(() => document.activeElement.id), "menu-toggle", "focus returns to the menu button"); }
   }
   assert.match(await refused(seated().find(m => m !== host).page, SEND_SEAT({kind:"end"})), /the Party Host ends EXPO/);
+  // AVR-267: the presentation never sent a frame, and ran at the tier this run asked for.
+  for (const m of party.members) await directorSentNothing(m.page, m.name);
   await clickKey(host.page, "menu-end");
   assert.equal(await host.page.evaluate(() => window.__party.ended), 0, "one tap does not end the game");
   await clickKey(host.page, "menu-end");
@@ -458,7 +474,7 @@ try {
   assert.deepEqual(errors, []);
   finished = true;
   console.log(`PASS: EXPO Party round, ${HUMANS} seated${WATCHING_HOST ? " + a watching host" : ""}${HUMANS === 2 ? " + Tonoja" : ""}: one-viewport play on ${PHONES.length} phone sizes, ` +
-    `result takeover (${ended.game.result.status}), host-only lifecycle${graceSeen ? ", distress moment before Begin" : ""}, captain is not host${succession ? ", succession with kept tickets refused" : ""}${reconnected ? ", reloads mid-trick" : ""}, reloads on a decision and a result, focus and touch targets, Party-owned end, no hub route`, OUT);
+    `result takeover (${ended.game.result.status}), presentation ${EXPECT_FX || "off"}${process.env.EXPO_MOTION === "reduced" ? " (reduced motion)" : ""} with a silent director, host-only lifecycle${graceSeen ? ", distress moment before Begin" : ""}, captain is not host${succession ? ", succession with kept tickets refused" : ""}${reconnected ? ", reloads mid-trick" : ""}, reloads on a decision and a result, focus and touch targets, Party-owned end, no hub route`, OUT);
   }
 } catch (e) {
   for (const m of party.members) if (m.page) await m.page.screenshot({path:path.join(OUT, `failed-${m.name}.png`)}).catch(() => {});

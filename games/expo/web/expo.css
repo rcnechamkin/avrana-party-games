@@ -74,8 +74,7 @@ h1,h2,h3,p{margin:0}
 .board{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto auto auto;gap:var(--gap);padding:var(--gap) max(var(--pad),env(safe-area-inset-right)) calc(var(--gap) + env(safe-area-inset-bottom)) max(var(--pad),env(safe-area-inset-left))}
 
 /* ---- zone A: the mission stage, 15 to 25 percent of the screen ---- */
-.mstage{position:relative;isolation:isolate;overflow:hidden;height:clamp(92px,18vh,200px);border:1px solid var(--edge);border-radius:12px;background:var(--slot-stage-sky)}
-@supports(height:1dvh){.mstage{height:clamp(92px,18dvh,200px)}}
+.mstage{position:relative;isolation:isolate;overflow:hidden;height:clamp(92px,16.5vh,200px);border:1px solid var(--edge);border-radius:12px;background:var(--slot-stage-sky)}
 .mstage-art{position:absolute;inset:0;z-index:-2;pointer-events:none}
 .mstage-art .glow{position:absolute;inset:0;background:var(--slot-stage-glow)}
 .mstage-art .haze{position:absolute;top:0;bottom:0;left:0;width:200%;background:var(--slot-stage-haze) 0 0/50% 100% repeat-x;opacity:.75;transform:translateX(-50%)}
@@ -123,7 +122,8 @@ html[data-expo-fx="high"]:not([data-expo-paused]) .mstage-art .glow{animation:ex
 .seat-role{font-size:10px;color:var(--muted);line-height:1.1}
 .seat-count{font-size:10.5px;letter-spacing:-.01em;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .seat-count.warn{color:#ffcf6b;font-weight:700}
-.seat-radio{font:600 10px/1.15 var(--font);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seat-radio{display:flex;align-items:center;gap:3px;min-width:0;font:600 10px/1.15 var(--font);color:var(--muted);white-space:nowrap;overflow:hidden}
+.seat-radio .ic{width:10px;height:10px}
 .seat-radio.ready{color:var(--sea)}
 .seat-radio.sent{font:700 10.5px/1.15 var(--mono);color:var(--sea)}
 .crew-strip.tight .seat{padding:4px 5px}
@@ -209,6 +209,8 @@ input,select{min-height:44px;width:100%;background:var(--surface);border:1px sol
 .hand{display:grid;grid-template-columns:repeat(var(--cols,7),minmax(0,58px));gap:5px;justify-content:start}
 .hand .card,.hand .card-empty{height:var(--hand-card)}
 .hand .card-empty.gone{border-style:dotted;opacity:.4}
+/* A hand of more than seven takes two rows, of slightly shorter cards. */
+.hand.two-rows .card,.hand.two-rows .card-empty{height:calc(var(--hand-card) - 6px)}
 
 .card{--suit:#b4c7d7;position:relative;display:flex;flex-direction:column;justify-content:space-between;min-width:0;padding:4px 5px;text-align:left;border:1.5px solid var(--suit);border-radius:8px;background:var(--slot-card-face);color:var(--suit);font-family:var(--mono);overflow:hidden}
 button.card{cursor:pointer;-webkit-appearance:none;appearance:none}
@@ -320,7 +322,6 @@ input[type=checkbox]{width:22px;min-height:22px;accent-color:var(--sea)}
   .mstage{height:clamp(92px,15.5vh,200px)}
   .mstage-body{padding:4px 8px}
   .objective+.objective{display:none}
-  .hand.two-rows .card,.hand.two-rows .card-empty{height:46px}
 }
 @media(max-height:610px){
   :root{--gap:4px;--hand-card:44px}
@@ -330,9 +331,14 @@ input[type=checkbox]{width:22px;min-height:22px;accent-color:var(--sea)}
   .dock-zone{padding:4px 8px 6px}
   .mission-head h1{font-size:19px}
   .hand-panel{padding:4px 8px 6px}
-  .result-mark{display:none}
+  /* The smallest screens keep the facts and the controls: the mark and the line of fiction go. */
+  .result-mark,.result-sub{display:none}
   .result h2{font-size:23px}
-  .result-card{gap:6px;padding:12px}
+  .result-card{gap:5px;padding:10px 12px}
+  .result-facts{gap:2px}
+  .mini .card{height:42px}
+  .result-actions{gap:5px}
+  .result-actions .btn,.result-actions select{min-height:44px}
 }
 @media(min-height:760px){
   .mission-line{-webkit-line-clamp:2}
@@ -342,6 +348,7 @@ input[type=checkbox]{width:22px;min-height:22px;accent-color:var(--sea)}
   .trick{max-height:190px}
   .slot .card,.slot .card-empty{max-width:76px}
   .card .rank{font-size:23px}
+  .mstage{height:clamp(92px,18vh,200px)}
   .mstage-body{padding:9px 11px}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}.card[aria-pressed=true],.hand.radio .card:not(:disabled){transform:none}}

@@ -57,6 +57,10 @@ const ZONES = ["mission-stage","seats","stage","objectives","hand-panel","dock"]
 export async function oneViewport(pg, label) {
   // A toast (the shared Hub.toast) is a fixed, passing notice outside the board: wait it out.
   await pg.waitForFunction(() => !document.querySelector(".toast"), {timeout:6000});
+  // The hand is measured at rest. While the director slides its cards into place (transform
+  // only) a card is its full size, but a box read through a fractional translate comes back as
+  // 43.99999 px and would fail a comparison with 44 for a reason that is arithmetic, not size.
+  await pg.waitForFunction(() => !document.getAnimations().some(a => a.playState === "running" && a.effect?.target?.closest?.("#hand")), {timeout:8000});
   const m = await pg.evaluate(ids => {
     const box = n => { const b = n.getBoundingClientRect(); return {top:b.top,bottom:b.bottom,left:b.left,right:b.right,width:b.width,height:b.height}; };
     const room = document.getElementById("avrana-game-room");

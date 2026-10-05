@@ -314,6 +314,28 @@ try{
     await pg.click("#sheet-close");
     assert.equal(await pg.evaluate(sel=>document.activeElement===document.querySelector(sel),OPENERS[sheet]),true,"focus returns to what opened the "+sheet+" sheet after Close");
   }
+  if(DIRECTOR&&process.env.EXPO_MOTION!=="reduced"){
+    // How much the board moves is this browser's own choice, in the table menu: it changes the
+    // tier at once and nothing else. (With reduced motion on, the menu says so instead.)
+    await pg.click("#menu-toggle");
+    const before=(await state(pg)).game.revision;
+    await touchTargets(pg,"the table menu");
+    await clickKey(pg,"fx:low");
+    assert.equal(await pg.evaluate(()=>document.documentElement.dataset.expoFx),"low","Still is the low tier");
+    assert.equal(await pg.evaluate(()=>getComputedStyle(document.querySelector(".mstage-art .h1")).animationName),"none","no ambient motion at the low tier");
+    await clickKey(pg,"fx:"+EXPECT_FX);
+    assert.equal(await pg.evaluate(()=>document.documentElement.dataset.expoFx),EXPECT_FX);
+    if(EXPECT_FX==="high")assert.notEqual(await pg.evaluate(()=>getComputedStyle(document.querySelector(".mstage-art .h1")).animationName),"none","the high tier has an ambient stage");
+    assert.equal((await state(pg)).game.revision,before,"choosing a tier sends nothing");
+    await pg.click("#sheet-close");
+    // A hidden tab stops the ambient stage.
+    if(EXPECT_FX==="high"){
+      await pg.evaluate(()=>{Object.defineProperty(document,"hidden",{value:true,configurable:true});document.dispatchEvent(new Event("visibilitychange"));});
+      assert.equal(await pg.evaluate(()=>getComputedStyle(document.querySelector(".mstage-art .h1")).animationName),"none","a hidden tab has no ambient motion");
+      await pg.evaluate(()=>{delete document.hidden;document.dispatchEvent(new Event("visibilitychange"));});
+      assert.notEqual(await pg.evaluate(()=>getComputedStyle(document.querySelector(".mstage-art .h1")).animationName),"none");
+    }
+  }
   for(let i=0;i<70;i++){
     const s=await settle();if(s.game.result)break;
     if(i===2&&process.env.EXPO_FORCE_FAIL)throw new Error("forced failure mid-round (EXPO_FORCE_FAIL)");
