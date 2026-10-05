@@ -137,9 +137,10 @@ class Engine:
     def _repair_tasks(self, pool, m):
         # Unavoidable task combinations are exchanged for another task of the same
         # difficulty before selection opens; no attempt is counted (R13-14).
-        if m['allocation'] not in ('normal', 'skip_captain'):
+        # A mission's own named tasks are the mission (mission 32): never exchanged here.
+        if m['allocation'] not in ('normal', 'skip_captain') or m.get('fixed'):
             return pool
-        crew = str(len(self.s['seats']))
+        s, crew = self.s, str(len(self.s['seats']))
         for _ in range(100):
             conflict, forced = self._index_conflict(pool, m), False
             if conflict is None:
@@ -147,12 +148,23 @@ class Engine:
             if conflict is None:
                 return pool
             difficulty = TASKS[conflict]['difficulty'][crew]
-            candidates = [k for k in self.s['deck'] if TASKS[k]['difficulty'][crew] == difficulty
-                          and not (forced and TASKS[k]['params'].get('other') == 'captain')]
-            require(bool(candidates), 'feasibility', 'No same-difficulty replacement is available for this setup.')
-            replacement = self.rng.choice(candidates)
-            self.s['deck'].remove(replacement)
-            self.s['deck'].append(conflict)
+            def candidates(pile):
+                return [k for k in pile if TASKS[k]['difficulty'][crew] == difficulty
+                        and not (forced and TASKS[k]['params'].get('other') == 'captain')]
+            found = candidates(s['deck'])
+            if not found and candidates(s['used']):
+                # P16 (AVR-270, owner decision 2026-10-05): the deck cannot supply the
+                # replacement, so the used pile is shuffled back into it, as the draw does
+                # (P04), and the replacement is drawn from there. A pile that holds no such
+                # task is left alone: recycling it could not help.
+                s['deck'].extend(s['used'])
+                s['used'] = []
+                self.rng.shuffle(s['deck'])
+                found = candidates(s['deck'])
+            require(bool(found), 'feasibility', 'No same-difficulty replacement is available for this setup.')
+            replacement = self.rng.choice(found)
+            s['deck'].remove(replacement)
+            s['deck'].append(conflict)
             pool[pool.index(conflict)] = replacement
         raise Invalid('feasibility', 'Task combination needs a fresh task deck.')
 

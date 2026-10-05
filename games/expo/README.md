@@ -138,6 +138,7 @@ node tests/playtest_expo_party.mjs        # starts its own server and plays the 
 | `tests/test_expo.py` | rules, every enabled task (one success and one failure fixture), privacy, snapshots, adapter lifecycle |
 | `tests/test_expo_party.py` | Party roster seating, ticket reconnect, spectators, outcome vocabulary |
 | `tests/test_expo_contract.py` | rules that had no direct test before the reconciliation, and the pinned defects |
+| `tests/test_expo_repair.py` | a forced task combination is repaired from the recycled used pile when the deck has no replacement; unchanged draws where it has; mission 32's named tasks left alone |
 | `tests/test_expo_docs.py` | the mission table, task catalog, conflict codes and cited tests in `docs/` equal the code |
 | `tests/test_expo_authority.py` | Party Host and captain as separate authorities: host-only Begin, Retry and Next and nothing else, prerequisites the host cannot skip, the crew's moment to ask for distress, a watching host, succession, a former host's kept tickets, a Party that does not answer, reconnect, an away seat, a Party without the host claim |
 | `tests/playtest_expo.mjs` | browser playtest of a standalone table, run by hand: the rules flow plus the one-viewport contract on five phone sizes and the result takeover |
