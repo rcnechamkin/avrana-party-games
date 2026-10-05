@@ -120,19 +120,21 @@ def test_the_request_that_froze_the_table_is_refused_and_the_table_plays_on(mid)
 
 UNSTORABLE = {'a lone surrogate': '\ud800', 'a surrogate inside an id': 'abc\udfffdef', 'a NUL': 'a\x00b',
               'a newline': 'a\nb', 'an escape': '\x1b[2J', 'a delete': 'a\x7f', 'non-ASCII text': 'café',
-              'a line separator': 'a b'}
+              'a line separator': 'a\u2028b'}
 
 
 def saved_engine(path):
     return json.loads(path.read_text(encoding='utf-8'))['engine']
 
 
-def stored_table(path, humans=3):
-    s = ExpoSession(random.Random(4), snapshot_path=path)
+def stored_table(path, humans=3, mission=None, seed=4):
+    s = ExpoSession(random.Random(seed), snapshot_path=path)
     tokens = ['human-%d' % i for i in range(humans)]
     for t in tokens:
         s.join(t, t)
         s.set_ready(t, True)
+    if mission:
+        s.set_settings(tokens[0], {'mission': mission})
     s.start(tokens[0])
     s.tick(s.gen)
     return s, tokens
@@ -226,9 +228,9 @@ NOT_AN_ID = {'quotation marks': '"' * 80, 'a backslash': 'a\\b', 'a space': 'a b
              '81 characters': 'x' * 81, 'nothing': ''}
 
 
-def end_or_decline(e, i, request_id):
-    # What the two seats alternate: one proposes to end the table, the other declines.
-    verb = {'t': 'propose', 'proposal': {'kind': 'end'}} if i % 2 == 0 else {'t': 'confirm', 'yes': False}
+def end_or_decline(e, i, request_id, proposal=None):
+    # What the two seats alternate: one proposes to end the table (or `proposal`), the other declines.
+    verb = {'t': 'propose', 'proposal': proposal or {'kind': 'end'}} if i % 2 == 0 else {'t': 'confirm', 'yes': False}
     return {**verb, 'attempt': e.s['attempt'], 'revision': e.s['revision'], 'request': request_id}
 
 
@@ -253,29 +255,37 @@ def test_a_request_id_is_letters_digits_and_hyphens_only(case, tmp_path):
 
 
 def test_two_seats_filling_the_request_memory_leave_a_file_the_server_reads_back(tmp_path):
-    # The run from the issue, in full: 10,000 accepted commands in one attempt, each with the
-    # longest id allowed. Every save replaces the whole file, so only the last one decides what
-    # a restart finds; to keep the test to seconds, most commands go to the table's engine
-    # without their save, and every thousandth and the last two go through the adapter.
+    # The run from the issue, in full and at its largest: 10,000 accepted commands in one
+    # attempt, each with the longest id allowed. The issue's two seats propose to end the table
+    # and decline; here the proposal is the largest a seat can have accepted (a task with the
+    # longest id, offered to the seat with the longest name), so each remembered command is
+    # larger than the issue's. Every save replaces the whole file, so only the last one decides
+    # what a restart finds: most commands go to the table's engine without their save, and every
+    # thousandth and the last two go through the adapter. This is the slow test of the file,
+    # about 40 s: every command copies the whole request memory for its rollback.
+    from games.expo.content import TASKS
     from games.expo.storage import MAX_SNAPSHOT_BYTES
     path = tmp_path / 'crew.json'
-    s, tokens = stored_table(path, humans=2)
+    s, tokens = stored_table(path, humans=2, mission=17, seed=55)     # tasks are assigned freely
     e = s.engine
     seat = {s.players[t].pid: t for t in tokens}
-    pair = e.s['humans']
-    assert len(pair) == 2 and e.s['dedup'] == {}
+    pair = [e.s['captain']] + [q for q in e.s['humans'] if q != e.s['captain']]
+    owner = max(e.s['seats'], key=len)
+    task = max((k for k in e.s['pool'] if e.eligible(k, owner)), key=len)
+    assert len(pair) == 2 and e.s['dedup'] == {} and owner == 'tonoja' and len(task) == max(map(len, TASKS))
+    largest = {'kind': 'assign', 'owner': owner, 'task': task}
     limit = 10000
     for i in range(limit):
-        actor, msg = pair[i % 2], end_or_decline(e, i, longest_id(i))
+        actor, msg = pair[i % 2], end_or_decline(e, i, longest_id(i), largest)
         if i % 1000 == 999 or i >= limit - 2:
             assert s.game_action(seat[actor], msg) == [] and s.engine is e
             assert path.stat().st_size <= MAX_SNAPSHOT_BYTES
         else:
             assert e.apply(actor, msg, 100) is True
-    assert len(e.s['dedup']) == limit and e.s['proposal'] is None
+    assert len(e.s['dedup']) == limit and e.s['proposal'] is None and e.s['assignments'] == {}
     # The attempt is full: the next command is refused by the request limit, and nothing changes.
     on_disk, before = saved_engine(path), frozen(e)
-    more = end_or_decline(e, limit, longest_id(limit))
+    more = end_or_decline(e, limit, longest_id(limit), largest)
     assert [f['code'] for f in s.game_action(seat[pair[0]], more)] == ['requests']
     assert frozen(s.engine) == before and saved_engine(path) == on_disk
     assert on_disk['state']['dedup'] == e.s['dedup']

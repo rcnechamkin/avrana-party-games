@@ -218,9 +218,20 @@ With the snapshot file:
   anything is written. A snapshot over the limit is a failed write like any other: the command
   is rolled back, its request id is not remembered, the file stays as the last accepted command
   left it and a restart restores that table. A file over the limit is refused on start.
-- Request ids alone cannot reach the limit: the request memory of a full attempt, with the
-  longest ids, makes a file of about 2.75 million bytes for two seats. A table at the limit
-  would refuse every command that makes its file larger; none is known to get there.
+- Request ids alone cannot reach the limit. A full request memory (10,000 commands, every id
+  80 characters) made of the largest command a seat can have accepted, a task with the longest
+  id offered to Tonoja and declined, leaves a file of 3,069,966 bytes for two seats (measured).
+  The issue's run, proposing to end and declining, leaves 2,744,892 (measured). Longer seat
+  ids, attempt numbers and revisions add digits only: about 3.2 million bytes with a
+  four-digit attempt and seat ids, by calculation from the engine's own format. That leaves
+  about 0.8 million bytes for the rest of the table, which takes about 11,000.
+- A table at the limit is known to be reachable only from a large file written before this
+  rule (AVR-273), with request ids that are no longer accepted. Such a table refuses every
+  command that makes its file larger, which is nearly every command. A proposal to end the
+  table can still fit while the confirmation that would end it does not: every answer to it,
+  yes or no, is then refused with `storage`, and the table cannot be ended from inside. It is
+  still restored on every start. The way out is the operator's: stop the server and remove
+  the snapshot file; the next start has no table.
 - On start, the adapter restores the file if present. Every seated player starts away and must
   reconnect with their original credential. A table saved in `closed` goes straight to the
   platform's results.
