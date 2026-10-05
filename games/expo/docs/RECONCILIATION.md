@@ -892,6 +892,12 @@ before that merge and not repeated.
 Not covered: a live socket carrying the request (the tests call the adapter), real phones, the
 appliance, a Party-launched round, the playtest on Linux.
 
+Later the same day the branch was brought up to `main` with the one-viewport and Party Host
+work (AVR-275, AVR-252, AVR-266). The fix did not change. The new tests were run again without
+it: with the engine check taken out 16 of the 27 failed, with the store's handling taken out 6
+did. With both in place, `pytest tests/test_expo_*.py` gave 926 passed, 2 skipped, 2 expected
+failures (Windows 11). The whole repository and the playtests were not run again.
+
 ### AVR-275, AVR-252 and AVR-266, 2026-10-04
 
 The phone client was rebuilt around one viewport, and a Party round got its two authorities.
