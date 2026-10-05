@@ -43,7 +43,17 @@ async function refusal(pg,msg){
   assert.equal(said.kind,"err");assert.equal((await state(pg)).game.revision,before,"a refused request changes nothing");
   await pause(150);return said.text;
 }
-const checked={take:false,pass:false,early:false,turn:false,suit:false};
+const checked={take:false,pass:false,early:false,turn:false,suit:false,offer:false,owner:false};
+// The line beside the hand is read whole: the server's sentence is on the page, inside the
+// viewport, and neither cut short nor cut off below (AVR-263).
+async function reasonShown(pg,sentence,label){
+  const r=await pg.evaluate(()=>{const n=document.getElementById("hand-reason"),b=n.getBoundingClientRect();
+    return {text:n.textContent,cut:n.scrollWidth>n.clientWidth+1||n.scrollHeight>n.clientHeight+1,
+      inside:b.width>0&&b.height>0&&b.left>=-0.5&&b.top>=-0.5&&b.right<=innerWidth+0.5&&b.bottom<=innerHeight+0.5,vw:innerWidth,vh:innerHeight};});
+  assert.equal(r.text,sentence,`${label}: the line beside the hand is the server's sentence`);
+  assert.ok(r.inside,`${label} at ${r.vw}x${r.vh}: the reason is inside the viewport`);
+  assert.ok(!r.cut,`${label} at ${r.vw}x${r.vh}: the reason is not clipped ("${r.text}")`);
+}
 async function crewDecision(pg,key){
   await settle();const old=(await state(pg)).game.revision;await clickKey(pg,key);await waitRevision(pg,old);
   for(const p of pages){
@@ -107,6 +117,24 @@ try{
     for(const p of pages){if((await state(p)).you.pid===opening.captain)cap=p;else others.push(p);}
     const keep=!OFFER&&opening.tasks.every(t=>t.eligible_owners.includes(opening.captain));
     const target=keep?opening.captain:(await state(others[0])).you.pid;
+    {
+      // Nobody but the captain may offer: the button is disabled with the server's own rejection,
+      // which is also in words on the page (AVR-263).
+      const idle=others[0],seen=(await state(idle)).game.me,shown=await control(idle,"all-tasks");
+      assert.equal(shown.disabled,true);assert.equal(shown.title,seen.offer_reason);
+      assert.equal(shown.title,await refusal(idle,{t:"propose",proposal:{kind:"assign",owner:target,task:"all"}}));
+      assert.ok(await idle.evaluate(t=>[...document.querySelectorAll("#stage .why")].some(n=>n.textContent===t),shown.title),"the reason is in words on the page");
+      checked.offer=true;
+      // An owner the server would refuse cannot be chosen, and the page says why in its words.
+      const refused=(await state(cap)).game.me.offer_owner_reasons;
+      assert.deepEqual(await cap.evaluate(()=>[...document.querySelector('select[data-key="all-owner"]').options].filter(o=>o.disabled).map(o=>o.value).sort()),Object.keys(refused).sort());
+      for(const [seat,sentence] of Object.entries(refused)){
+        assert.equal(sentence,await refusal(cap,{t:"propose",proposal:{kind:"assign",owner:seat,task:"all"}}));
+        assert.ok(await cap.evaluate(t=>[...document.querySelectorAll("#stage .why")].some(n=>n.textContent.endsWith(t)),sentence),"the owner's reason is in words on the page");
+        checked.owner=true;
+      }
+      assert.equal(await cap.evaluate(()=>document.querySelector('select[data-key="all-owner"]').selectedOptions[0].disabled),false,"the owner chosen at first may be named");
+    }
     await cap.select('select[data-key="all-owner"]',target);
     await clickKey(cap,"all-tasks");
     for(const p of pages)await waitRevision(p,opening.revision);
@@ -128,10 +156,10 @@ try{
     const own=(await state(pg)).game;
     const idle=pages.find(p=>p!==pg),open=own.tasks.find(t=>!t.owner);
     if(!checked.take&&open&&(await control(idle,"task:"+open.id))){
-      // Another seat's selection: the button is disabled and the request is refused (the two
-      // sentences differ, AVR-263, so only the refusal is asserted).
-      assert.equal((await control(idle,"task:"+open.id)).disabled,true);
-      await refusal(idle,{t:"choose_task",task:open.id});checked.take=true;
+      // Another seat's selection: the button is disabled with the server's own rejection (AVR-263).
+      const shown=await control(idle,"task:"+open.id);
+      assert.equal(shown.disabled,true);
+      assert.equal(shown.title,await refusal(idle,{t:"choose_task",task:open.id}));checked.take=true;
     }
     // Pass while passing is allowed, so the run reaches a seat that may not pass.
     const pass=await control(pg,"pass-task");
@@ -144,14 +172,23 @@ try{
   await settle();
   for(const pg of pages){const s=await state(pg);for(const t of s.game.tasks){if(t.prediction_required&&!t.prediction_committed&&(t.owner===s.you.pid||(t.owner==="tonoja"&&s.game.captain===s.you.pid))){const rev=(await state(pg)).game.revision;await clickKey(pg,"lock:"+t.id);await waitRevision(pg,rev);}}}
   {
-    // Before the crew begins, every hand card is disabled with the view's reason and the server
-    // refuses a play (the two sentences differ: E-D8, AVR-263).
+    // Before the crew begins, every hand card is disabled with the server's own rejection of a
+    // play (E-D8, AVR-263).
     const early=(await settle()).game,card=early.me.hand[0],shown=await control(pages[0],"card:"+card);
     assert.equal(early.stage,"assistance");assert.equal(shown.disabled,true);assert.equal(shown.title,early.me.play_reason);
     // The reason is words on the page, not only a title a phone never shows.
     assert.equal(await pages[0].evaluate(()=>document.getElementById("hand-reason").textContent),early.me.play_reason);
+    for(const p of pages)await reasonShown(p,(await state(p)).game.me.play_reason,"before the mission begins");
     for(const p of pages)await oneViewport(p,"before the mission begins");
-    await refusal(pages[0],{t:"play_card",card});checked.early=true;
+    assert.equal(shown.title,await refusal(pages[0],{t:"play_card",card}));checked.early=true;
+  }
+  {
+    // Begin is the crew's at this table: open exactly while the view gives no reason for it
+    // (`lifecycle_reasons`: the server's own refusal of that proposal, AVR-263).
+    const open=(await settle()).game,shown=await control(pages[0],"begin");
+    assert.equal(open.lifecycle,"crew");assert.equal(open.lifecycle_reasons.begin,null);
+    assert.equal(shown.disabled,false);assert.equal(shown.title,"");
+    assert.equal(open.lifecycle_reasons.retry,await refusal(pages[0],{t:"propose",proposal:{kind:"retry",keep:true}}));
   }
   await crewDecision(pages[0],"begin");
   // Select a non-default sonar card, commit it, then verify its public exposure.
@@ -181,6 +218,19 @@ try{
     assert.equal(await pg.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,"no horizontal overflow");
     await oneViewport(pg,"the table");
     if(size.width<600){await touchTargets(pg,"the table");await withLongText(pg,async()=>{await oneViewport(pg,"the table at its fullest");await touchTargets(pg,"the table at its fullest");});}
+    if(size.width<600){
+      // The fullest table whoever is to play, with a sonar card shown by every crew member: the
+      // status line is longest on another seat's turn and a shown card adds to the crew strip.
+      // Which seat leads is the deal's choice, so each is drawn here rather than left to luck.
+      const real=await state(pg);
+      try{
+        for(const turn of real.game.seats){
+          await pg.evaluate((st,turn)=>{ST={...st,game:{...st.game,turn,leader:st.game.trick.length?st.game.leader:turn,
+            exposures:st.game.seats.filter(q=>q!=="tonoja").map(seat=>({seat,card:"blue:1",assertion:"highest",active:true}))}};render(ST);},real,turn);
+          await withLongText(pg,async()=>{await oneViewport(pg,"the table at its fullest, sonar shown, "+(turn===real.you.pid?"my turn":turn==="tonoja"?"Tonoja's turn":"another seat's turn"));});
+        }
+      }finally{await pg.evaluate(st=>{ST=st;render(st);},real);}
+    }
     await pg.screenshot({path:path.join(OUT,`table-${size.width}x${size.height}.png`)});
   }
   await pg.setViewport(PHONES[0]);
@@ -212,6 +262,10 @@ try{
       const shown=await control(idle,"card:"+card);
       assert.equal(shown.disabled,true);assert.equal(shown.title,seen.me.play_reason);
       assert.equal(shown.title,await refusal(idle,{t:"play_card",card}));checked.turn=true;
+      // On every phone size, the narrowest and shortest included, that sentence is read whole.
+      const was=idle.viewport();
+      for(const size of PHONES){await idle.setViewport(size);await pause(60);await reasonShown(idle,seen.me.play_reason,"another crew member's turn");await oneViewport(idle,"another crew member's turn");}
+      await idle.setViewport(was);await pause(60);
     }
     const offSuit=s.game.turn==="tonoja"?null:g.me.hand.find(c=>!g.me.legal_cards.includes(c));
     if(offSuit&&!checked.suit){
@@ -261,6 +315,7 @@ try{
   // Clockwise selection always reaches another seat's task and a seat that may not pass. An
   // off-suit card is checked whenever the deal offers one before the mission ends.
   if(["normal","skip_captain"].includes(opening.mission.allocation)&&opening.tasks.length)assert.ok(checked.take&&checked.pass,"task selection refusals were checked");
+  if(opening.mission.allocation==="captain_one")assert.ok(checked.offer,"the offer's refusal was checked");
   await crewDecision(pages[0],"end");
   await pages[0].waitForFunction(()=>ST.phase==="game_end"||ST.phase==="lobby");
   finished=true;

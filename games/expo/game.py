@@ -166,10 +166,14 @@ class ExpoSession(GameSession):
                 self._hold = (key, _mono() + RESOLVE_HOLD)
         else:
             self._hold = None
-        # One timer serves both. While a trick is resolving the timer waits for the end of the
+        # One timer serves all of them. While a trick is resolving the timer waits for the end of the
         # hold: the committed trick settles first, and a mission deadline that has passed by then
         # is judged in that same step (Engine.settle), so nothing is lost by not arming it.
-        self._bump(self._wall_moment(self._hold[1] if self._hold else s['expiry']))
+        # Before play no mission clock runs, and the timer waits for the end of the crew's moment
+        # instead (AVR-263): when it ends every phone must get the view in which Begin is open,
+        # because the reason it was closed is the server's to take back.
+        wake = self._hold[1] if self._hold else s['expiry'] if s['expiry'] is not None else self.begin_opens()
+        self._bump(self._wall_moment(wake))
 
     def _settle_due(self):
         """End a resolving trick whose hold is over. Two things call this, so that a lost timer
@@ -258,18 +262,45 @@ class ExpoSession(GameSession):
         # A Party round whose Party has not said who its host is: the transitional allowance.
         return bool(HOST_CLAIM_TRANSITION and self.party_round and not self.party_host)
 
+    def _host_refusal(self, kind, formed=True):
+        # What this adapter itself refuses a host step with, before the engine is asked, in the
+        # order it checks: (sentence, code) or None. `host_action` raises it and
+        # `lifecycle_reasons` shows it, so the two cannot disagree. `formed` is false for a
+        # message that is not an action at all.
+        if not self.party_round:
+            return ('This table is not a Party round.', 'host')
+        if not self.engine or not formed:
+            return ('No active mission.', 'payload')
+        if kind == 'begin' and self.begin_opens() is not None:
+            return (GRACE, 'grace')
+        return None
+
+    def lifecycle_reasons(self):
+        """Why Begin, Retry and Next are unavailable now, each in the sentence this server
+        refuses that step with at this moment, or None when it would be taken (AVR-263, owner
+        decision 2026-10-05). Where the steps are the Party Host's: this adapter's own refusal
+        (the crew's moment to ask for distress), then the engine's (`Engine.lifecycle`), in the
+        order `host_action` meets them. Where the crew proposes them: the engine's refusal of
+        that proposal (`Engine.apply`). Public table state only, the same for every viewer."""
+        host = self.lifecycle_authority() == 'host'
+        reasons = self.engine.lifecycle_reasons(host)
+        if host:
+            for kind in reasons:
+                refusal = self._host_refusal(kind)
+                if refusal:
+                    reasons[kind] = refusal[0]
+        return reasons
+
     def host_action(self, action):
         # core.net has the Party's word, on a fresh ticket, that the sender is its host now. The
         # host may be the captain, another seat or a spectator: none of that matters here, and
         # nothing here makes the host the captain. The engine still refuses a step whose
         # prerequisites the rules set (Engine.lifecycle).
-        if not self.party_round:
-            raise HostRefused('This table is not a Party round.')
-        if not self.engine or not isinstance(action, dict):
-            raise HostRefused('No active mission.', 'payload')
-        decision = action.get('decision')
-        if isinstance(decision, dict) and decision.get('kind') == 'begin' and self.begin_opens() is not None:
-            raise HostRefused(GRACE, 'grace')
+        decision = action.get('decision') if isinstance(action, dict) else None
+        refusal = self._host_refusal(decision.get('kind') if isinstance(decision, dict) else None,
+                                     isinstance(action, dict))
+        if refusal:
+            raise HostRefused(*refusal)
         refused = []
         fxs = self._commit(None, lambda: self.engine.lifecycle(action, _mono()), refused)
         if refused:
@@ -334,6 +365,8 @@ class ExpoSession(GameSession):
         view['lifecycle'] = self.lifecycle_authority()
         # The wall-clock moment the host's Begin opens (the distress opportunity), or None.
         view['begin_at'] = self._wall_moment(self.begin_opens())
+        # {begin, retry, next}: the sentence each step is refused with now, or None (AVR-263).
+        view['lifecycle_reasons'] = self.lifecycle_reasons()
         # True only under a Party that does not name its host yet (HOST_CLAIM_TRANSITION).
         view['lifecycle_transitional'] = self.host_claim_missing()
         # While a trick is resolving: the wall-clock moment the next one opens (AVR-246).

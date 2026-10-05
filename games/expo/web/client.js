@@ -62,7 +62,13 @@ function button(text, action, key, disabled=false, reason="", cls="") {
   b.dataset.key = key; b.title = reason; b.onclick = action; return b;
 }
 // A control that cannot be used says why in words on the page: a phone never shows a title.
+// Why a card, a task, a pass, an answer, an offer or a prediction is unavailable is the server's
+// sentence, from the view (`me.*_reason`, `me.*_reasons`): the very words it refuses that request
+// with. So is why Begin, Retry or Next is (`lifecycle_reasons`, the same for every viewer: the
+// Party Host may hold no seat). This file words no reason of its own for them, and such a control
+// is disabled exactly when the view gives a reason (AVR-263).
 function why(text) { return el("p", text, "why"); }
+function stepReason(g, kind) { return g.lifecycle_reasons[kind] || ""; }
 function busy() {
   pending = true;
   clearTimeout(pendingTimer);
@@ -96,9 +102,10 @@ function choices(select, entries, value) {
   }
   if (value !== undefined) select.value = String(value);
 }
-function ownerSelect(key, seats) {
+function ownerSelect(key, seats, refused={}) {
   const select = el("select"); select.dataset.key = key; select.setAttribute("aria-label","Task owner");
-  choices(select, seats.map(s => ({value:s,text:name(s)}))); return select;
+  choices(select, seats.map(s => ({value:s,text:name(s),disabled:Boolean(refused[s])})), seats.find(s => !refused[s]));
+  return select;
 }
 
 // ---- the Party and its host -------------------------------------------------------------------
@@ -110,7 +117,16 @@ function theHost() { return hostName() || "the Party Host"; }
 function hostOwned(g) { return g.lifecycle === "host"; }
 // May this phone ask for Begin, Retry or Next?
 function mayMoveOn(g) { return hostOwned(g) ? amHost() : Boolean(g.me); }
+// Ending a standalone table is the crew's decision: not offered while it cannot be proposed.
 function blocked(g) { return Boolean(g.proposal) || g.away.length > 0; }
+// The server's sentence for a Begin that cannot be used now, in words for whoever has the
+// control: in the stage, where there is room for a line (the dock has none).
+function beginWhy(g) {
+  const refused = g.stage === "assistance" && !g.result && mayMoveOn(g) ? stepReason(g, "begin") : "";
+  if (!refused) return null;
+  const line = why(refused); line.dataset.key = "begin-why";
+  return line;
+}
 // Seconds until the Party Host's Begin opens: the crew's moment to ask for distress (server's).
 function graceLeft(g) { return g && g.begin_at ? Math.max(0, Math.ceil(g.begin_at - conn.now()/1000)) : 0; }
 // The seat the Party Host sits in, when the name says so without doubt (the Party gives a name,
@@ -248,7 +264,7 @@ function draw() {
   drawSheet(g, st);
   for (const n of document.querySelectorAll("[data-key]")) {
     if (values.has(n.dataset.key) && ["INPUT","SELECT"].includes(n.tagName)
-        && (n.tagName !== "SELECT" || [...n.options].some(o => o.value === values.get(n.dataset.key)))) n.value = values.get(n.dataset.key);
+        && (n.tagName !== "SELECT" || [...n.options].some(o => o.value === values.get(n.dataset.key) && !o.disabled))) n.value = values.get(n.dataset.key);
     if (n.dataset.key === focusKey && !n.disabled && document.activeElement !== n) n.focus({preventScroll:true});
   }
   syncModal();
@@ -431,6 +447,8 @@ function decisionNode(g) {
     row.append(button(asked?"Accept":"Agree",()=>send("confirm",{yes:true}),"agree",false,"","btn-primary"),button("Decline",()=>send("confirm",{yes:false}),"decline"));
     box.append(row);
   } else if (!g.away.length) box.append(why(`Waiting for ${names(stillAsked(g))}.`));
+  const begin = beginWhy(g);
+  if (begin) box.append(begin);
   return box;
 }
 
@@ -474,14 +492,15 @@ function allocationNode(g) {
   head.append(el("h2", g.mission.fixed ? "Assign the fixed tasks" : `Assign the tasks · difficulty ${g.mission.target}`), el("span", `${g.tasks.length - open.length} of ${g.tasks.length} taken`, "muted"));
   box.append(head);
   const list = el("div", undefined, "pick-list");
+  const said = new Set();       // why the selecting seat cannot take a task: said once, not per task
   for (const task of open) {
     const item = el("article", undefined, "pick");
     item.append(el("div", task.text, "pick-text"));
     if (live && ["normal","skip_captain"].includes(mode)) {
-      const mineToTake = g.controller === g.me.seat, eligible = task.eligible_owners.includes(g.selector);
+      const mineToTake = g.controller === g.me.seat, refused = g.me.task_reasons[task.id] || "";
       item.append(button(g.selector === "tonoja" && mineToTake ? "Tonoja takes it" : "Take this task", () => send("choose_task",{task:task.id}), "task:"+task.id,
-        !mineToTake || !eligible, "Another crew member must select this task."));
-      if (mineToTake && !eligible) item.append(why("The captain cannot take a captain comparison task."));
+        Boolean(refused), refused));
+      if (mineToTake && refused) said.add(refused);
     } else if (live && mode === "free") {
       const sel = ownerSelect("owner:"+task.id, task.eligible_owners);
       const row = el("div", undefined, "choice-row");
@@ -491,25 +510,31 @@ function allocationNode(g) {
     list.append(item);
   }
   box.append(list);
+  for (const reason of said) box.append(why(reason));
   if (!live) return box;
   const actions = el("div", undefined, "choice-row");
   if (["normal","skip_captain"].includes(mode)) {
     if (g.controller === g.me.seat) {
-      actions.append(button("Pass selection", () => send("pass_task"), "pass-task", !g.me.may_pass_task, "The remaining tasks must be assigned this round."));
-      if (!g.me.may_pass_task) box.append(why("You cannot pass: the remaining tasks must be assigned this round."));
+      const refused = g.me.pass_task_reason || "";
+      actions.append(button("Pass selection", () => send("pass_task"), "pass-task", Boolean(refused), refused));
+      if (refused) box.append(why(refused));
     } else box.append(why(`${name(g.controller)} chooses${g.selector === "tonoja" ? " for Tonoja" : ""} now.`));
   }
   if (["one","captain_one"].includes(mode)) {
-    const captainOnly = mode === "captain_one" && g.me.seat !== g.captain;
-    const owner = ownerSelect("all-owner", g.seats);
-    actions.append(owner, button("Offer all tasks", () => propose("assign",{owner:owner.value,task:"all"}), "all-tasks", captainOnly, "The captain decides who takes the tasks."));
-    if (captainOnly) box.append(why(`The captain, ${name(g.captain)}, decides who takes the tasks.`));
+    // An owner the server would refuse cannot be chosen; with nobody left, or no right to offer,
+    // the button is unavailable too.
+    const refusedOwners = g.me.offer_owner_reasons;
+    const refused = g.me.offer_reason || (g.seats.every(s => refusedOwners[s]) ? refusedOwners[g.seats[0]] : "");
+    const owner = ownerSelect("all-owner", g.seats, g.me.offer_reason ? {} : refusedOwners);
+    actions.append(owner, button("Offer all tasks", () => propose("assign",{owner:owner.value,task:"all"}), "all-tasks", Boolean(refused), refused));
+    if (refused) box.append(why(refused));
+    else for (const s of g.seats.filter(s => refusedOwners[s])) box.append(why(`${name(s)}: ${refusedOwners[s]}`));
   }
   if (mode === "volunteer") {
     if (g.controller === g.me.seat) {
-      actions.append(button("Yes · take the tasks", () => send("volunteer",{yes:true}), "volunteer-yes", false, "", "btn-primary"),
-        button("No", () => send("volunteer",{yes:false}), "volunteer-no", !g.me.may_decline_volunteer, "The remaining crew must take the tasks."));
-      if (!g.me.may_decline_volunteer) box.append(why("You cannot decline: the remaining crew must take the tasks."));
+      actions.append(button("Yes · take the tasks", () => send("volunteer",{yes:true}), "volunteer-yes", Boolean(g.me.volunteer_reasons.yes), g.me.volunteer_reasons.yes || "", "btn-primary"),
+        button("No", () => send("volunteer",{yes:false}), "volunteer-no", Boolean(g.me.volunteer_reasons.no), g.me.volunteer_reasons.no || ""));
+      for (const reason of new Set([g.me.volunteer_reasons.yes, g.me.volunteer_reasons.no].filter(Boolean))) box.append(why(reason));
     } else box.append(why(`${name(g.controller)} is asked to volunteer.`));
   }
   if (actions.children.length) box.append(actions);
@@ -520,6 +545,7 @@ function predictionNode(g) {
   const box = el("section", undefined, "prep"); box.setAttribute("aria-label", "Predictions");
   box.append(el("h2", "Predict your tricks"));
   let mine = 0;
+  const said = new Set();       // why a prediction cannot be locked now: said once, not per task
   for (const task of g.tasks) {
     if (!(task.prediction_required && !task.prediction_committed && g.me && (task.owner === g.me.seat || (task.owner === "tonoja" && g.captain === g.me.seat)))) continue;
     mine++;
@@ -528,9 +554,12 @@ function predictionNode(g) {
     const form = el("div", undefined, "choice-row"), input = el("input");
     input.type = "number"; input.min = "0"; input.max = String(g.planned_tricks); input.step = "1"; input.value = "0";
     input.inputMode = "numeric"; input.dataset.key = "predict:"+task.id; input.setAttribute("aria-label","Predicted tricks");
-    form.append(input, button("Lock prediction", () => send("predict",{task:task.id,count:Number(input.value)}), "lock:"+task.id, g.away.length > 0, "", "btn-primary"));
+    const refused = g.me.predict_reasons[task.id] || "";
+    form.append(input, button("Lock prediction", () => send("predict",{task:task.id,count:Number(input.value)}), "lock:"+task.id, Boolean(refused), refused, "btn-primary"));
     item.append(form); box.append(item);
+    if (refused) said.add(refused);
   }
+  for (const reason of said) box.append(why(reason));
   if (!mine) box.append(why("Waiting for the crew to lock their predictions."));
   else box.append(why("A prediction cannot be changed once locked."));
   return box;
@@ -539,6 +568,8 @@ function predictionNode(g) {
 function assistanceNode(g) {
   const box = el("section", undefined, "prep"); box.setAttribute("aria-label", "Before the first trick");
   box.append(el("h2", "Ready to dive"));
+  const begin = beginWhy(g);            // first, so a short screen shows it without scrolling
+  if (begin) box.append(begin);
   const begins = !hostOwned(g) ? "Beginning needs the whole crew to agree."
     : amHost() ? "You begin the mission as Party Host, below."
     : `${theHost()} begins the mission as Party Host. Nobody has to confirm.`;
@@ -555,7 +586,7 @@ function assistanceNode(g) {
 function passingNode(g) {
   const box = el("section", undefined, "prep"); box.setAttribute("aria-label", "Distress");
   box.append(el("h2", "Distress signal"), el("p", "Everyone passes one color card to the next crew member. Choices stay sealed until the whole crew has chosen."));
-  box.append(why(!g.me ? "The crew is choosing." : g.me.pass_locked ? "Your pass is sealed. Waiting for the crew." : "Choose a color card from your hand, then pass it. Submarines cannot be passed."));
+  box.append(why(!g.me ? "The crew is choosing." : g.me.pass_locked ? "Your pass is sealed. Waiting for the crew." : "Choose a color card from your hand, then pass it."));
   return box;
 }
 
@@ -570,16 +601,11 @@ function drawTabs(g) {
 
 // ---- the hand: always on screen ----------------------------------------------------------------
 function handState(g) {
-  // Which cards are showing, and for each whether it may be chosen now and the server's reason.
-  const passing = g.stage === "passing";
-  if (ui.handView === "tonoja") {
-    const mayPlay = Boolean(g.me && g.turn === "tonoja" && g.captain === g.me.seat && !g.proposal && !g.away.length && !g.result);
-    return g.tonoja.map(c => c && ({card:c, enabled:mayPlay && g.me.legal_cards.includes(c), reason:g.me?.play_reason || "Only the captain plays for Tonoja."}));
-  }
-  if (!g.me) return [];
-  return g.me.hand.map(c => ({card:c,
-    enabled: !g.away.length && !g.proposal && !g.result && (passing ? (!g.me.pass_locked && !c.startsWith("submarine")) : g.turn === g.me.seat && g.me.legal_cards.includes(c)),
-    reason: passing ? "Submarines cannot be passed" : g.me.play_reason || (g.turn === g.me.seat ? "You must follow the opening suit." : "Play from Tonoja’s cards.")}));
+  // Which cards are showing, and for each the server's reason it cannot be chosen now, if any
+  // (AVR-263). A watcher has no reasons and can choose nothing.
+  const state = c => { const reason = g.me?.card_reasons[c] || ""; return {card:c, enabled:Boolean(g.me) && !reason, reason}; };
+  if (ui.handView === "tonoja") return g.tonoja.map(c => c && state(c));
+  return g.me ? g.me.hand.map(state) : [];
 }
 
 function drawHand(g) {
@@ -610,13 +636,14 @@ function drawHand(g) {
   if (!n) hand.append(el("p", g.me ? "No cards left." : "Spectators see no hands.", "muted"));
   let reason = "";
   if (g.me) {
+    // When no card showing can be chosen the line says why, in the server's words; otherwise it
+    // says what to do.
     const lead = g.trick[0]?.card.split(":")[0];
-    const tonoja = ui.handView === "tonoja";
-    if (g.result) reason = "The mission is over.";
-    else if (g.stage === "passing") reason = g.me.pass_locked ? "Your pass is sealed" : "Choose one color card";
-    else if (tonoja && g.captain !== g.me.seat) reason = "Only the captain plays for Tonoja.";
-    else if (g.me.play_reason) reason = g.me.play_reason;
-    else if (tonoja !== (g.turn === "tonoja")) reason = tonoja ? "It is not Tonoja’s turn." : "Play from Tonoja’s cards.";
+    const shown = cards.filter(Boolean);
+    const passing = g.stage === "passing" && ui.handView !== "tonoja";
+    if (shown.length && shown.every(c => c.reason && c.reason === shown[0].reason)) reason = shown[0].reason;
+    else if (!shown.length) reason = (passing ? "" : g.me.play_reason) || "";
+    else if (passing) reason = "Choose one color card";
     else reason = lead ? `Follow ${lead === "submarine" ? "submarines" : lead} if you can` : "Lead any card";
   }
   $("hand-reason").textContent = reason;
@@ -636,14 +663,19 @@ function tableZone(g) {
   if (hostOwned(g)) {
     const z = zone("Party Host", "table control"); z.id = "dock-host";
     if (!amHost()) z.append(el("p", begin ? `Waiting for ${theHost()} to begin` : `${hostName() || "The Party Host"} runs the table`, "dock-note"));
-    else if (begin && ui.grace > 0) z.append(button(`Begin in ${ui.grace}`, () => {}, "begin", true, "The crew has a moment to ask for distress first.", "btn-primary"));
-    else if (begin) z.append(button("Begin mission", () => lifecycle({kind:"begin"}), "begin", blocked(g), g.away.length ? "Waiting for the crew to reconnect." : "The crew is deciding something.", "btn-primary"));
-    else z.append(endButton("End EXPO", "end"));
+    else if (begin) {
+      // Closed exactly while the server gives a reason; `begin_at` only counts the wait down.
+      const refused = stepReason(g, "begin");
+      z.append(button(ui.grace > 0 ? `Begin in ${ui.grace}` : "Begin mission", () => lifecycle({kind:"begin"}), "begin", Boolean(refused), refused, "btn-primary"));
+    } else z.append(endButton("End EXPO", "end"));
     return z;
   }
   // The crew decides: a standalone table, or a Party that does not say who its host is.
   const z = zone("Crew", g.lifecycle_transitional ? "decides for now" : "decides together"); z.id = "dock-host";
-  if (begin) z.append(button("Begin without passing", () => propose("begin"), "begin", blocked(g) || !g.me, "", "btn-primary"));
+  if (begin && g.me) {
+    const refused = stepReason(g, "begin");
+    z.append(button("Begin without passing", () => propose("begin"), "begin", Boolean(refused), refused, "btn-primary"));
+  } else if (begin) z.append(el("p", "The crew agrees to begin", "dock-note"));
   else if (!ST.party_round) z.append(button("End table", () => propose("end"), "end", !g.me || blocked(g)));
   else if (amHost()) z.append(endButton("End EXPO", "end"));
   else z.append(el("p", `${hostName() || "The Party Host"} ends EXPO`, "dock-note"));
@@ -718,17 +750,24 @@ function drawResult(g, st) {
   if (facts.children.length) card.append(facts);
   const controls = el("div", undefined, "result-actions");
   if (g.proposal) controls.append(decisionNode(g));
-  else if (g.away.length) controls.append(why(`Waiting for ${names(g.away)} to reconnect.`));
   else if (mayMoveOn(g)) {
+    // Retry and Next are closed exactly while the server gives a reason, and say it in words.
     if (hostOwned(g)) controls.append(el("p", "You are the Party Host: you choose what happens next.", "result-who"));
-    if (r.status === "failed") controls.append(button("Retry same tasks", () => lifecycle({kind:"retry",keep:true}), "retry-same"), button("Retry new tasks", () => lifecycle({kind:"retry",keep:false}), "retry-new", false, "", "btn-primary"));
+    if (r.status === "failed") {
+      const refused = stepReason(g, "retry");
+      controls.append(button("Retry same tasks", () => lifecycle({kind:"retry",keep:true}), "retry-same", Boolean(refused), refused), button("Retry new tasks", () => lifecycle({kind:"retry",keep:false}), "retry-new", Boolean(refused), refused, "btn-primary"));
+      if (refused) controls.append(why(refused));
+    }
     if (ok) {
+      const refused = stepReason(g, "next");
       const next = el("select"); next.dataset.key = "next-mission"; next.setAttribute("aria-label", "Next mission");
       const open = (st.missions||[]).filter(m => m.enabled);
       choices(next, open.map(m => ({value:m.id,text:`Mission ${m.id}`})), open.find(m => m.id > g.mission.id)?.id || g.mission.id);
-      controls.append(next, button("Next mission", () => lifecycle({kind:"next",mission:Number(next.value)}), "next", false, "", "btn-primary"));
+      controls.append(next, button("Next mission", () => lifecycle({kind:"next",mission:Number(next.value)}), "next", Boolean(refused), refused, "btn-primary"));
+      if (refused) controls.append(why(refused));
     }
-  } else controls.append(el("p", hostOwned(g) ? `Waiting for ${theHost()} (Party Host) to choose what’s next.` : "The crew decides what’s next.", "result-who waiting"));
+  } else if (g.away.length) controls.append(why(`Waiting for ${names(g.away)} to reconnect.`));
+  else controls.append(el("p", hostOwned(g) ? `Waiting for ${theHost()} (Party Host) to choose what’s next.` : "The crew decides what’s next.", "result-who waiting"));
   // Ending EXPO: the Party Host's in a Party; the crew's own decision at a standalone table.
   if (!g.proposal) {
     if (ST.party_round ? amHost() : false) controls.append(endButton("End EXPO for everyone", "end-expo", "quiet"));
