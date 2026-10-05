@@ -27,6 +27,7 @@ or missing fields, wrong types (a boolean is not an integer) and unknown verbs a
 | 4 | request id not already used with another message | `request` | This request ID was already used. |
 | 5 | `attempt` and `revision` are current | `stale` | That moment has passed. Use the latest table state. |
 | 6 | table not closed | `phase` | This table is closed. |
+| 6a | no trick is being resolved (AVR-246) | `resolving` | The trick is being resolved. |
 | 7 | no crew decision pending (except for `confirm`) | `vote` | Confirm or decline the crew decision first. |
 
 **Repeats.** A message identical to one already accepted in this attempt is ignored without error
@@ -72,13 +73,13 @@ for word, and no reason means the request is accepted.
 Host's Begin included). `lifecycle_reasons` is `{begin, retry, next}`: for each step the sentence
 this server refuses it with at this moment, or null when it would be taken. It sits beside
 `lifecycle`, is the same for every viewer (a seat, a watcher, a Party spectator: the Party Host may
-hold no seat) and reads only who is away, whether a decision is pending, the phase, the result
-and, for the host's Begin, the crew's moment. Which refusal it is depends on who moves the table on:
+hold no seat) and reads only who is away, whether a decision is pending, the phase, the result,
+whether a trick is being resolved and, for the host's Begin, the crew's moment. Which refusal it is depends on who moves the table on:
 
 | `lifecycle` | The sentence is the refusal of | In this order |
 |---|---|---|
-| `host` | the Party Host's [`host`](#host-ticket-action-the-party-hosts-lifecycle-steps) message (`ExpoSession.host_action`, then `Engine.lifecycle`) | Begin only: `grace` The crew has a moment to ask for distress first. Begin in a few seconds. Then `paused` Waiting for the crew to reconnect.; `phase` This table is closed.; `vote` The crew is deciding something. Wait for their answer.; `phase` with the step's own sentence |
-| `crew` (a standalone table, or a Party from before the host claim) | a seated crew member's `propose` of that step (`Engine.apply`) | common checks 2, 6 and 7 above (Waiting for the crew to reconnect. / This table is closed. / Confirm or decline the crew decision first.), then `phase` with the step's own sentence |
+| `host` | the Party Host's [`host`](#host-ticket-action-the-party-hosts-lifecycle-steps) message (`ExpoSession.host_action`, then `Engine.lifecycle`) | Begin only: `grace` The crew has a moment to ask for distress first. Begin in a few seconds. Then `paused` Waiting for the crew to reconnect.; `phase` This table is closed.; `resolving` The trick is being resolved.; `vote` The crew is deciding something. Wait for their answer.; `phase` with the step's own sentence |
+| `crew` (a standalone table, or a Party from before the host claim) | a seated crew member's `propose` of that step (`Engine.apply`) | common checks 2, 6, 6a and 7 above (Waiting for the crew to reconnect. / This table is closed. / The trick is being resolved. / Confirm or decline the crew decision first.), then `phase` with the step's own sentence |
 
 The step's own sentence is "Finish task allocation and predictions first." (Begin), "Retry is
 available after a failed mission." (Retry) or "Complete this mission first." (Next). The sentences
@@ -88,7 +89,7 @@ refuses from and that `Engine.lifecycle_reasons` reads; `engine.STEP_NEEDS` and
 reason alike; `ExpoSession._host_refusal` is the adapter's own refusal ("This table is not a Party
 round.", "No active mission.", the crew's moment) for `host_action` and for the reason; and the
 crew path reads the same gate as every other reason (`Engine._gate`). A refusal added later is one
-line in the list it belongs to. What the reason cannot know is what depends on the message: a
+line in the list it belongs to, as the resolving trick of AVR-246 was. What the reason cannot know is what depends on the message: a
 stale `attempt` or `revision`, a malformed action, a `next` naming a mission that does not exist
 or is blocked, and who the sender is (the Party's answer about its host, or a seat proposing a
 step that is the host's).
@@ -435,6 +436,14 @@ is reached (`GameBinding._party_host_confirm`, then `_party_host_action`; AVR-25
   to history, Tonoja's uncovered cards turn face up, the winner becomes leader and next to play.
   Then every pending task and the mission objective are evaluated, failure before success, and the
   phase becomes `mission_result` if the mission is decided.
+- **After a completed trick** (AVR-246): if the mission is not decided the table is resolving and
+  check 6a refuses every seat's command until the server settles it, about 0.8 s later (the
+  owner's value, 2026-10-05, provisional pending real-phone playtesting)
+  ([GAME_STATE](GAME_STATE.md#the-resolving-phase)). The winner then leads, unless a timed
+  mission's deadline passed meanwhile: the hold gives no time (owner decision, 2026-10-05), the
+  deadline is judged at the settle, and the attempt ends by time with no turn opened. A failed attempt
+  carries its `cause` ([GAME_STATE](GAME_STATE.md#failure-causality)); it is reported only after
+  the card that caused it was accepted.
 - **Knowable before**: legality yes (`me.legal_cards`, `me.play_reason`, `me.card_reasons`).
   Outcome no: a legal card that loses a task or the mission is accepted and the failure follows
   (R03, R08).
@@ -453,6 +462,9 @@ Not commands; they are part of every view ([GAME_STATE](GAME_STATE.md#what-each-
 - The most recent resolved trick is always available; earlier tricks are never sent (R04).
 - Task status is derived and shown; there is no way to mark a task done or failed.
 - Cards won toward a task are not displayed (deferred, E-X2).
+- The events of the most recent resolved trick and of everything after it are in every view
+  (`events`); a client may present them and cannot answer them
+  ([GAME_STATE](GAME_STATE.md#semantic-events)).
 
 ## Things no client can do
 
@@ -464,8 +476,14 @@ for a redeal. Unknown verbs are rejected by common check 3.
 
 - Preparation of an attempt: terrain draw, task draw, repair, deal, deal-exception redeal, captain.
 - Trick resolution, task and objective evaluation, Tonoja reveals.
+- The settle that ends a resolving trick (`Engine.settle`, AVR-246): called by the adapter when
+  its hold is over, by its timer or at the next command, and at once on a restore. No verb
+  reaches it: `settle` sent by a client is an unknown action.
 - Real-time expiry: checked on every command and on the adapter's timer tick, so it fails the
-  mission with no traffic at all. It is measured on the monotonic clock; a restored timed attempt
+  mission with no traffic at all. The deadline is fixed at Begin and a resolving hold does not
+  move it (owner decision, 2026-10-05). While a trick is resolving the check waits for the
+  settle: the committed trick is settled, then the deadline is judged, before any turn opens.
+  It is measured on the monotonic clock; a restored timed attempt
   whose elapsed time cannot be proven ends at once ([GAME_STATE](GAME_STATE.md#restoration-after-a-server-restart)).
 - Presence changes.
 - Restore from a snapshot.

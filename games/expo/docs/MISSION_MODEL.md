@@ -89,6 +89,23 @@ CONFIRMED C13 (owner, 2026-10-04): R starts the timer "after assigning the tasks
 and the distress decision before play. POLICY P10 starts the clock when the crew unanimously
 begins. Only mission 16 is enabled.
 
+CONFIRMED (owner, 2026-10-05, on AVR-246): "Timed missions do **not** gain time during the 0.8 s
+resolving hold. The mission clock continues to run on monotonic elapsed time while
+presentation/resolving temporarily prevents the next action. Implementation should preserve a
+clean trick-resolution boundary, but that boundary must not extend the mission deadline. If a
+deadline expires during resolving, finish resolving the already-committed trick, then evaluate
+expiry before opening another actionable turn." So a timed attempt of mission 16 lasts exactly
+150 seconds from Begin at three, four and five players. A hold follows every trick that does
+not end the mission, and no seat may act during it, so up to 0.8 x (tricks - 1) of those seconds
+(9.6 s at three players, 7.2 s at four, 5.6 s at five) are not the crew's to act in. A trick
+whose last card is accepted before the deadline stands, and wins the mission if it completes
+it; a deadline that passes during a hold ends the attempt when the hold ends, before anyone is
+given a turn ([GAME_STATE](GAME_STATE.md#the-resolving-phase)). This replaces the policy the
+branch first carried, in which the clock stood during the hold and the deadline moved by it.
+The length of the hold is DECIDED too (owner, 2026-10-05): "Keep the resolve hold at 0.8 seconds
+for now. This is intentionally provisional pending real-phone playtesting." The timer decision
+remains in force whatever the hold becomes.
+
 ## Mission table
 
 `status` is `enabled` or `blocked Cnn`. Two-player availability is narrower, see below.
@@ -266,11 +283,25 @@ selected.
   selecting seats (so each seat takes at most one) and two drawn tasks both require the same trick
   (`firstTrick` with `firstTwoTrick`, for example), the later one is replaced by a random task of
   the same difficulty from the deck. With more tasks than seats nothing is replaced.
+- POLICY P16, where the replacement comes from (owner decision 2026-10-05, AVR-270): the deck. If
+  the deck holds no task of that difficulty and the used pile does, the used pile is shuffled back
+  into the deck, exactly as the draw does it (P04: the pile joins the deck, the pile is empty, the
+  deck is shuffled), and the replacement is drawn from there. The replaced task goes to the deck.
+  This follows the source game's task-deck behaviour (The Crew: Mission Deep Sea, R p8 and p14);
+  it is not an Avrana rule. The recycle happens only when the deck holds no candidate of that
+  difficulty. If the used pile holds none either, or the deck's candidates all conflict again
+  (an open question, [RECONCILIATION](RECONCILIATION.md), AVR-270), the setup is refused
+  (`feasibility`); the refused `next` or `retry` is rolled back, so the piles and the random state
+  are as they were. A table whose deck has a replacement is dealt exactly as before this policy.
+- Fixed tasks are exempt: a mission that names its tasks (mission 32) keeps them. They are never
+  examined for repair and never replaced, and while the mission is in play they are in neither
+  pile, so they are never drawn as a replacement and never shuffled back in. Once the mission has
+  ended they are ordinary task cards in the used pile, like any other mission's.
 - Repair for the captain (R08, C20): in `normal` allocation, when the draw has at least as many
   tasks as seats and fewer ordinary tasks than the captain must take (the captain takes every Nth
   task), a captain-comparison task would be forced onto the captain whatever the crew does. The
   most recently revealed comparison task is replaced by a random task of the same difficulty that
-  is not a captain comparison, and the replaced task returns to the deck. This can only occur at
+  is not a captain comparison (found as P16 says), and the replaced task returns to the deck. This can only occur at
   three seats, with three or four tasks that include all three comparison tasks. Both repairs run
   before the deal, so no attempt is counted, and they repeat until neither applies.
 - Not a repair: if the draw was fine and the crew leaves a comparison task for the captain's turn,

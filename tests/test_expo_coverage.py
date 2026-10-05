@@ -21,7 +21,8 @@ from core.net import GameBinding
 from core.session import HostRefused
 from games.expo import game as expo_game
 from games.expo.content import TASKS
-from games.expo.engine import LIFECYCLE, Engine, Invalid
+from games.expo.engine import LIFECYCLE, RESOLVING, Engine, Invalid
+from games.expo import game
 from games.expo.game import DISTRESS_GRACE, GRACE, HOST_ONLY, ExpoSession
 from games.expo.rules import legal_cards, suit
 from games.expo.tasks import evaluate
@@ -571,7 +572,17 @@ def by_pid(s, tokens):
 
 
 def send(s, token, t, **kwargs):
-    return s.game_action(token, command(s.engine, s.players[token].pid, t, **kwargs))
+    fx = s.game_action(token, command(s.engine, s.players[token].pid, t, **kwargs))
+    fire_hold(s)
+    return fx
+
+
+def fire_hold(s):
+    """The adapter's timer for a resolving trick, fired now instead of after RESOLVE_HOLD: the
+    same path (game_tick) with the hold's moment moved to the present (AVR-246)."""
+    if s.engine and s.engine.s['resolving'] and s._hold:
+        s._hold = (s._hold[0], game._mono())
+        s.game_tick()
 
 
 def agree(s, tokens, kind, **kwargs):
@@ -835,7 +846,10 @@ def drop_and_return(room, phones, stage):
     engine = room.session.engine
     assert victim.game['stage'] == stage
     seat, hand, mine = victim.pid, list(victim.game['me']['hand']), deepcopy(victim.game['me'])
-    table_before = {k: v for k, v in deepcopy(engine.s).items() if k not in ('away', 'revision')}
+    # A return changes who is away, the revision, and adds its own event (AVR-246): nothing else.
+    presence = ('away', 'revision', 'events', 'event_seq')
+    table_before = {k: v for k, v in deepcopy(engine.s).items() if k not in presence}
+    events_before = deepcopy(engine.s['events'])
     victim.close()
     witness.read(lambda p: p.game['away'] == [seat])
     assert engine.s['away'] == [seat]
@@ -848,7 +862,11 @@ def drop_and_return(room, phones, stage):
     assert victim.pid == seat and victim.game['me']['hand'] == hand and victim.game['stage'] == stage
     assert victim.game['me'] == mine                                 # and the same options
     witness.read(lambda p: p.game['away'] == [])
-    assert {k: v for k, v in engine.s.items() if k not in ('away', 'revision')} == table_before
+    assert {k: v for k, v in engine.s.items() if k not in presence} == table_before
+    added = engine.s['events'][len(events_before):]
+    assert engine.s['events'][:len(events_before)] == events_before
+    assert [(x['type'], x['seat']) for x in added] == [('PLAYER_RECONNECTED', seat)]
+    assert witness.game['events'][-1] == added[0]                    # and every viewer is told
     together(room, phones)
 
 
@@ -1392,7 +1410,7 @@ def test_the_wandering_tables_met_every_reason_and_some_hundreds_of_states():
         pytest.skip('needs every table of the property test in the same run')
     assert sum(states for _, _, states in STATES_SEEN) >= 500
     assert REASONS_SEEN == EVERY_REASON
-    assert STEPS_SEEN == EVERY_STEP_REASON
+    assert STEPS_SEEN - {RESOLVING} == EVERY_STEP_REASON
 
 
 def test_the_reasons_for_a_prediction_are_the_servers_rejections():
@@ -1458,7 +1476,7 @@ def table_answer(s, send):
     """What the table itself answers to one message, with the table and its clockwork put back."""
     e = s.engine
     before, rng = deepcopy(e.s), e.rng.getstate()
-    kept = {k: getattr(s, k) for k in ('phase', '_grace', 'deadline', '_deadline_mono', 'gen', 'seq')}
+    kept = {k: getattr(s, k) for k in ('phase', '_grace', '_hold', 'deadline', '_deadline_mono', 'gen', 'seq')}
     try:
         return send()
     finally:
@@ -1565,6 +1583,53 @@ def test_the_wandering_tables_met_every_reason_for_begin_retry_and_next():
         'host': steps | {'The crew is deciding something. Wait for their answer.', GRACE},
         'transitional': crew, 'standalone': crew}
     assert sum(taken for kind, taken in TABLES_SEEN if kind == 'host') >= 16      # steps the host really took
+
+
+def test_while_a_trick_is_being_resolved_that_is_the_reason_on_every_control_and_step():
+    """AVR-246 holds the table between two tricks. Its refusal is one line in each ordered list
+    (AVR-263): after a seat away and a closed table, before a pending decision."""
+    for n in (2, 3, 4, 5):
+        for seed in range(40):
+            e = playing(n, seed)
+            for _ in e.s['seats']:                                   # one whole trick, not settled
+                q = e.controller(e.s['turn'])
+                e.apply(q, command(e, q, 'play_card', card=legal_cards(e.playable(e.s['turn']), e.s['trick'])[0]), 100)
+            if e.s['resolving']:
+                break
+        assert e.s['resolving'] and e.s['result'] is None
+        assert shown_reasons(e) == {RESOLVING}
+        assert set(e.lifecycle_reasons(True).values()) == set(e.lifecycle_reasons(False).values()) == {RESOLVING}
+        e.s['proposal'] = {'payload': {'kind': 'end'}, 'votes': [e.s['humans'][0]]}
+        assert shown_reasons(e) == {RESOLVING} == step_reasons(e)    # before the pending decision
+        e.s['away'] = [e.s['humans'][1]]
+        assert shown_reasons(e) == {'Waiting for the crew to reconnect.'} == step_reasons(e)   # after a seat away
+        e.s['away'], e.s['proposal'] = [], None
+        assert e.settle() is True
+        assert RESOLVING not in shown_reasons(e) | step_reasons(e)
+
+
+def test_a_resolving_trick_is_the_reason_at_the_table_until_its_timer_settles_it(monkeypatch):
+    clock = {'now': 50.0}
+    monkeypatch.setattr(expo_game, '_mono', lambda: clock['now'])
+    for seed in range(1, 20):
+        s, tokens = host_table(seed=seed)
+        e, seat = s.engine, {s.players[t].pid: t for t in tokens}
+        clock['now'] += DISTRESS_GRACE
+        s.host_action({'t': 'lifecycle', 'decision': {'kind': 'begin'}, 'attempt': e.s['attempt'],
+                       'revision': e.s['revision']})
+        for _ in e.s['seats']:                                       # one whole trick, through the table
+            q = e.s['turn']
+            assert s.game_action(seat[q], command(e, q, 'play_card', card=legal_cards(e.playable(q), e.s['trick'])[0])) == []
+        if e.s['resolving']:
+            break
+    assert e.s['resolving'] and s._hold is not None
+    assert table_step_reasons(s, tokens) == {RESOLVING}
+    clock['now'] += expo_game.RESOLVE_HOLD
+    s.tick(s.gen)                                                    # the table's timer settles the trick
+    assert e.s['resolving'] is None
+    assert table_step_reasons(s, tokens) == {'Finish task allocation and predictions first.',
+                                             'Retry is available after a failed mission.',
+                                             'Complete this mission first.'}
 
 
 def host_table(n=3, seed=1, mid=1):

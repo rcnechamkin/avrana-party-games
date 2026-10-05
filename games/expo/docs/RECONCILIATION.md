@@ -62,7 +62,7 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 | E-M14 | Pass only when fewer tasks than seats at the start, and all tasks placed in one circuit (R p9) | `pass_task` | `test_pass_capacity_and_captain_comparison`, `test_difficulty_generation_and_no_pass_in_second_circuit` | MATCH |
 | E-M15 | Captain may not take a captain-comparison task (R p18), in every allocation mode | `eligible`, `_assign`, `_proposal` | `test_pass_capacity_and_captain_comparison`, `test_collective_and_free_allocation_refuse_a_captain_comparison_task_for_the_captain` | MATCH |
 | E-M16 | Mission succeeds when all tasks are complete, fails as soon as one cannot be (R p10 to p11) | `_outcome` | `test_full_seeded_games_only_use_legal_actions`, `test_every_enabled_task_has_deterministic_success_fixture` | MATCH. Early success when the last open task completes: `test_closing_the_window_on_the_last_open_task_wins_the_mission_at_once` |
-| E-M17 | Impossible forced pair is repaired by an equal-difficulty replacement; not when one seat could hold both (R p14) | `_repair_tasks` | `test_explicit_feasibility_and_used_deck_replenishment` | MATCH |
+| E-M17 | Impossible forced pair is repaired by an equal-difficulty replacement; not when one seat could hold both (R p14) | `_repair_tasks` | `test_explicit_feasibility_and_used_deck_replenishment`, `test_the_recorded_tables_reach_the_mission_that_was_refused` | MATCH |
 | E-M18 | Named submarine alignments are redealt free (R p14, p17; V footnotes) | `_deal_exception`, `prepare` | `test_named_submarine_alignments_are_deal_exceptions`, `test_a_deal_exception_is_redealt_before_the_attempt_is_counted` | MATCH |
 | E-M19 | Retry redeals; tasks kept or redrawn (R p11) | `retry` decision, `prepare(keep)` | `test_explicit_feasibility_and_used_deck_replenishment`, `test_distress_surcharge_is_logged_once_and_a_new_mission_clears_it` | MATCH |
 | E-M20 | Distress: before any communication; everyone passes one non-submarine the same way; stays active; one extra recorded attempt (R p14 to p15) | `distress` decision, `pass_card`, `_finish` log | `test_distress_sealed_exchange_and_persistence`, `test_distress_surcharge_is_logged_once_and_a_new_mission_clears_it` | MATCH |
@@ -147,7 +147,7 @@ a source's wording makes the choice non-obvious and the owner has not confirmed 
 | P13 | A real-time deadline keeps running while a player is away | fairness; no source | `test_a_timed_mission_expires_while_a_player_is_away` | uncontested |
 | P14 | An unknown credential during a table watches the public view; watchers are bounded; Party spectators get the public view | platform convention | `test_five_human_table_accepts_public_watcher_without_seating`, `test_nobody_else_sees_or_takes_an_empty_seat`, `test_a_spectator_ticket_watches_the_table_without_a_hand` | uncontested |
 | P15 | A volunteer who may not own one of the tasks ends the attempt as a counted failure | R p13: avoidable | `test_timed_start_barrier_and_volunteer_eligibility_failure` | uncontested; the same rule now covers the captain (Q9) |
-| P16 | The equal-difficulty replacement is drawn at random from the deck and the replaced task returns to it | R p14 says "a different task" | `test_explicit_feasibility_and_used_deck_replenishment` | uncontested |
+| P16 | The equal-difficulty replacement is drawn at random from the deck and the replaced task returns to it. When the deck holds no such task and the used pile does, the used pile is shuffled back into the deck first, as the draw does (P04), and the replacement is drawn from there. A mission's own named tasks (mission 32) are never replaced | R p14 says "a different task"; R p8 for reshuffling used tasks. The source game's task-deck behaviour, not an Avrana rule | `test_explicit_feasibility_and_used_deck_replenishment`, `test_the_used_pile_is_shuffled_into_the_deck_and_the_replacement_drawn_from_it`, `test_a_comparison_task_forced_on_the_captain_is_replaced_from_the_recycled_used_pile`, `test_the_named_tasks_of_mission_thirty_two_are_never_looked_at_for_repair` | decided by the owner 2026-10-05 (AVR-270) |
 | P17 | Deal exceptions are checked against every hand, the dummy's included, before selection | R p14: "no matter who takes the task" | `test_named_submarine_alignments_are_deal_exceptions` | uncontested |
 | P18 | Commands carry attempt, revision and a request id; identical repeats are no-ops; stale commands are refused | digital necessity | `test_rejected_actions_are_transactional_and_duplicates_idempotent`, `test_hostile_payloads_do_not_mutate` | uncontested |
 | P19 | Durable restoration is opt-in, atomic, and fails closed; Party rounds do not use it | platform has no store | `test_atomic_store_session_restart_and_fail_closed`, `test_storage_failure_rejects_action_without_losing_table`, `test_closed_snapshot_restores_shared_lobby_reset_and_rejects_corrupt_phase`, `test_a_party_round_never_inherits_or_writes_a_standalone_snapshot`, `test_a_snapshot_from_other_content_or_rules_is_refused` | uncontested |
@@ -179,7 +179,7 @@ they were wrong or have been overtaken; the committed documents carry the correc
 
 | Entry | What | Status |
 |---|---|---|
-| E-X1 | Presentation and causality events from the two draft presentation specifications (who triggered a failure, "impossible" state, synchronized events, cinematic client). The drafts are not in the repository | DEFERRED, AVR-246 (Q12) |
+| E-X1 | Presentation and causality events from the two draft presentation specifications (who triggered a failure, "impossible" state, synchronized events, cinematic client) | **Engine half built 2026-10-04 (AVR-246)**: semantic events, failure causality, objective states, a resolving phase; the drafts are committed as non-canonical files. The client half (anything shown, heard or felt from them) is DEFERRED, AVR-267. What is and is not built: [the AVR-246 report](#avr-246-2026-10-04) |
 | E-X2 | Showing cards won toward an unfinished task (R p16, optional) | DEFERRED |
 | E-X3 | Missions 3, 4, 12, 14, 15, 19, 20, 26 and their special rules (lead restriction, hardest-to-captain, two volunteers, other timers) | not implemented; blocked on sources, AVR-244 |
 | E-X4 | Tasks `moreRedThanGreen`, `moreYellowThanBlue`, `4with8`, `6with6` | definitions stored, disabled. `5with7` left this list on 2026-10-04 (Q5, AVR-249) |
@@ -429,7 +429,9 @@ dummy's seat?** Now: fixed at mission 1, untimed, dummy after both players. R p2
 dummy's seat a player choice.
 
 **Q12 (AVR-246). Presentation drafts.** Commit them as non-canonical drafts or keep them out; and
-whether a causality record is wanted in results.
+whether a causality record is wanted in results. **Decided 2026-10-04:** commit both as
+non-canonical design and product references; a causality record is wanted. Built:
+[the AVR-246 report](#avr-246-2026-10-04).
 
 **Q13 (C05, AVR-244). "More of one color than another".** R p18's sentence says the cards are "in
 your hand" at the end; the card pictures on the same page say "I will win more ... than ..."; R p16
@@ -445,6 +447,20 @@ reveal order decisive? Now: mission disabled.
 is such a lead illegal (the engine would have to refuse it, and needs a rule for a leader holding
 only those suits) or legal and mission-losing? R p19's never-lead tasks are the second kind. Now:
 mission disabled.
+
+### Decision of 2026-10-05 (AVR-270)
+
+**Where does the same-difficulty replacement come from when the task deck has none?** The owner,
+on the issue, 2026-10-05:
+
+> Approved: when EXPO must replace an impossible/conflicting task with another task of the same
+> difficulty and the remaining task deck cannot supply one, recycle/shuffle the used task pile and
+> continue the same-difficulty replacement from there. This is intended to follow The Crew:
+> Mission Deep Sea's task-deck behavior, not invent a new Avrana rule. Mission-specific fixed
+> tasks remain fixed and are not subject to this generic replacement path.
+
+Built as policy P16. It follows the source game's handling of its task deck; it is not an Avrana
+rule. The named tasks of mission 32 are exempt.
 
 ## Implementation report
 
@@ -1153,11 +1169,12 @@ these documents.
   sentences the client worded itself. The view now carries `lifecycle_reasons` `{begin, retry,
   next}`: for each step the sentence the server refuses it with at that moment, or null. It is
   public (the Party Host may hold no seat, and a viewer without a seat gets no `me`): it reads
-  who is away, whether a decision is pending, the phase, the result and the crew's moment, all
-  of which every viewer is already shown, and no hand; the privacy differential and the table
+  who is away, whether a decision is pending, the phase, the result, a resolving trick and the
+  crew's moment, all of which every viewer is already shown, and no hand; the privacy differential and the table
   walk compare it across viewers. Where the steps are the Party Host's it is the refusal of the
   host message, in the order the server checks: the crew's moment (`game.GRACE`, Begin only),
-  then an away seat, a closed table, a pending crew decision, what the step itself needs. Where
+  then an away seat, a closed table, a resolving trick, a pending crew decision, what the step
+  itself needs. Where
   the crew proposes them (a standalone table, a Party from before the host claim) it is
   `apply`'s refusal of that proposal, so a pending decision reads "Confirm or decline the crew
   decision first." there and "The crew is deciding something. Wait for their answer." for the
@@ -1168,12 +1185,16 @@ these documents.
   reason; the adapter's own refusals of a host step ("This table is not a Party round.", "No
   active mission.", the crew's moment) are `ExpoSession._host_refusal`, which `host_action`
   raises and the reason shows; the crew path uses the gate every other reason uses
-  (`Engine._gate`). The refusal AVR-246 adds while a trick is resolving is one line in
-  `_lifecycle_refusals` and one in `_gate`, between the closed table and the pending decision.
+  (`Engine._gate`). The refusal AVR-246 added while a trick is resolving came in with the
+  merge as one line in `_lifecycle_refusals` and one in `_gate`, between the closed table and
+  the pending decision; its sentence, "The trick is being resolved.", is then the reason on
+  every card for the 0.8 s of the hold
+  (`test_while_a_trick_is_being_resolved_that_is_the_reason_on_every_control_and_step`,
+  `test_a_resolving_trick_is_the_reason_at_the_table_until_its_timer_settles_it`).
 - **The crew's moment ends on the server.** The page used to open Begin when its own clock
   passed `begin_at`. With the reason coming from the view that would leave a stale sentence on
-  a phone, so the table's one timer (the mission's deadline, which does not run before play) is
-  set for the end of the moment and its tick pushes a state without the reason. `begin_at` now
+  a phone, so the table's one timer (a resolving trick's hold or the mission's deadline, neither
+  of which runs before play) is set for the end of the moment and its tick pushes a state without the reason. `begin_at` now
   only counts the wait down on the button.
 - **"Lock prediction"** was disabled without a reason while a seat was away.
   `me.predict_reasons` gives the server's sentence for each prediction that is awaited, by the
@@ -1312,3 +1333,275 @@ the sentence (`test_the_table_does_not_move_on_while_a_crew_member_is_away`,
 
 Not covered: the browser playtests were not run in this session (the orchestrator runs them),
 real phones, the appliance, a Party-launched round.
+
+### AVR-246, 2026-10-04
+
+Entry E-X1: the engine now reports what happened and why an attempt failed, and holds the table
+for a moment between tricks. Contract:
+[GAME_STATE](GAME_STATE.md#semantic-events-failure-causality-and-the-resolving-phase). Changed:
+`games/expo/engine.py`, `games/expo/tasks.py`, `games/expo/game.py`,
+`tests/test_expo_events.py` (new), two test helpers, these documents, and the two drafts added as
+non-canonical files. Not changed: the client, `core/`, the provider contract, the catalog, the
+snapshot format number.
+
+**Owner decisions carried out (Q12).** Both draft presentation specifications are committed
+beside the canonical documents, each under a banner that says it is non-canonical and loses to
+the code and the canonical documents; `tests/test_expo_docs.py` enforces the banner, the manifest
+class and that every file in `docs/` is on one list or the other. A causality record is wanted
+and is built.
+
+**Built.**
+
+- Semantic events in eleven families, numbered for the life of the table, in a fixed order,
+  identical for the same seed and commands, with no presentation instruction in them.
+- A bounded log (240 events) in the state and the snapshot; a viewer is sent the events of the
+  latest resolved trick and after, of the attempt in play, as copies; a currents declaration only
+  in its author's events.
+- Failure causality: objective, kind of failure, triggering seat and card where that is a fact,
+  affected seat, the committed action, the cards, the trick, the mission context.
+- Objective states PENDING, ACTIVE, COMPLETED, FAILED and IMPOSSIBLE beside the unchanged
+  `status`.
+- The resolving phase: a mark in the state, a refusal for every seat, a server settle that the
+  adapter calls after 0.8 s, on a late command, or at once on a restore. A timed mission's clock
+  runs through it and its deadline does not move (owner decision, 2026-10-05; see "Owner
+  decision" below). As first written this entry did the opposite: the clock stood and the hold
+  was credited to the deadline. This is the one place the change touches a number the rules
+  care about: the attempt is 150 seconds on the clock, and the holds are inside them.
+- `tasks.judge`, which labels a failure the evaluator already found. Two comparisons were made
+  **by hand; neither is in the repository** and neither can be rerun from it. The author
+  compared it with the evaluator before the change on 5.7 million judgements of all 96 task
+  definitions on random tables: every status was the same. The independent reviewer reported,
+  separately: 1.92 million judge-against-evaluate comparisons equal; the engine before the
+  change and this one driven through 196 games and 69,584 commands with no divergence;
+  snapshots readable in both directions; 15 of 15 of the reviewer's own faults caught. What the
+  repository keeps is `test_the_failure_kind_is_a_label_and_never_changes_a_task_status`.
+
+**Not built, on purpose.**
+
+- **No client work.** The page draws exactly what it drew: it does not read `events`, `cause`,
+  `resolving` or a task's `state`. During the hold it shows the resolved trick and the sentence
+  "The trick is being resolved." beside disabled cards, because that is the view's reason. The
+  result does not show the cause yet (the page shows `result.cause` only if it is a string; the
+  engine's cause is a record beside the result). Presenting any of this is AVR-267.
+- **No presentation timing in events.** The drafts ask for a scheduled presentation time on
+  events. Only one moment exists: `resolving.until`, added by the adapter to the view.
+- **No director, no fiction, no cinematic templates, no assists**, no audio or haptics.
+- **No earlier mission end.** The product contract allows ending a mission once impossibility is
+  proven "where consistent with the rules". Nothing was added: `IMPOSSIBLE` names the failures
+  the evaluators already detected.
+- **No full-attempt debrief to clients.** The log holds the whole attempt; a viewer is sent only
+  the latest trick, also after the result, because R04 lets only the last trick be looked at
+  again. Sending more after a mission ends is a product decision that was not made (below).
+- **Events for selection, prediction, the distress exchange, a seat going away and the end of a
+  table** do not exist.
+
+**Differences from the drafts.** Names and shapes are the engine's own (`trigger_seat`, not
+`triggerPlayerId`; suit:rank cards; `phase` and `stage` unchanged). `RESOLVING` is a mark beside
+the phase, not a phase value, and there is no `COMPLETE` status after it. The drafts' example
+calls a named card won by another player "failed"; the engine calls that `IMPOSSIBLE`, as the
+draft's own state model defines it. The drafts' objective constructors, legality response shape
+and performance tiers were not implemented and are not planned by this entry.
+
+**DECIDED by the owner, 2026-10-05 (evening, recorded on AVR-246).** The four questions this
+entry put to the owner are closed. The decision, verbatim:
+
+> 1. Do not expose a complete historical debrief/event stream yet. Use the latest trick's events
+> where needed for presentation and spectating. Defer a complete historical event/debrief system
+> until it is explicitly designed. 2. Keep the resolve hold at 0.8 seconds for now. This is
+> intentionally provisional pending real-phone playtesting. 3. Trick-caused outcomes/failures are
+> attributed to the player who won the triggering trick. The engine is authoritative for this
+> attribution. 4. Accept the replacement example names. The previously made timer decision
+> remains in force.
+
+What each means here, and what the code does (none of the four changed any behaviour):
+
+1. A viewer is sent the events of the latest resolved trick and what followed, of the attempt in
+   play, also after the mission has a result (`Engine.events`;
+   `test_a_viewer_is_sent_the_latest_resolved_trick_and_what_followed_and_no_earlier_trick`,
+   `test_after_a_result_a_viewer_is_still_sent_only_the_latest_trick`). The longer log stays on
+   the server. A complete debrief or event history is deferred until it is designed; it is not
+   a pending question of this entry.
+2. `RESOLVE_HOLD` is 0.8 s, one constant in `games/expo/game.py`
+   (`test_the_resolve_hold_is_the_owners_provisional_value`). It is provisional by intent,
+   pending playtests on real phones, and changing it changes no rule. What a timed mission's
+   clock does during it was decided earlier the same day (below) and remains in force: it runs.
+3. A failure established when a trick resolved is attributed to the seat that won that trick,
+   and the engine's `cause` is the authority for it: a client presents it and does not derive
+   its own. It is an attribution of the deciding trick, not a judgement of fault. Two cases
+   are outside "the player who won the triggering trick" as built, and are kept as they were
+   (see "Residual question" below).
+4. The drafts as committed keep the replacement example names (Alice, Bob, Carol; 30 and 7
+   occurrences) and their non-canonical banners. The title "The Team II" was left as written; it
+   is the reference tabletop's name, which [VTT_REFERENCE](VTT_REFERENCE.md) already uses, not
+   the publisher's.
+
+**Residual question (attribution, the one point the decision does not settle).** Two failures
+are decided by a single card and not by who won a trick, and the engine names the seat that
+played that card:
+
+- *The trick is not complete, so nobody has won it.* A task that forbids a lead (for example
+  `noLeadRedGreen`) fails when its owner leads a forbidden card: p0, who owns it, leads pink 3;
+  the attempt ends on that card with one card on the table, no trick in the history and no
+  `TRICK_RESOLVED`; `trigger_seat` is p0
+  (`test_a_card_that_fails_a_task_before_its_trick_ends_names_the_seat_that_played_it`). The same
+  holds in mission 27 when yellow 5 is played before the last card of a trick. There is no
+  winner to name, and none is invented.
+- *The trick is complete, and the trigger is still the seat that played the card.* Mission 27
+  only: yellow 5 played as the last card of a trick that is not the final trick. p0 leads
+  yellow 1, p1 plays yellow 9, p2 plays yellow 5: the trick is resolved and p1 wins it, the
+  mission fails because yellow 5 was played out of place, and `trigger_seat` is p2, who played
+  it, not p1 (`test_yellow_five_out_of_place_names_the_seat_that_played_it_even_when_the_trick_is_complete`).
+  The failure is the same one as in the case above and would have happened whoever won; naming
+  the winner here would attribute it differently depending only on whether yellow 5 happened to
+  be the last card of its trick. Read literally, the decision would name p1. This was not
+  changed: it is a question for the owner, not a repair.
+
+Every other failure established at a resolved trick names that trick's winner. In a scan of
+random playouts of missions 1 to 32 at three, four and five players (run by hand for this
+entry; the script is not in the repository) 919 such failures named the winner, 15 were the
+mission 27 case above, 107 were single-card failures in an incomplete trick, and 81 conditions
+unmet at the end of the deal named nobody.
+
+**Owner decision, 2026-10-05 (recorded on AVR-246).** "Timed missions do **not** gain time
+during the 0.8 s resolving hold. The mission clock continues to run on monotonic elapsed time
+while presentation/resolving temporarily prevents the next action. Implementation should
+preserve a clean trick-resolution boundary, but that boundary must not extend the mission
+deadline. If a deadline expires during resolving, finish resolving the already-committed trick,
+then evaluate expiry before opening another actionable turn."
+
+What changed for it, in `games/expo/engine.py` and `games/expo/game.py`:
+
+- `Engine.settle(credit)` is `Engine.settle(now)`. It never changes `expiry`. With the caller's
+  clock at or past the deadline it clears the resolving mark and ends the attempt by time
+  (`Engine.expire`, the same result and cause as every timeout) and emits no `TURN_STARTED`;
+  otherwise it opens the winner's turn as before. The engine still keeps no clock: `now` is
+  the adapter's monotonic reading, as it is for `observe_time`.
+- `Engine.observe_time` still records nothing while a trick is resolving, now for a different
+  reason: the committed trick is settled first, and `settle(now)` judges the deadline.
+- The adapter no longer computes a credit; it passes its clock to `settle`. The session's one
+  timer still waits for the end of the hold, where the deadline is judged in the same step.
+  The view's `expiry` is the deadline itself during a hold: the adjustment of commit 1abc97d
+  (deadline plus hold) is removed, and with it the limit it documented.
+- A restore settles with the clock when the clock can be trusted, and ends the timed attempt
+  before settling when it cannot, so neither path opens a turn on a table that has run out.
+- Untimed tables: no value differs. `settle` reads `now` only when there is a deadline.
+
+Not changed by the timer decision: what a viewer is sent after a result, the length of the
+hold, the attribution of the triggering seat, the drafts' example names. All four were decided
+the same evening (above).
+
+A consequence to know: the hold is not cut short by the deadline. A timeout that falls inside
+a hold is recorded when the hold ends, up to 0.8 s after the deadline (the decision's "finish
+resolving the already-committed trick, then evaluate expiry"). No seat can act in that time,
+and a client's countdown reads zero while `resolving` is still set.
+
+Tests: the timed and resolving cases in `tests/test_expo_events.py` were rewritten. Four tests
+were removed outright with the behaviour they asserted (they are in the history at 1abc97d and
+are not cited by name here, because no such test exists now): the clock standing during a hold
+with the hold credited, the hold and the deadline sharing one timer with the hold credited, the
+view never showing a deadline the hold would move, and a hold spanning the old deadline never
+shown as expired. Two were replaced by named counterparts: the one on what a settle may credit
+by `test_a_settle_with_no_usable_clock_settles_the_trick_and_judges_no_deadline`, and the one
+on what a lost timer credits by `test_a_lost_timer_gives_a_timed_table_no_time`.
+Seventeen of the new cases fail on the code before this decision (checked by running the file
+against the engine and the adapter of commit 1abc97d). The engine-level case
+`test_the_deadline_of_a_timed_mission_is_the_same_after_any_number_of_holds` does not, because
+the old `settle` ignored a credit over 60 seconds; the adapter-level
+`test_a_timed_mission_lasts_exactly_its_configured_seconds_however_many_tricks_were_held`
+covers the same claim and does fail on it. Neither browser playtest was run for this change.
+
+**Not verified.** The author did not run the two browser playtests (the orchestrator did,
+afterwards: see the table), and no phone has shown the hold. Both scripts read whose turn it is and then expect a legal card, which
+a resolving table does not offer, so their wait for a settled table now also waits for
+`resolving` to clear (one condition each, `tests/playtest_expo.mjs` and
+`tests/playtest_expo_party.mjs`). That edit passes a syntax check and has not been run. The
+timer path itself is tested through real sockets
+(`test_real_phones_are_held_after_a_trick_and_released_by_the_servers_own_timer`).
+
+| Check | Result (Windows 11) |
+|---|---|
+| `pytest tests/test_expo_events.py` | 77 passed (72 before the review repairs) |
+| twenty-two faults put into the engine and the adapter, one at a time (the author's claim: done by hand, the faults and the script are not in the repository) | each caught by `tests/test_expo_events.py` |
+| the reviewer's figures above (reported by the independent reviewer, also not in the repository) | as stated there |
+| `tests/playtest_expo.mjs` with 3 and 2 humans, `tests/playtest_expo_party.mjs` (run by the orchestrator at 84e179b, not by the author) | PASS each |
+| a snapshot written by this build, read by the build before it (and the reverse) | restored and played on, both ways |
+| `pytest tests/test_expo.py tests/test_expo_*.py` (every EXPO test file) | 1113 passed, 2 skipped (distress with two players, C11), 2 expected failures (E-D2, E-D8) at 84e179b; the review repairs add five tests |
+| `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check | OK |
+| `pytest -q` (whole repository), the cross-repository tests, the two browser playtests, a real phone | not run for this change |
+| after the owner decision of 2026-10-05, on `main` at 9f9aa41 merged in: `pytest tests/test_expo.py tests/test_expo_*.py` | 1168 passed, 2 skipped, 2 expected failures; `tests/test_expo_events.py` 100 passed (with the early-timer repair and its two tests); the four checks of the row above OK; browser playtests and the whole repository not run |
+
+### AVR-270, 2026-10-05
+
+- **Cause.** `Engine._repair_tasks` exchanges a task that makes an unavoidable combination for
+  another of the same difficulty, and looked for it in the task deck only. Late in a long table
+  the deck is small and held none, so `prepare` refused with `feasibility`. The last confirmation
+  of a `next` decision (or a `retry` with new tasks) was rolled back, every time it was tried.
+- **Decision.** The owner decided it on 2026-10-05 (above, "Decision of 2026-10-05"): recycle the
+  used pile and go on with the same-difficulty replacement, as the source game's task deck is
+  handled; a mission's own named tasks are exempt.
+- **Fix (P16).** The deck is looked at first, exactly as before. Only when it holds no such task,
+  and the used pile does, the used pile is put back into the deck, the used pile is emptied and
+  the deck is shuffled with the table's own random generator: the three steps the draw takes when
+  it cannot reach the difficulty (P04). The replacement is then drawn at random from the deck and
+  the conflicting task goes to the end of the deck, as before. The used pile is recycled only
+  when the deck holds no task of that difficulty that may be the replacement. `feasibility`
+  remains when neither pile holds one, and in the case under "Open" below. A refused `next` or
+  `retry` is rolled back whole, so the piles and the random state are as they were before it.
+  Which tasks conflict is unchanged. A mission with named tasks (32) is not examined at all.
+- **An earlier version of this branch** took the replacement out of the used pile and left the
+  rest of the pile where it was. That is not what the draw does and not what was decided, and it
+  was never merged.
+- **Unchanged where the deck has a replacement.** `tests/test_expo_repair.py` carries the repair
+  as it was (`DeckOnly`) and plays every table on both. Run by hand against the engine file of
+  `main` at `9f9aa41` as well: 600 seeded tables (150 seeds at 2, 3, 4 and 5 humans, 40 missions
+  each), 24,000 `next` decisions; 23,997 gave the same table, random state included; `main`
+  refused the other three, which are the recorded tables.
+- **Tests** (`tests/test_expo_repair.py`, 155 cases):
+  `test_the_recorded_tables_reach_the_mission_that_was_refused` (3),
+  `test_a_table_repaired_from_the_used_pile_is_stored_restored_and_played_on_the_same` (3),
+  `test_the_same_seed_recycles_the_used_pile_the_same_way` (3),
+  `test_a_long_table_is_never_refused_keeps_every_task_in_one_place_and_draws_as_before` (25 seeds
+  at 2, 3, 4 and 5 humans, 40 missions each; after every step every enabled task is in exactly
+  one of the deck, the used pile and the mission, `Engine.check` passes, and the table equals the
+  old repair's; none of these 100 tables needs the used pile, the recorded three do),
+  `test_a_long_table_with_retries_keeps_every_task_in_one_place_and_draws_as_before` (5 seeds at
+  2, 3, 4 and 5 humans, 60 steps each of `next`, `retry` with the same tasks and `retry` with new
+  ones, checked the same way),
+  `test_the_used_pile_is_shuffled_into_the_deck_and_the_replacement_drawn_from_it`,
+  `test_recycling_the_used_pile_is_decided_by_the_seed_alone`,
+  `test_a_replacement_in_the_deck_is_taken_as_before_and_the_used_pile_is_untouched`,
+  `test_no_replacement_in_either_pile_is_still_refused_and_nothing_is_shuffled`,
+  `test_a_comparison_task_forced_on_the_captain_is_replaced_from_the_recycled_used_pile` (three
+  draw orders, by `next` and by `retry` with new tasks, as the crew's decision and as the Party
+  Host's `lifecycle` command),
+  `test_known_limit_a_deck_whose_only_replacements_conflict_again_is_refused_without_recycling`
+  (pins the open case below; the refusal leaves state and random state as they were),
+  `test_a_comparison_task_is_never_the_replacement_for_one_forced_on_the_captain`,
+  `test_the_named_tasks_of_mission_thirty_two_are_never_looked_at_for_repair` (2 to 5 humans),
+  `test_named_tasks_are_not_exchanged_even_if_they_would_make_a_forced_combination`,
+  `test_mission_thirty_two_keeps_its_tasks_out_of_a_recycled_pile` (3).
+
+The tests of the first 128 were seen to fail: with the engine of `main` 26 of the 28 that are not
+the long walk fail; without the exemption for named tasks 5 do; without the shuffle 1 does. The
+known-limit test and the walk with retries pass on `main`'s repair too, by design: they pin what
+did not change.
+
+**Open, for the owner.** The recycle fires only when the deck holds no candidate of the
+difficulty. A deck can hold candidates that all conflict again. Example at three seats: the draw
+is `firstThreeTrick` and `firstTrick` (and a third task), the deck's only other task of difficulty
+1 is `firstTwoTrick`, and the used pile holds ordinary tasks of difficulty 1. `firstTrick` is
+exchanged for `firstTwoTrick`, which conflicts with `firstThreeTrick` as well and is exchanged
+back, a hundred times, and the setup is refused with `feasibility` ("Task combination needs a
+fresh task deck."), every time it is tried. `main` refuses it too; it did not occur in the
+24,000 seeded `next` decisions above or the 1,200 steps of the walk with retries. Question: should the used pile also be recycled when the
+deck's candidates are exhausted, not only when it has none? Not built: it is wider than the
+decision of 2026-10-05.
+
+On Windows 11, with `main` at `9f9aa41` merged in, `pytest -q tests/test_expo_*.py
+tests/test_expo.py`: 1,221 passed, 2 skipped, 2 expected failures. `tests/test_no_private_data.py`,
+`ops/export_avrana_catalog.py --check provider/catalog.json`, `ops/check_docs.py` and
+`ops/check_static.sh`: clean.
+
+Not covered: the whole repository suite, the browser playtests, a live socket, a Party round,
+real phones, the appliance, the timed variant, tables longer than 60 steps, the Party Host's
+command over a live socket (the tests call `Engine.lifecycle`).
