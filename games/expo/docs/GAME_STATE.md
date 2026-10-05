@@ -137,6 +137,8 @@ retry or go on. Only `closed` hands control back to the platform (`game_end`).
 | distress flag, attempts, log, result, deadline, who is away | | |
 | the pending crew decision and who confirmed | | |
 | `lifecycle`: who moves the table on, `host` or `crew` (added by the adapter) | | who the Party Host is: the game is never told |
+| `begin_at`: the wall-clock moment the host's Begin opens, or null (adapter) | | |
+| `lifecycle_transitional`: true only under a Party that does not name its host yet (adapter) | | |
 
 Requirements met: no viewer receives another seat's legal cards; unseated viewers cannot act;
 identity is the authenticated connection, never a field in the message. In currents the
@@ -263,9 +265,17 @@ When Party launches EXPO (`core/party_session.py`, Party ADR 0006 and 0010):
   the captain, another seat or a spectator.
 - **Who the host is** is never stored here. `GameSession.party_host` only records that this
   Party says who its host is (a ticket carried the claim). Each host action brings a fresh
-  ticket and the claim is read from that one ([ACTIONS](ACTIONS.md#crew-decisions)). The view's
-  `lifecycle` is `host` then, and `crew` under a Party that does not say or at a standalone
-  table, where the crew agrees on those steps as before.
+  ticket, and the game server then asks the Party whether that participant is its host at that
+  moment ([ACTIONS](ACTIONS.md#crew-decisions)): a former host is refused at once. The view's
+  `lifecycle` is `host` then. At a standalone table it is `crew`. Under a Party that does not
+  say it is `crew` with `lifecycle_transitional`: an allowance for deploy order that is logged
+  and shown, not a way to run a Party round.
+- **The crew's moment before Begin.** Where distress is available the host's Begin opens
+  `DISTRESS_GRACE` seconds after the tasks are settled (`begin_at`), once per attempt. The
+  moment is the adapter's (`ExpoSession._grace`, monotonic clock), not engine state: it is not
+  saved, and a restored table gives the crew the moment again.
+- **An away seat** still stops Begin, Retry and Next (AVR-240 owns recovery). It never strands
+  the Party: the host's end is the Party's and does not pass through the table.
 - No seat ends a Party round from inside the game. The host ends it from the Party, whose signed
   `end` releases the room; the Party records `ended_by_host`. A standalone table still closes by
   the crew's `end`, reporting `completed` if a mission result stood and `abandoned` otherwise.
