@@ -354,7 +354,8 @@ is reached (`GameBinding._party_host_confirm`, then `_party_host_action`; AVR-25
   Then every pending task and the mission objective are evaluated, failure before success, and the
   phase becomes `mission_result` if the mission is decided.
 - **After a completed trick** (AVR-246): if the mission is not decided the table is resolving and
-  check 6a refuses every seat's command until the server settles it, about 0.8 s later
+  check 6a refuses every seat's command until the server settles it, about 0.8 s later (the
+  owner's value, 2026-10-05, provisional pending real-phone playtesting)
   ([GAME_STATE](GAME_STATE.md#the-resolving-phase)). The winner then leads, unless a timed
   mission's deadline passed meanwhile: the hold gives no time (owner decision, 2026-10-05), the
   deadline is judged at the settle, and the attempt ends by time with no turn opened. A failed attempt

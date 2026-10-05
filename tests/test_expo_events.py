@@ -515,6 +515,22 @@ def test_a_card_that_fails_a_task_before_its_trick_ends_names_the_seat_that_play
     assert types(e.s['events'])[-3:] == ['CARD_PLAYED', 'OBJECTIVE_FAILED', 'MISSION_FAILURE']
 
 
+def test_yellow_five_out_of_place_names_the_seat_that_played_it_even_when_the_trick_is_complete():
+    # Mission 27. The failure is decided by the card, whoever wins: this is the one failure at a
+    # resolved trick whose trigger is not that trick's winner (RECONCILIATION E-X1, residual question).
+    e = dealt({'p0': ['yellow:1'], 'p1': ['yellow:9'], 'p2': ['yellow:5']}, 'p0',
+              'moreTricksThanOthers', 'p0', mission=27)
+    play(e, 'p0', 'yellow:1')
+    play(e, 'p1', 'yellow:9')
+    play(e, 'p2', 'yellow:5')
+    assert e.s['result']['status'] == 'failed' and len(e.s['history']) == 1 and e.s['trick'] == []
+    cause = e.s['cause']
+    assert e.s['history'][0]['winner'] == 'p1'
+    assert (cause['kind'], cause['objective'], cause['trigger_seat'], cause['trick']) == (
+        'mission_objective', 'final_yellow5', 'p2', 1)
+    assert 'yellow:5' in cause['cards'] and 'TRICK_RESOLVED' in types(e.s['events'])
+
+
 def test_a_mission_objective_names_the_seat_that_took_the_trick_and_the_seat_that_had_to_stay_ahead():
     # Mission 23: the first trick's winner must always hold strictly more tricks.
     e = dealt({'p0': ['blue:9', 'green:1'], 'p1': ['blue:1', 'green:9'], 'p2': ['blue:2', 'green:2']},
@@ -774,6 +790,23 @@ def test_a_viewer_is_sent_the_latest_resolved_trick_and_what_followed_and_no_ear
         e.settle()
     assert len(e.s['history']) == 6
     assert {1, 2, 3, 4, 5, 6} <= {x['trick'] for x in e.s['events']}    # the server still has them
+
+
+def test_after_a_result_a_viewer_is_still_sent_only_the_latest_trick():
+    # Owner decision 2026-10-05: no complete historical debrief or event stream yet.
+    e = playout(open_table())
+    last = len(e.s['history'])
+    assert e.s['result'] and last > 3
+    assert {x['trick'] for x in e.s['events'] if x['attempt'] == e.s['attempt']} >= set(range(1, last + 1))
+    earlier = {p['card'] for h in e.s['history'][:-1] for p in h['plays']}
+    for viewer in ('p0', 'p1', 'p2', None):
+        sent = e.view(viewer)['events']
+        assert sent and {x['trick'] for x in sent} == {last}
+        assert types(sent)[-1] in ('MISSION_SUCCESS', 'MISSION_FAILURE') and not cards_in(sent) & earlier
+
+
+def test_the_resolve_hold_is_the_owners_provisional_value():
+    assert game.RESOLVE_HOLD == 0.8                                 # owner, 2026-10-05; pending real phones
 
 
 def test_a_new_attempt_sends_none_of_the_last_attempts_events():

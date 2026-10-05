@@ -357,7 +357,10 @@ newest sequence number at the table whether sent or not):
 - of those, only the events of the most recently resolved trick and everything after it; before
   the first trick is resolved, the whole attempt so far. This is R04: only the most recently won
   trick may be looked at again. Events of earlier tricks stay on the server, also after the
-  mission result;
+  mission result. DECIDED (owner, 2026-10-05): "Do not expose a complete historical
+  debrief/event stream yet. Use the latest trick's events where needed for presentation and
+  spectating. Defer a complete historical event/debrief system until it is explicitly
+  designed.";
 - every field of an event was public when it happened. One field is not public and is stored
   apart: in `currents` the `assertion` of `COMMUNICATION_SENT` is kept under `private` and is
   added only to its author's own events, exactly as the view treats the declaration. A watcher, a
@@ -400,7 +403,10 @@ the task.
 | `trick` | the trick in which it was established; 0 during task selection |
 | `mission` | `{id, attempt, objective, allocation, communication, timed, distress}` |
 
-**Who triggered it.** The engine names a seat only where that is a fact and not an opinion:
+**Who triggered it.** DECIDED (owner, 2026-10-05): "Trick-caused outcomes/failures are
+attributed to the player who won the triggering trick. The engine is authoritative for this
+attribution." A client presents the `cause` it is sent and derives none of its own. The engine
+names a seat only where that is a fact and not an opinion:
 
 - a failure established when a trick resolved: the seat that **won the trick**, with its winning
   card. Every task evaluator is a function of who won which cards, so the winner's card is what
@@ -409,8 +415,14 @@ the task.
   may not be the affected seat
   (`test_a_legal_card_that_loses_the_mission_is_accepted_and_names_who_triggered_it_and_who_lost`,
   `test_a_seat_that_breaks_its_own_task_is_both_trigger_and_affected_and_the_state_is_failed`);
-- a failure established by one card before its trick ended (a forbidden lead, yellow 5 played out
-  of place): the seat that played that card;
+- a failure established by one card and not by who won a trick: the seat that played that card.
+  There are two: a forbidden lead, which ends the attempt before the trick is complete (nobody
+  has won it), and mission 27's yellow 5 played out of place, which names the seat that played
+  yellow 5 whether the trick was still open or that card completed it (in the second case the
+  trick has a winner, who is not named:
+  `test_yellow_five_out_of_place_names_the_seat_that_played_it_even_when_the_trick_is_complete`).
+  The owner's decision speaks of the trick's winner; these two are kept as built and are the
+  one residual question ([RECONCILIATION](RECONCILIATION.md#avr-246-2026-10-04));
 - a failure during task selection: the seat whose choice or answer ended the attempt;
 - a condition merely not met when the deal ended, and a deadline: nobody.
 
@@ -435,8 +447,9 @@ of each failure is kept in state key `failures`.
   the attempt, so it is only ever a label on a failure in a mission result; no view of a table
   still in play contains it.
 - A viewer is sent only the latest resolved trick's events, also after the result. A client
-  therefore cannot yet build a debrief or a recap of the attempt from what it is sent (owner
-  question 1 in [RECONCILIATION](RECONCILIATION.md#avr-246-2026-10-04)).
+  therefore cannot build a debrief or a recap of the attempt from what it is sent. That is
+  decided (owner, 2026-10-05): a complete historical event or debrief system is deferred until
+  it is explicitly designed ([RECONCILIATION](RECONCILIATION.md#avr-246-2026-10-04)).
 - An open (not currents) `COMMUNICATION_SENT` keeps its `assertion` for as long as the event is
   in the window, so a viewer who arrives late can still read a declaration whose card has since
   been played and has left the view's `exposures`. It was public when it was made.
@@ -459,7 +472,9 @@ decided and in the state (winner, task statuses, the next leader); what waits is
   `TURN_STARTED` and raises `revision`. On a timed table whose deadline has passed it ends the
   attempt by time instead and emits no `TURN_STARTED` (below).
 - The engine holds no clock for it. **The adapter decides when**: it holds the trick for
-  `game.RESOLVE_HOLD` (0.8 s) on the monotonic clock, arms the session's one timer for that
+  `game.RESOLVE_HOLD` (0.8 s; DECIDED by the owner, 2026-10-05: "Keep the resolve hold at 0.8
+  seconds for now. This is intentionally provisional pending real-phone playtesting.") on the
+  monotonic clock, arms the session's one timer for that
   moment (a mission deadline is judged at that moment too), and settles when the timer fires,
   passing its monotonic clock as `now`. The view the adapter sends adds `resolving.until`, the
   wall-clock moment the hold ends, for a client that wants to time its presentation to it. The

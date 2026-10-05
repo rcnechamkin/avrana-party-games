@@ -1179,20 +1179,65 @@ calls a named card won by another player "failed"; the engine calls that `IMPOSS
 draft's own state model defines it. The drafts' objective constructors, legality response shape
 and performance tiers were not implemented and are not planned by this entry.
 
-**For the owner.**
+**DECIDED by the owner, 2026-10-05 (evening, recorded on AVR-246).** The four questions this
+entry put to the owner are closed. The decision, verbatim:
 
-1. May a client be sent the whole attempt's events once the mission has a result (a debrief or a
-   replay)? Now: no, the latest trick only.
-2. `RESOLVE_HOLD` is 0.8 s, from the draft's "under one second". It is one constant in
-   `games/expo/game.py`; changing it changes no rule. Its length is still the owner's to
-   confirm. What a timed mission's clock does during it is **decided** (2026-10-05, below): it
-   runs, so in timed mission 16 the holds take up to about ten of the crew's 150 seconds.
-3. The triggering seat is the trick's winner. That is an attribution of the deciding card, not
-   of fault; a presentation that blames a player on it should know that.
-4. The drafts as committed: the example players' first names were replaced by the repository's
-   stand-in names (Alice, Bob, Carol), 30 and 7 occurrences, and a banner was added. The title
-   "The Team II" was left as written; it is the reference tabletop's name, which
-   [VTT_REFERENCE](VTT_REFERENCE.md) already uses, not the publisher's.
+> 1. Do not expose a complete historical debrief/event stream yet. Use the latest trick's events
+> where needed for presentation and spectating. Defer a complete historical event/debrief system
+> until it is explicitly designed. 2. Keep the resolve hold at 0.8 seconds for now. This is
+> intentionally provisional pending real-phone playtesting. 3. Trick-caused outcomes/failures are
+> attributed to the player who won the triggering trick. The engine is authoritative for this
+> attribution. 4. Accept the replacement example names. The previously made timer decision
+> remains in force.
+
+What each means here, and what the code does (none of the four changed any behaviour):
+
+1. A viewer is sent the events of the latest resolved trick and what followed, of the attempt in
+   play, also after the mission has a result (`Engine.events`;
+   `test_a_viewer_is_sent_the_latest_resolved_trick_and_what_followed_and_no_earlier_trick`,
+   `test_after_a_result_a_viewer_is_still_sent_only_the_latest_trick`). The longer log stays on
+   the server. A complete debrief or event history is deferred until it is designed; it is not
+   a pending question of this entry.
+2. `RESOLVE_HOLD` is 0.8 s, one constant in `games/expo/game.py`
+   (`test_the_resolve_hold_is_the_owners_provisional_value`). It is provisional by intent,
+   pending playtests on real phones, and changing it changes no rule. What a timed mission's
+   clock does during it was decided earlier the same day (below) and remains in force: it runs.
+3. A failure established when a trick resolved is attributed to the seat that won that trick,
+   and the engine's `cause` is the authority for it: a client presents it and does not derive
+   its own. It is an attribution of the deciding trick, not a judgement of fault. Two cases
+   are outside "the player who won the triggering trick" as built, and are kept as they were
+   (see "Residual question" below).
+4. The drafts as committed keep the replacement example names (Alice, Bob, Carol; 30 and 7
+   occurrences) and their non-canonical banners. The title "The Team II" was left as written; it
+   is the reference tabletop's name, which [VTT_REFERENCE](VTT_REFERENCE.md) already uses, not
+   the publisher's.
+
+**Residual question (attribution, the one point the decision does not settle).** Two failures
+are decided by a single card and not by who won a trick, and the engine names the seat that
+played that card:
+
+- *The trick is not complete, so nobody has won it.* A task that forbids a lead (for example
+  `noLeadRedGreen`) fails when its owner leads a forbidden card: p0, who owns it, leads pink 3;
+  the attempt ends on that card with one card on the table, no trick in the history and no
+  `TRICK_RESOLVED`; `trigger_seat` is p0
+  (`test_a_card_that_fails_a_task_before_its_trick_ends_names_the_seat_that_played_it`). The same
+  holds in mission 27 when yellow 5 is played before the last card of a trick. There is no
+  winner to name, and none is invented.
+- *The trick is complete, and the trigger is still the seat that played the card.* Mission 27
+  only: yellow 5 played as the last card of a trick that is not the final trick. p0 leads
+  yellow 1, p1 plays yellow 9, p2 plays yellow 5: the trick is resolved and p1 wins it, the
+  mission fails because yellow 5 was played out of place, and `trigger_seat` is p2, who played
+  it, not p1 (`test_yellow_five_out_of_place_names_the_seat_that_played_it_even_when_the_trick_is_complete`).
+  The failure is the same one as in the case above and would have happened whoever won; naming
+  the winner here would attribute it differently depending only on whether yellow 5 happened to
+  be the last card of its trick. Read literally, the decision would name p1. This was not
+  changed: it is a question for the owner, not a repair.
+
+Every other failure established at a resolved trick names that trick's winner. In a scan of
+random playouts of missions 1 to 32 at three, four and five players (run by hand for this
+entry; the script is not in the repository) 919 such failures named the winner, 15 were the
+mission 27 case above, 107 were single-card failures in an incomplete trick, and 81 conditions
+unmet at the end of the deal named nobody.
 
 **Owner decision, 2026-10-05 (recorded on AVR-246).** "Timed missions do **not** gain time
 during the 0.8 s resolving hold. The mission clock continues to run on monotonic elapsed time
@@ -1218,9 +1263,9 @@ What changed for it, in `games/expo/engine.py` and `games/expo/game.py`:
   before settling when it cannot, so neither path opens a turn on a table that has run out.
 - Untimed tables: no value differs. `settle` reads `now` only when there is a deadline.
 
-Not changed, and still the owner's: whether a client may be sent the whole attempt's events
-after a result (1), the length of the hold (2), the attribution of the triggering seat (3), the
-drafts' example names (4).
+Not changed by the timer decision: what a viewer is sent after a result, the length of the
+hold, the attribution of the triggering seat, the drafts' example names. All four were decided
+the same evening (above).
 
 A consequence to know: the hold is not cut short by the deadline. A timeout that falls inside
 a hold is recorded when the hold ends, up to 0.8 s after the deadline (the decision's "finish

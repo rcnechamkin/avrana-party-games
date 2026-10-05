@@ -39,6 +39,7 @@ GRACE = 'The crew has a moment to ask for distress first. Begin in a few seconds
 # A timed mission gains no time from it (owner decision 2026-10-05): its clock runs through the
 # hold and its deadline does not move. A deadline that passes during the hold is judged when the
 # hold ends (Engine.settle), before anyone may act.
+# 0.8 s is the owner's value (2026-10-05), provisional pending real-phone playtesting.
 RESOLVE_HOLD = 0.8
 HOLD_SLACK = 0.02                 # a timer that wakes this much early has still waited
 

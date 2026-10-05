@@ -102,6 +102,9 @@ whose last card is accepted before the deadline stands, and wins the mission if 
 it; a deadline that passes during a hold ends the attempt when the hold ends, before anyone is
 given a turn ([GAME_STATE](GAME_STATE.md#the-resolving-phase)). This replaces the policy the
 branch first carried, in which the clock stood during the hold and the deadline moved by it.
+The length of the hold is DECIDED too (owner, 2026-10-05): "Keep the resolve hold at 0.8 seconds
+for now. This is intentionally provisional pending real-phone playtesting." The timer decision
+remains in force whatever the hold becomes.
 
 ## Mission table
 
