@@ -15,7 +15,8 @@ Envelope, for every token and message:
 
 Canonical JSON = sorted keys, no spaces, UTF-8. Every payload carries:
     v    "avrana.party-session/v0"
-    typ  "ticket" | "launch" | "end" | "ended"   (a token of one type is never accepted as another)
+    typ  "ticket" | "launch" | "end" | "ended" | "host" | "host_is"
+         (a token of one type is never accepted as another)
     iss  who signed: "party", or the game id
     aud  who may accept it: the game id, or "party"
     sid  the game session id
@@ -53,6 +54,13 @@ browser fetches a fresh ticket and the game reads the claim from that one ticket
 (GameSide.present). A ticket without the field comes from a party that does not say; a verifier
 that predates the field ignores it.
 
+The host question: a claim is true of the moment its ticket was minted, and a ticket lives 120 s.
+So before a game acts on a `host: true` claim it asks the party, server to server, whether that
+participant is the host NOW (`host`, game -> party), and the party answers from Party Core
+(`host_is`, party -> game, bound to the question by its nonce). No answer, a refusal or a "no"
+all mean the action does not happen: the claim opens the question, the answer decides it. A host
+who lost the role therefore has nothing left to spend, and the game still keeps no host.
+
 Results: `ended` may carry one optional `result` object, the game's structured result for that
 session. Its format is versioned on its own (`avrana.game-result/v1`, avrana.party.result,
 ADR 0015) and is not part of this protocol's version: this file only carries it, signed, bound to
@@ -76,7 +84,7 @@ TICKET_TTL = 120            # s: long enough to reach the game's hello; a reconn
 MESSAGE_TTL = 30            # s for server-to-server messages
 MAX_TOKEN = 8192
 CLOCK_SKEW = 5              # s: future-`iat` tolerance; beyond it the refusal is 'clock'
-TYPES = ('ticket', 'launch', 'end', 'ended')
+TYPES = ('ticket', 'launch', 'end', 'ended', 'host', 'host_is')
 ROLES = ('player', 'spectator')
 OUTCOMES = ('completed', 'abandoned')
 GAME_ID = re.compile(r'^[a-z][a-z0-9_-]{0,39}$')
@@ -311,6 +319,26 @@ def ended_message(key, game, sid, outcome, now=None, result=None):
     return message
 
 
+def host_question(key, game, sid, participant, now=None):
+    """Game -> party: is this participant the Party Host right now? Asked for every host action,
+    after a ticket that claims it (the module docstring says why)."""
+    if not GAME_ID.match(game) or not isinstance(participant, str) or not PID.match(participant):
+        raise ValueError('bad host question')
+    payload = _base('host', game, 'party', sid, now, MESSAGE_TTL)
+    payload.update({'pid': participant, 'nonce': secrets.token_hex(12)})
+    return seal(key, payload)
+
+
+def host_answer(key, question, host, now=None):
+    """Party -> game: the answer to one opened `host` question (its payload, from open_message).
+    It repeats the question's session, participant and nonce, so it answers nothing else."""
+    if type(host) is not bool:
+        raise ValueError('bad host answer')
+    payload = _base('host_is', 'party', question['iss'], question['sid'], now, MESSAGE_TTL)
+    payload.update({'pid': question['pid'], 'nonce': question['nonce'], 'host': host})
+    return seal(key, payload)
+
+
 class ReplayGuard:
     """Remembers message nonces until they expire, so a captured message is accepted once."""
 
@@ -350,9 +378,9 @@ class SpentTickets:
 
 
 def open_message(key, token, typ, aud, guard, now=None):
-    """Receiver side for launch/end/ended: verify, check the issuer matches the direction, and
-    refuse replays. Returns the payload."""
-    if typ not in ('launch', 'end', 'ended'):
+    """Receiver side for launch/end/ended and the host question: verify, check the issuer matches
+    the direction, and refuse replays. Returns the payload."""
+    if typ not in ('launch', 'end', 'ended', 'host'):
         raise ValueError('not a message type')
     p = unseal(key, token, typ, aud, now)
     expected_iss = 'party' if typ in ('launch', 'end') else None
@@ -361,6 +389,9 @@ def open_message(key, token, typ, aud, guard, now=None):
     if typ == 'ended' and (not isinstance(p.get('iss'), str) or not GAME_ID.match(p['iss'])
                            or p.get('outcome') not in OUTCOMES):
         raise Invalid('ended fields')
+    if typ == 'host' and (not isinstance(p.get('iss'), str) or not GAME_ID.match(p['iss'])
+                          or not isinstance(p.get('pid'), str) or not PID.match(p['pid'])):
+        raise Invalid('host fields')
     if typ == 'launch':
         roster = p.get('roster')
         if not isinstance(roster, list) or not all(
@@ -383,6 +414,8 @@ class GameSide:
         roster = side.on_launch(msg)          # reset the room; seat these players your way
         token, role = side.admit(ticket)      # at hello: stable per participant, None if refused
         who = side.present(ticket)            # the same, with the participant and the host claim
+        q = side.ask_host(who['participant']) # a host action: POST it to the party's host route
+        side.host_is(q, answer)               # True only if the party says so, now
         side.on_end(msg)                      # party ended it: back to a non-running state
         report = side.ended('completed')      # then POST it to the party's ended route
         report = side.ended('completed', result=…)   # the same, with a structured result
@@ -427,6 +460,26 @@ class GameSide:
         A ticket is single-use: presenting it again raises Invalid('replay')."""
         t = self.present(ticket, now)
         return t['token'], t['role']
+
+    def ask_host(self, participant, now=None):
+        """The question for the party: is this participant the host of the running session now?"""
+        if self.sid is None:
+            raise Invalid('session')
+        return host_question(self.key, self.game, self.sid, participant, now)
+
+    def host_is(self, question, answer, now=None):
+        """True only when `answer` is the party's signed "yes" to exactly this `question` (the
+        string ask_host returned) and the session it was asked in is still running. A "no" is
+        False; anything else raises Invalid."""
+        q = unseal(self.key, question, 'host', 'party', now)
+        a = unseal(self.key, answer, 'host_is', self.game, now)
+        if a.get('iss') != 'party':
+            raise Invalid('issuer')
+        if self.sid is None or q['sid'] != self.sid or a['sid'] != self.sid:
+            raise Invalid('session')
+        if a.get('pid') != q['pid'] or a.get('nonce') != q['nonce'] or type(a.get('host')) is not bool:
+            raise Invalid('answer')
+        return a['host']
 
     def ended(self, outcome, now=None, result=None):
         """The report for the party; the session stops being admissible here at once."""

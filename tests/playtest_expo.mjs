@@ -6,7 +6,7 @@ import fs from "fs";
 import path from "path";
 import assert from "node:assert/strict";
 import { puppeteer, CHROME_PATH } from "./_resolve.mjs";
-import { PHONES, oneViewport, onScreen, playCard, resultOwnsTheScreen, clickKey, withLongText } from "./_expo_phone.mjs";
+import { PHONES, oneViewport, onScreen, playCard, resultOwnsTheScreen, clickKey, withLongText, touchTargets, modalHolds, focused } from "./_expo_phone.mjs";
 
 const BASE=process.argv[2]||"http://127.0.0.1:8196";
 const OUT=process.argv[3]||path.join(os.tmpdir(),"expo-playtest");
@@ -179,7 +179,7 @@ try{
     await pg.setViewport(size);await pause(60);
     assert.equal(await pg.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,"no horizontal overflow");
     await oneViewport(pg,"the table");
-    if(size.width<600)await withLongText(pg,()=>oneViewport(pg,"the table, long text"));
+    if(size.width<600){await touchTargets(pg,"the table");await withLongText(pg,async()=>{await oneViewport(pg,"the table at its fullest");await touchTargets(pg,"the table at its fullest");});}
     await pg.screenshot({path:path.join(OUT,`table-${size.width}x${size.height}.png`)});
   }
   await pg.setViewport(PHONES[0]);
@@ -188,7 +188,15 @@ try{
     await pg.click(`.tab[data-sheet="${sheet}"]`);
     assert.equal(await pg.evaluate(()=>!document.getElementById("sheet").hidden&&document.getElementById("sheet-body").children.length>0),true,sheet+" sheet opens");
     await oneViewport(pg,"with the "+sheet+" sheet open");
+    await touchTargets(pg,"the "+sheet+" sheet");
+    await modalHolds(pg,"sheet","the "+sheet+" sheet");
+    // Escape closes it and focus goes back to the tab that opened it.
+    await pg.keyboard.press("Escape");
+    assert.equal(await pg.evaluate(()=>document.getElementById("sheet").hidden&&!document.getElementById("game").inert),true,sheet+" sheet closes and the board is live again");
+    assert.equal(await pg.evaluate(s=>document.activeElement===document.querySelector(`.tab[data-sheet="${s}"]`),sheet),true,"focus returns to the "+sheet+" tab");
+    await pg.click(`.tab[data-sheet="${sheet}"]`);
     await pg.click("#sheet-close");
+    assert.equal(await pg.evaluate(s=>document.activeElement===document.querySelector(`.tab[data-sheet="${s}"]`),sheet),true,"focus returns to the "+sheet+" tab after Close");
   }
   for(let i=0;i<70;i++){
     const s=await settle();if(s.game.result)break;
@@ -234,8 +242,19 @@ try{
   await pages[0].setViewport({width:390,height:844});
   await pages[0].screenshot({path:path.join(OUT,"result-phone.png")});
   // Looking at the table does not lose the result: it holds the dock until it is shown again.
+  await touchTargets(pages[0],"the mission result");
+  await modalHolds(pages[0],"result","the mission result");
+  // "Look at the table" puts it away, and the way back is the dock itself: one wide button that
+  // says what happened, with the focus already on it.
   await clickKey(pages[0],"review");await onScreen(pages[0],"show-result","the result put away");
-  await oneViewport(pages[0],"the table after the result");await clickKey(pages[0],"show-result");
+  assert.equal(await focused(pages[0]),"show-result","focus moves to the way back");
+  assert.match(await pages[0].evaluate(()=>document.getElementById("dock").innerText),/Mission (complete|failed) · show result/);
+  assert.equal(await pages[0].evaluate(()=>document.querySelectorAll("#dock button").length),1,"the dock holds nothing else");
+  assert.equal(await pages[0].evaluate(()=>document.getElementById("game").inert),false);
+  await oneViewport(pages[0],"the table after the result");await touchTargets(pages[0],"the table after the result");
+  // Another seat's decision brings the result back by itself, where the answers are.
+  await clickKey(pages[0],"show-result");
+  assert.equal(await pages[0].evaluate(()=>!document.getElementById("result").hidden&&document.getElementById("result").contains(document.activeElement)),true,"the result is back, with the focus in it");
   assert.deepEqual(errors,[]);
   assert.ok(checked.early&&checked.turn,"unavailable controls were checked against the server");
   // Clockwise selection always reaches another seat's task and a seat that may not pass. An

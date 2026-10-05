@@ -13,7 +13,8 @@
 const $ = id => document.getElementById(id);
 let ST = null, pending = false, pendingTimer = null;
 const ui = { sheet: null, opener: null, selected: null, handView: "mine", turnKey: "",
-             sonarCard: null, sonarMeaning: null, resultKey: "", resultHidden: false, armed: null };
+             sonarCard: null, sonarMeaning: null, resultKey: "", resultHidden: false, armed: null,
+             grace: 0, modal: null, partySig: "" };
 const symbols = {blue:"○",green:"△",pink:"□",yellow:"×",submarine:"◆"};
 const suitNames = {blue:"blue",green:"green",pink:"pink",yellow:"yellow",submarine:"sub"};
 const OBJECTIVES = {
@@ -28,7 +29,7 @@ const HELP = [
   "After tasks are assigned, communicate a color card before a trick. Reveal your highest, lowest or only card of that color. You normally get one sonar token per attempt. Its meaning stays fixed as your hand changes.",
   "With two players, the captain controls Tonoja’s visible cards and task choices without discussion. Covered cards turn over only after their covering card’s trick ends.",
   "Task difficulty adds up to the mission’s challenge. Some tasks need the full deal; positive tasks may finish earlier. A legal play can still fail the mission. Only the latest trick may be inspected.",
-  "In a Party, the Party Host begins each mission, retries, chooses the next one and ends EXPO. The captain is a role in the game, not the host.",
+  "In a Party, the Party Host begins each mission, retries, chooses the next one and ends EXPO. The Captain is a role in the game, not the Party Host. The crew decides together only what the rules give the crew, such as distress.",
   "Some missions and tasks are unavailable while conflicting source rules are clarified. Available task descriptions follow the supplied rules and the pinned The Team II reference.",
 ];
 const SHEETS = {crew:"Crew", tasks:"Mission tasks", sonar:"Sonar", history:"History", menu:"Table", help:"One crew. One mission."};
@@ -110,6 +111,15 @@ function hostOwned(g) { return g.lifecycle === "host"; }
 // May this phone ask for Begin, Retry or Next?
 function mayMoveOn(g) { return hostOwned(g) ? amHost() : Boolean(g.me); }
 function blocked(g) { return Boolean(g.proposal) || g.away.length > 0; }
+// Seconds until the Party Host's Begin opens: the crew's moment to ask for distress (server's).
+function graceLeft(g) { return g && g.begin_at ? Math.max(0, Math.ceil(g.begin_at - conn.now()/1000)) : 0; }
+// The seat the Party Host sits in, when the name says so without doubt (the Party gives a name,
+// not a seat): two crew members with the host's name get no badge rather than both.
+function hostSeat(g) {
+  const host = hostName();
+  const seats = host ? g.seats.filter(s => s !== "tonoja" && name(s) === host) : [];
+  return seats.length === 1 ? seats[0] : null;
+}
 async function lifecycle(decision) {
   const g = ST?.game;
   if (!g || pending) return;
@@ -150,11 +160,24 @@ $("help-toggle").onclick = e => openSheet("help", e.currentTarget);
 for (const tab of document.querySelectorAll(".tab")) tab.onclick = e => openSheet(tab.dataset.sheet, e.currentTarget);
 $("sheet-close").onclick = closeSheet;
 $("sheet-backdrop").onclick = closeSheet;
-document.addEventListener("keydown", e => { if (e.key === "Escape" && ui.sheet) closeSheet(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && ui.sheet && $("result").hidden) closeSheet(); });
 document.addEventListener("avrana-party", () => { if (ST) draw(); });
 
+// How to find a control again after a redraw has replaced it.
+function refOf(node) {
+  if (!node) return null;
+  if (node.id) return "#" + node.id;
+  if (node.dataset?.key) return `[data-key="${CSS.escape(node.dataset.key)}"]`;
+  if (node.dataset?.sheet) return `.tab[data-sheet="${node.dataset.sheet}"]`;
+  return null;
+}
+function focusRef(ref, fallback) {
+  const n = (ref && document.querySelector(ref)) || null;
+  const target = n && !n.disabled && n.offsetParent !== null ? n : fallback;
+  if (target) target.focus({preventScroll:true});
+}
 function openSheet(kind, opener) {
-  ui.sheet = kind; ui.opener = opener || null;
+  ui.sheet = kind; ui.opener = refOf(opener);
   draw();
   $("sheet-close").focus({preventScroll:true});
 }
@@ -162,8 +185,38 @@ function closeSheet() {
   const opener = ui.opener;
   ui.sheet = null; ui.opener = null;
   draw();
-  if (opener && opener.isConnected) opener.focus({preventScroll:true});
+  focusRef(opener, $("mission-title"));
 }
+
+// ---- one thing at a time: the sheet and the result are modal -----------------------------------
+// What is on top keeps the keyboard and the screen reader: everything under it is inert (not
+// focusable, not read, not tappable), Tab stays inside it, and focus goes back where it was.
+// The status line stays live under it so a change is still announced.
+function modalTop() { return !$("result").hidden ? $("result") : !$("sheet").hidden ? $("sheet") : null; }
+function focusables(root) {
+  return [...root.querySelectorAll("button, a[href], select, input, [tabindex]")]
+    .filter(n => !n.disabled && n.tabIndex >= 0 && n.offsetParent !== null);
+}
+function syncModal() {
+  const top = modalTop();
+  for (const n of [document.querySelector(".topbar"), $("lobby"), $("game"), $("sheet")]) n.inert = Boolean(top) && n !== top;
+  const was = ui.modal; ui.modal = top ? top.id : null;
+  if (top && !top.contains(document.activeElement)) {
+    if (top.id === "result") focusResult(); else $("sheet-close").focus({preventScroll:true});
+  }
+  // The result went away by itself (a retry, the next mission): focus lands on the board.
+  if (was === "result" && !top && (!document.activeElement || document.activeElement === document.body))
+    focusRef('[data-key="show-result"]', $("mission-title"));
+}
+document.addEventListener("keydown", e => {
+  if (e.key !== "Tab") return;
+  const top = modalTop(); if (!top) return;
+  const list = focusables(top); if (!list.length) { e.preventDefault(); return; }
+  const first = list[0], last = list[list.length - 1], at = document.activeElement;
+  if (!top.contains(at)) { e.preventDefault(); first.focus(); }
+  else if (e.shiftKey && at === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus(); }
+});
 
 // ---- render -----------------------------------------------------------------------------------
 function render(st) { ST = st; settle(); draw(); }
@@ -176,11 +229,12 @@ function draw() {
   const lobby = ["lobby","countdown"].includes(st.phase);
   $("lobby").hidden = !lobby; $("game").hidden = lobby || !st.game;
   $("countdown-overlay").hidden = st.phase !== "countdown";
-  if (lobby) { drawLobby(st); $("result").hidden = true; drawSheet(null, st); return; }
+  if (lobby) { drawLobby(st); $("result").hidden = true; drawSheet(null, st); syncModal(); return; }
   const g = st.game;
-  if (!g) { $("status").textContent = "This table has ended."; $("result").hidden = true; drawSheet(null, st); return; }
+  if (!g) { $("status").textContent = "This table has ended."; $("result").hidden = true; drawSheet(null, st); syncModal(); return; }
   // A crew decision after a result is answered on the result: never leave it put away.
   if (g.result && g.proposal) ui.resultHidden = false;
+  ui.grace = graceLeft(g);
   syncTurn(g);
   drawStatus(g);
   drawHead(g);
@@ -197,6 +251,7 @@ function draw() {
         && (n.tagName !== "SELECT" || [...n.options].some(o => o.value === values.get(n.dataset.key)))) n.value = values.get(n.dataset.key);
     if (n.dataset.key === focusKey && !n.disabled && document.activeElement !== n) n.focus({preventScroll:true});
   }
+  syncModal();
   updateTimer();
 }
 
@@ -264,8 +319,9 @@ function statusText(g) {
   }
   if (g.stage === "prediction") return "Commit the required trick predictions";
   if (g.stage === "assistance") {
-    if (!hostOwned(g)) return "Tasks assigned · agree to begin or use distress";
-    return amHost() ? "Crew ready · begin when you are" : `Waiting for ${theHost()} to begin`;
+    if (!hostOwned(g)) return "Tasks assigned · the crew agrees to begin, or asks for distress";
+    if (ui.grace > 0) return amHost() ? `The crew may ask for distress · you can begin in ${ui.grace}` : `Want distress? Ask now · ${theHost()} can begin in ${ui.grace}`;
+    return amHost() ? "Crew ready · begin when you are" : `Waiting for ${theHost()} (Party Host) to begin`;
   }
   if (g.stage === "passing") return g.me?.pass_locked ? "Your pass is sealed · waiting for the crew" : "Choose a color card to pass · choices stay sealed";
   const verb = g.trick.length ? "play" : "lead";
@@ -303,16 +359,21 @@ function drawObjectives(g) {
   }
   for (const t of [...g.tasks].sort((a,b) => rank(a) - rank(b))) rows.push({text: t.text, status: t.status, who: t.owner});
   if (!rows.length) rows.push({text: "Complete every assigned task together.", status: "pending", who: null});
+  // One target for the whole panel (a row alone is too thin for a thumb): it opens the tasks.
+  const open = el("button", undefined, "objectives-open"); open.type = "button"; open.dataset.key = "objectives";
+  open.onclick = e => openSheet("tasks", e.currentTarget);
+  const said = [];
   for (const r of rows.slice(0, 2)) {
-    const row = el("button", undefined, "objective " + r.status); row.type = "button";
-    row.onclick = e => openSheet("tasks", e.currentTarget);
+    const row = el("span", undefined, "objective " + r.status);
     const text = el("span", undefined, "objective-text");
     if (r.who) text.append(el("b", name(r.who) + " · "));
     text.append(document.createTextNode(r.text));
     row.append(text, pill(r.status));
-    row.setAttribute("aria-label", `${r.who ? name(r.who) + ": " : ""}${r.text}. ${r.status}. Open tasks.`);
-    box.append(row);
+    said.push(`${r.who ? name(r.who) + ": " : ""}${r.text}, ${r.status}`);
+    open.append(row);
   }
+  open.setAttribute("aria-label", `${said.join(". ")}.${rows.length > 2 ? ` And ${rows.length - 2} more.` : ""} Open tasks.`);
+  box.append(open);
 }
 
 function exposureOf(g, seat) { return g.exposures.find(e => e.seat === seat); }
@@ -326,7 +387,7 @@ function drawCrew(g) {
   const strip = $("seats"); strip.replaceChildren();
   strip.style.setProperty("--n", g.seats.length);
   strip.classList.toggle("tight", g.seats.length > 3);
-  const host = hostName();
+  const host = hostSeat(g);
   for (const seat of g.seats) {
     const tile = el("button", undefined, "seat" + (seat === g.turn && !g.result && ["before_trick","in_trick"].includes(g.stage) ? " active" : "")
       + (g.me && seat === g.me.seat ? " me" : "") + (g.away.includes(seat) ? " away" : ""));
@@ -335,7 +396,7 @@ function drawCrew(g) {
     const top = el("span", undefined, "seat-name");
     if (seat === g.captain) top.append(el("span", "♛", "crown"));
     top.append(el("b", name(seat)));
-    const roles = [seat === g.captain ? "Captain" : null, host && seat !== "tonoja" && name(seat) === host ? "Host" : null].filter(Boolean);
+    const roles = [seat === g.captain ? "Captain" : null, seat === host ? "Party Host" : null].filter(Boolean);
     const cards = g.hand_counts[seat], tricks = g.trick_counts[seat];
     const e = exposureOf(g, seat);
     tile.append(top);
@@ -480,13 +541,13 @@ function assistanceNode(g) {
   box.append(el("h2", "Ready to dive"));
   const begins = !hostOwned(g) ? "Beginning needs the whole crew to agree."
     : amHost() ? "You begin the mission as Party Host, below."
-    : `${theHost()} begins the mission as Party Host.`;
+    : `${theHost()} begins the mission as Party Host. Nobody has to confirm.`;
   box.append(el("p", `${g.tasks.length ? "Every task has an owner." : "This mission uses the shared objective instead of task cards."} ${begins}`));
   if (g.me && !g.away.length && g.seats.every(s => s !== "tonoja")) {
     const row = el("div", undefined, "choice-row");
     row.append(button("Distress ← left", () => propose("distress",{direction:"left"}), "distress-left"),
       button("Distress → right", () => propose("distress",{direction:"right"}), "distress-right"));
-    box.append(row, why("Before the first trick the crew may call for distress: everyone passes one color card that way, and the mission records one more attempt. The whole crew must agree."));
+    box.append(el("h3", "Request distress", "prep-sub"), row, why(`Any crew member may ask before the first trick: everyone passes one color card that way, and the mission records one more attempt. Distress is the crew’s decision, so the whole crew must agree to it.${hostOwned(g) ? " The Party Host cannot begin while a request is waiting." : ""}`));
   }
   return box;
 }
@@ -575,22 +636,23 @@ function tableZone(g) {
   if (hostOwned(g)) {
     const z = zone("Party Host", "table control"); z.id = "dock-host";
     if (!amHost()) z.append(el("p", begin ? `Waiting for ${theHost()} to begin` : `${hostName() || "The Party Host"} runs the table`, "dock-note"));
+    else if (begin && ui.grace > 0) z.append(button(`Begin in ${ui.grace}`, () => {}, "begin", true, "The crew has a moment to ask for distress first.", "btn-primary"));
     else if (begin) z.append(button("Begin mission", () => lifecycle({kind:"begin"}), "begin", blocked(g), g.away.length ? "Waiting for the crew to reconnect." : "The crew is deciding something.", "btn-primary"));
     else z.append(endButton("End EXPO", "end"));
     return z;
   }
   // The crew decides: a standalone table, or a Party that does not say who its host is.
-  const z = zone("Table", "crew decides"); z.id = "dock-host";
+  const z = zone("Crew", g.lifecycle_transitional ? "decides for now" : "decides together"); z.id = "dock-host";
   if (begin) z.append(button("Begin without passing", () => propose("begin"), "begin", blocked(g) || !g.me, "", "btn-primary"));
   else if (!ST.party_round) z.append(button("End table", () => propose("end"), "end", !g.me || blocked(g)));
   else if (amHost()) z.append(endButton("End EXPO", "end"));
-  else z.append(el("p", "The Party Host ends EXPO", "dock-note"));
+  else z.append(el("p", `${hostName() || "The Party Host"} ends EXPO`, "dock-note"));
   return z;
 }
 
 function actionZone(g) {
   const tonoja = ui.handView === "tonoja";
-  const z = zone(!g.me ? "Watching" : g.me.seat === g.captain ? (tonoja ? "Captain · Tonoja" : "Captain") : "Crew", g.me ? "in-game role" : "no seat");
+  const z = zone(!g.me ? "Watching" : g.me.seat === g.captain ? (tonoja ? "Captain · Tonoja" : "Captain") : "Crew member", g.me ? "your role in the game" : "no seat");
   z.id = "dock-action";
   const passing = g.stage === "passing" && !tonoja;
   const card = ui.selected;
@@ -608,7 +670,8 @@ function drawDock(g) {
   if (g.result && ui.resultHidden) {
     // The result never leaves the screen: put away to look at the table, it holds the dock.
     const label = g.result.status === "success" ? "Mission complete" : g.result.status === "failed" ? "Mission failed" : "Table ended";
-    dock.append(button(`${label} · show result`, () => { ui.resultHidden = false; draw(); focusResult(); }, "show-result", false, "", "btn-primary wide " + g.result.status));
+    const next = mayMoveOn(g) ? (g.result.status === "success" ? " and next mission" : g.result.status === "failed" ? " and retry" : "") : "";
+    dock.append(button(`${label} · show result${next}`, () => { ui.resultHidden = false; draw(); focusResult(); }, "show-result", false, "", "btn-primary wide " + g.result.status));
     return;
   }
   dock.append(tableZone(g), actionZone(g));
@@ -665,14 +728,14 @@ function drawResult(g, st) {
       choices(next, open.map(m => ({value:m.id,text:`Mission ${m.id}`})), open.find(m => m.id > g.mission.id)?.id || g.mission.id);
       controls.append(next, button("Next mission", () => lifecycle({kind:"next",mission:Number(next.value)}), "next", false, "", "btn-primary"));
     }
-  } else controls.append(el("p", hostOwned(g) ? `Waiting for ${theHost()} to choose what’s next.` : "The crew decides what’s next.", "result-who waiting"));
+  } else controls.append(el("p", hostOwned(g) ? `Waiting for ${theHost()} (Party Host) to choose what’s next.` : "The crew decides what’s next.", "result-who waiting"));
   // Ending EXPO: the Party Host's in a Party; the crew's own decision at a standalone table.
   if (!g.proposal) {
     if (ST.party_round ? amHost() : false) controls.append(endButton("End EXPO for everyone", "end-expo", "quiet"));
     else if (!ST.party_round && g.me && !g.away.length) controls.append(button("End table", () => propose("end"), "end-table", false, "", "quiet"));
   }
   if (ok && window.Brag && g.me) controls.append(Brag.button(() => ({title:"EXPO",icon:"🌊",winner:{name:"The crew",avatar:"🌊"},headline:`Mission ${g.mission.id} completed together`,beaten:[]})));
-  controls.append(button("Look at the table", () => { ui.resultHidden = true; draw(); }, "review", false, "", "quiet"));
+  controls.append(button("Look at the table", () => { ui.resultHidden = true; draw(); focusRef('[data-key="show-result"]', $("mission-title")); }, "review", false, "", "quiet"));
   card.append(controls);
   box.append(card);
   if (fresh) focusResult();
@@ -691,11 +754,11 @@ function drawSheet(g, st) {
 }
 
 function crewSheet(body, g) {
-  const host = hostName();
+  const host = hostSeat(g), hostNamed = hostName();
   for (const seat of g.seats) {
     const row = el("article", undefined, "crew-row" + (seat === g.turn ? " active" : ""));
     const roles = [g.me && seat === g.me.seat ? "You" : null, seat === g.captain ? "Captain" : null,
-      host && seat !== "tonoja" && name(seat) === host ? "Party Host" : null,
+      seat === host ? "Party Host" : null,
       seat === "tonoja" ? `played by ${name(g.captain)}` : null, g.away.includes(seat) ? "Away" : null].filter(Boolean);
     const head = el("div", undefined, "crew-head"); head.append(el("strong", name(seat)), el("span", roles.join(" · "), "muted"));
     const owned = g.tasks.filter(t => t.owner === seat);
@@ -705,7 +768,8 @@ function crewSheet(body, g) {
     else if (seat !== "tonoja") row.append(el("p", g.shared_sonar !== null ? "Shares the crew’s sonar tokens" : g.sonar_spent.includes(seat) ? "Sonar spent" : "Sonar unused", "muted"));
     body.append(row);
   }
-  if (host && !g.seats.some(s => s !== "tonoja" && name(s) === host)) body.append(why(`Party Host: ${host} (watching).`));
+  if (hostNamed && !host) body.append(why(g.seats.some(s => s !== "tonoja" && name(s) === hostNamed)
+    ? `Party Host: ${hostNamed}.` : `Party Host: ${hostNamed} (watching, no seat).`));
 }
 
 function tasksSheet(body, g) {
@@ -771,11 +835,22 @@ function menuSheet(body, g) {
   if (g) body.append(el("p", `Mission ${g.mission.id} · attempt ${g.attempts||1} · captain ${name(g.captain)}`, "muted"));
   if (P && ST.party_round) {
     const host = el("article", undefined, "crew-row");
-    host.append(el("strong", `Party Host · ${hostName() || "nobody right now"}`), el("p", "Begins each mission, retries, chooses the next one, ends EXPO and moves the Party."));
+    const owned = !g || hostOwned(g);
+    host.append(el("strong", `Party Host · ${hostName() || "nobody right now"}`), el("p", owned
+      ? "Begins each mission, retries, chooses the next one, ends EXPO and moves the Party."
+      : "Ends EXPO and moves the Party."));
     body.append(host);
     if (g) {
+      const crew = el("article", undefined, "crew-row");
+      crew.append(el("strong", "Crew · everyone seated"), el("p", owned
+        ? "Decides together what the rules give the crew: distress, and who takes the tasks where the mission says so."
+        : "Decides together: distress, the tasks, and for now Begin, Retry and Next."));
+      body.append(crew);
+      if (g.lifecycle_transitional) { const note = why("This Party does not tell EXPO who its Host is yet, so the crew agrees on Begin, Retry and Next. That is temporary: an updated Avrana Party gives them to the Party Host."); note.dataset.key = "transitional"; body.append(note); }
+    }
+    if (g) {
       const cap = el("article", undefined, "crew-row");
-      cap.append(el("strong", `Captain · ${name(g.captain)}`), el("p", g.seats.includes("tonoja") ? "Opens the first trick and plays Tonoja’s cards. A role in the game, not the host." : "Opens the first trick. A role in the game, not the host."));
+      cap.append(el("strong", `Captain · ${name(g.captain)}`), el("p", g.seats.includes("tonoja") ? "Opens the first trick and plays Tonoja’s cards. A role in the game, not the Party Host." : "Opens the first trick. A role in the game, not the Party Host."));
       body.append(cap);
     }
     if (amHost()) body.append(endButton("End EXPO for everyone", "menu-end", "wide"), why("Everyone goes back to Party Home."));
@@ -809,5 +884,14 @@ function updateConnection() {
 }
 setInterval(() => {
   updateTimer(); updateConnection();
+  // The Party's view arrives on its own schedule (after a reload it can follow the table's
+  // state), and not every way it reaches the page announces itself: who the host is, is read
+  // again here, so the right controls are drawn without waiting for the next move.
+  const sig = party() ? `${amHost()}|${hostName()}` : "";
+  const moved = sig !== ui.partySig; ui.partySig = sig;
+  const ticked = Boolean(ST?.game && !$("game").hidden && graceLeft(ST.game) !== ui.grace);
+  if (ST && moved) draw();
+  else if (ticked && modalTop()) { ui.grace = graceLeft(ST.game); drawStatus(ST.game); drawDock(ST.game); }   // leave what is on top alone
+  else if (ticked) draw();
   if (ST?.phase === "countdown") $("cd").textContent = String(Math.max(1, Math.ceil((ST.deadline - conn.now())/1000)));
 }, 250);

@@ -5,9 +5,9 @@
   "session_protocol": {
     "version": "avrana.party-session/v0",
     "vendored": "core/party_protocol.py",
-    "vendored_sha256": "57e9833060dd74a06ddc36eeb0202caae9356141e15ad4cfdf184e817874983b",
+    "vendored_sha256": "6c4943f01b1f3349d473186aa3559d5472dce091dd8e2983a6fbda67be6c6a47",
     "vectors": "tests/vectors/party-session.v0.json",
-    "vectors_sha256": "07474dde39d46ecbc8c2f989db4c748ed63eb98f8740a6250807dc668493f794"
+    "vectors_sha256": "432551a552c727fc91b2ddcbc0f18c70ee1e6a8899dbb346cb7ffc3f0811bc5d"
   },
   "result": {
     "schema": "avrana.game-result/v1",
@@ -30,6 +30,7 @@
   "routes": {
     "party_ticket": "/party/api/session/ticket",
     "party_ended": "/internal/party-session/v0/ended",
+    "party_host": "/internal/party-session/v0/host",
     "game_launch": "/avrana/session/v0/launch",
     "game_end": "/avrana/session/v0/end"
   },

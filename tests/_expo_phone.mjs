@@ -112,14 +112,57 @@ export async function resultOwnsTheScreen(pg, label) {
   return m;
 }
 
-/* The same moment with the longest names the lobby allows and a long task sentence on every
-   task: text never widens or lengthens the board. `check` runs against that drawing. */
+/* The same moment at its fullest: the longest names the lobby allows, a long sentence on every
+   task and more tasks than any mission deals, and the largest hand a deal gives (14 cards).
+   Text and cards never widen or lengthen the board. `check` runs against that drawing. */
 export async function withLongText(pg, check) {
   const real = await pg.evaluate(() => ST);
   await pg.evaluate(st => {
     const long = "Win a trick by playing a color 7 and capture a color 5 in that same trick, and never a submarine.";
+    const g = st.game;
+    const tasks = g.tasks.map(t => ({...t, text: long}));
+    while (tasks.length && tasks.length < 8) tasks.push({...tasks[tasks.length % g.tasks.length], id: "stress-" + tasks.length});
+    const deck = ["blue","green","pink","yellow"].flatMap(c => [1,2,3,4,5,6,7,8,9].map(n => `${c}:${n}`)).concat([1,2,3,4].map(n => `submarine:${n}`));
+    const fill = hand => hand.concat(deck.filter(c => !hand.includes(c))).slice(0, Math.max(hand.length, 14));
     render({...st, players: st.players.map(p => ({...p, name: "WWWWWWWWWWWWWW"})),
-      game: {...st.game, tasks: st.game.tasks.map(t => ({...t, text: long}))}});
+      game: {...g, tasks, me: g.me ? {...g.me, hand: fill(g.me.hand)} : g.me,
+             tonoja: g.tonoja.length ? fill(g.tonoja.filter(Boolean)) : g.tonoja}});
   }, real);
   try { await check(); } finally { await pg.evaluate(st => render(st), real); }
 }
+
+/* Every control a thumb can reach is a real target: at least 44 px tall and 40 px wide (a hand
+   of seven shares a 360 px screen), measured on the element itself, not a padded hit area. */
+export async function touchTargets(pg, label) {
+  const small = await pg.evaluate(() => {
+    const top = !document.getElementById("result").hidden ? document.getElementById("result") : !document.getElementById("sheet").hidden ? document.getElementById("sheet") : document.getElementById("app");
+    return [...top.querySelectorAll("button, a[href], select, input:not([type=checkbox])")]
+      .filter(n => n.offsetParent !== null && !n.closest("[inert]") && n.id !== "sheet-backdrop")
+      .map(n => { const b = n.getBoundingClientRect(); return {what: n.dataset.key || n.id || n.className, w: Math.round(b.width * 10) / 10, h: Math.round(b.height * 10) / 10}; })
+      .filter(b => b.h < 43.5 || b.w < 39.5);
+  });
+  const vp = pg.viewport();
+  assert.deepEqual(small, [], `${label} at ${vp.width}x${vp.height}: every control is a full touch target`);
+}
+
+/* What is on top (a sheet, or the result) holds the keyboard: the board under it is inert, focus
+   is inside it, and Tab and Shift+Tab never leave it. */
+export async function modalHolds(pg, which, label) {
+  const at = () => pg.evaluate(id => {
+    const top = document.getElementById(id), a = document.activeElement;
+    return {open: !top.hidden, inside: top.contains(a), inert: document.getElementById("game").inert && document.querySelector(".topbar").inert,
+            status: Boolean(document.getElementById("status").closest("[inert]")), what: a && (a.dataset.key || a.id || a.tagName)};
+  }, which);
+  let s = await at();
+  assert.ok(s.open, `${label}: ${which} is open`);
+  assert.ok(s.inert, `${label}: the board under the ${which} is inert`);
+  assert.equal(s.status, false, `${label}: the status line stays live`);
+  assert.ok(s.inside, `${label}: focus is inside the ${which} (on ${s.what})`);
+  const seen = new Set();
+  for (const key of ["Tab","Tab","Tab","Tab","Tab","Tab","Tab","Tab","Tab","Tab","Tab","Tab"]) { await pg.keyboard.press(key); s = await at(); seen.add(s.what); assert.ok(s.inside, `${label}: Tab stays in the ${which} (reached ${s.what})`); }
+  for (let i = 0; i < 3; i++) { await pg.keyboard.down("Shift"); await pg.keyboard.press("Tab"); await pg.keyboard.up("Shift"); s = await at(); assert.ok(s.inside, `${label}: Shift+Tab stays in the ${which}`); }
+  return seen;
+}
+
+/* What has the keyboard focus now: its data-key, id or tag. */
+export const focused = pg => pg.evaluate(() => { const a = document.activeElement; return a && (a.dataset.key || a.id || a.tagName); });

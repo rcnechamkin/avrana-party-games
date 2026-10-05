@@ -25,6 +25,20 @@ HOST_ONLY = {'begin': 'Only the Party Host can begin the mission.',
 PARTY_END = 'In a Party, the Party Host ends EXPO for everyone.'
 assert set(HOST_ONLY) == set(LIFECYCLE)
 
+# Distress gets a protected opportunity, not a vote (AVR-275, owner decision 2026-10-04): once the
+# tasks are settled the Party Host cannot Begin for this long, so a crew member who wants to ask
+# for distress has time to. A request that is pending blocks Begin by itself (Engine.lifecycle).
+# Nobody has to say "ready". Only where distress exists: before play, with three or more humans.
+DISTRESS_GRACE = 4.0
+GRACE = 'The crew has a moment to ask for distress first. Begin in a few seconds.'
+
+# A Party that does not say who its host is leaves Begin, Retry and Next to the crew. That is a
+# deploy-order allowance for a Party older than its host claim (avrana-party ADR 0006, amendment
+# 2026-10-04), not a mode: it is logged and shown to the players. Set this False once the Party
+# that names its host is the deployed one: those steps are then the Party Host's in every Party
+# round, and a Party that cannot say who that is cannot move the table on (only end it).
+HOST_CLAIM_TRANSITION = True
+
 
 def _mono():
     return time.monotonic()
@@ -58,6 +72,7 @@ class ExpoSession(GameSession):
     def __init__(self, rng=None, snapshot_path=None):
         super().__init__(rng)
         self.engine = None
+        self._grace = None                # (attempt, monotonic moment the host's Begin opens)
         self.recovery_error = None
         path = snapshot_path or (os.environ.get('EXPO_SNAPSHOT_PATH') if rng is None else None)
         self.store = SnapshotStore(path) if path else None
@@ -101,6 +116,7 @@ class ExpoSession(GameSession):
         return super().start(token)
 
     def game_start(self):
+        self._grace = None
         humans = [self.players[t].pid for t in self.participants]
         try:
             self.engine = Engine(humans, self.rng, self.settings['mission'], self.settings['timed'],
@@ -126,7 +142,25 @@ class ExpoSession(GameSession):
         if not self.engine:
             return
         self.phase = self.engine.s['phase']
+        s = self.engine.s
+        if self._distress_open() and (self._grace is None or self._grace[0] != s['attempt']):
+            self._grace = (s['attempt'], _mono() + DISTRESS_GRACE)
         self._bump(self._wall_moment(self.engine.s['expiry']))
+
+    def _distress_open(self):
+        # The moment the rules let a crew member ask for distress (Engine._proposal).
+        s = self.engine.s
+        return s['phase'] == 'assistance' and len(s['humans']) > 2 and not s['distress']
+
+    def begin_opens(self):
+        """The monotonic moment the Party Host's Begin opens, or None when it is open already
+        (or is not the host's)."""
+        if not (self.engine and self.lifecycle_authority() == 'host' and self._distress_open()):
+            return None
+        s = self.engine.s
+        if self._grace is None or self._grace[0] != s['attempt'] or self._grace[1] <= _mono():
+            return None
+        return self._grace[1]
 
     def _wall_moment(self, expiry):
         # The engine's deadline as a wall-clock moment, for the shared timer and the browsers.
@@ -172,10 +206,16 @@ class ExpoSession(GameSession):
         kind = msg['proposal'].get('kind')
         if kind == 'end':
             return PARTY_END
-        return HOST_ONLY.get(kind) if self.party_host and isinstance(kind, str) else None
+        owned = self.party_host or not HOST_CLAIM_TRANSITION
+        return HOST_ONLY.get(kind) if owned and isinstance(kind, str) else None
 
     def lifecycle_authority(self):
-        return 'host' if self.party_round and self.party_host else 'crew'
+        owned = self.party_round and (self.party_host or not HOST_CLAIM_TRANSITION)
+        return 'host' if owned else 'crew'
+
+    def host_claim_missing(self):
+        # A Party round whose Party has not said who its host is: the transitional allowance.
+        return bool(HOST_CLAIM_TRANSITION and self.party_round and not self.party_host)
 
     def host_action(self, action):
         # core.net has the Party's word, on a fresh ticket, that the sender is its host now. The
@@ -186,6 +226,9 @@ class ExpoSession(GameSession):
             raise HostRefused('This table is not a Party round.')
         if not self.engine or not isinstance(action, dict):
             raise HostRefused('No active mission.', 'payload')
+        decision = action.get('decision')
+        if isinstance(decision, dict) and decision.get('kind') == 'begin' and self.begin_opens() is not None:
+            raise HostRefused(GRACE, 'grace')
         refused = []
         fxs = self._commit(None, lambda: self.engine.lifecycle(action, _mono()), refused)
         if refused:
@@ -243,6 +286,10 @@ class ExpoSession(GameSession):
         view['expiry'] = self._wall_moment(view['expiry'])
         # 'host': the Party Host begins, retries and moves on; 'crew': the seated crew agrees.
         view['lifecycle'] = self.lifecycle_authority()
+        # The wall-clock moment the host's Begin opens (the distress opportunity), or None.
+        view['begin_at'] = self._wall_moment(self.begin_opens())
+        # True only under a Party that does not name its host yet (HOST_CLAIM_TRANSITION).
+        view['lifecycle_transitional'] = self.host_claim_missing()
         return view
 
     def state_for(self, viewer_token=None, spectator=False):

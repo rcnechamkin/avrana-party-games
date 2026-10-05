@@ -154,8 +154,12 @@ crew: `begin`, `retry` and `next` (`engine.LIFECYCLE`). Who commits them depends
   commits them, at once, with [`host`](#host-ticket-action-the-party-hosts-lifecycle-steps). A
   seat that proposes one is refused with `host` and the kind's sentence ("Only the Party Host can
   begin the mission." / "... retry the mission." / "... choose the next mission.");
-- **any other table** (standalone, or a Party from before the host claim; `lifecycle` is `crew`):
-  they are crew decisions like the rest, as below.
+- **a standalone table** (`lifecycle` is `crew`): they are crew decisions like the rest, as below;
+- **a Party from before the host claim** (`lifecycle` is `crew`, `lifecycle_transitional` true):
+  the same, for now. This is a deploy-order allowance (`game.HOST_CLAIM_TRANSITION`), not a
+  mode: the server logs it once per session, the page says the crew decides "for now" and why,
+  and it ends when that flag is set False, once the Party that names its host is the deployed
+  one: those steps are then the Party Host's in every Party round.
 
 `end` in a Party round is the Party's: every seat's `propose end` is refused with `host` "In a
 Party, the Party Host ends EXPO for everyone." and the host ends the session from the Party
@@ -219,22 +223,28 @@ kind of table.
 ### `host {ticket, action}`: the Party Host's lifecycle steps
 
 Not a seat's command: a message on the game socket that `core/net.py` answers before the engine
-is reached (`GameBinding._party_host_action`, AVR-252).
+is reached (`GameBinding._party_host_confirm`, then `_party_host_action`; AVR-252, AVR-275).
 
 ```json
 {"t": "host", "ticket": "<a fresh Party ticket>",
  "action": {"t": "lifecycle", "decision": {"kind": "begin"}, "attempt": 3, "revision": 41}}
 ```
 
-- **Who**: the Party Host, from a seat or from a Party spectator's socket. The host is whoever
-  the Party says at that moment: the ticket must be valid for the running session, unspent,
-  minted for this connection's own participant, and carry `host: true` (avrana-party ADR 0006,
-  amendment 2026-10-04). Nothing about the host is stored in the room, the adapter or the
-  engine, so a succession, a transfer or a reconnect needs no message.
+- **Who**: the Party Host, from a seat or from a Party spectator's socket. Two things must both
+  hold (avrana-party ADR 0006, amendment 2026-10-04):
+  1. the ticket is valid for the running session, unspent, minted for this connection's own
+     participant, and carries `host: true`;
+  2. the Party, asked by the game server at that moment (`POST /internal/party-session/v0/host`),
+     answers that this participant is its host now.
+  Nothing about the host is stored in the room, the adapter or the engine, so a succession, a
+  transfer or a reconnect needs no message, and **a former host is refused at once**: tickets
+  fetched while host still say `host: true`, and the Party says no.
 - **Refused before the engine**: `host` "Only the Party Host can do that." (no ticket's
-  participant, another participant's ticket, `host` false or absent, an anonymous watcher, no
-  Party session); `host` "The Party could not confirm its Host. Try again." (a ticket that is
-  forged, expired, spent or for another session); `host` "This table is not a Party round."
+  participant, another participant's ticket, `host` false or absent, the Party's answer is no,
+  an anonymous watcher, no Party session); `host` "The Party could not confirm its Host. Try
+  again." (a ticket that is forged, expired, spent or for another session; no answer from the
+  Party within 2 s; an answer that is forged or is not to this question); `host` "This table is
+  not a Party round."
 - **`action`**: exactly `t` = `lifecycle`, `decision`, `attempt`, `revision`. `decision` has the
   shape of a proposal of kind `begin`, `retry {keep}` or `next {mission}` (the same field
   types). There is no `request`: the ticket is single-use and the revision makes a repeat stale.
@@ -250,14 +260,21 @@ is reached (`GameBinding._party_host_action`, AVR-252).
   Begin past a distress request the crew has not answered; Retry or Next without a result; a
   mission that is blocked. The host holds no seat's rights: not the captain's offer, not Tonoja's
   cards, not a vote the host's own seat does not have.
-- **Open**: the crew's chance to ask for distress before Begin is the pending-decision rule
-  above, not a waiting period. A host who begins at once leaves no time to ask (see
-  RECONCILIATION, AVR-275 report).
-- **Client**: the dock's left zone, "Party Host (table control)". The host sees "Begin mission"
-  while the crew is ready and "End EXPO" otherwise; everyone else sees who the host is and what
+- **The crew's moment** (owner decision 2026-10-04): where the rules offer distress (before
+  play, three or more humans, not yet used), the host's Begin is refused with `grace` "The crew
+  has a moment to ask for distress first. Begin in a few seconds." for `game.DISTRESS_GRACE`
+  (4 s) after the tasks and predictions are settled, once per attempt. The view's `begin_at`
+  is the moment it opens. Nobody confirms or says "ready": when the time has passed and no
+  request is pending, the host begins alone. A request made in that time blocks Begin by the
+  pending-decision rule until the crew answers it; a declined request starts no new wait.
+- **Scope**: `begin`, `retry` and `next` are everything this message can do. Any other `t`, any
+  other decision kind and any extra field are refused and change nothing
+  (`test_the_host_gets_begin_retry_and_next_and_nothing_else`).
+- **Client**: the dock's left zone, "Party Host (table control)". The host sees "Begin in N"
+  (disabled) during the crew's moment, then "Begin mission", and "End EXPO" otherwise; everyone else sees who the host is and what
   the table is waiting for. On the result the host sees "Retry same tasks", "Retry new tasks" or
-  "Next mission", and "End EXPO for everyone"; everyone else sees "Waiting for <host> to choose
-  what's next." The page draws these from `AvranaParty.isHost()`, which decides nothing: the
+  "Next mission", and "End EXPO for everyone"; everyone else sees "Waiting for <host> (Party
+  Host) to choose what's next." The page draws these from `AvranaParty.isHost()`, which decides nothing: the
   server reads the ticket.
 
 ## Distress exchange

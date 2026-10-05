@@ -3,33 +3,41 @@
 //   node tests/playtest_expo_party.mjs [outdir]
 //     EXPO_HUMANS=2..5   seated players (default 3; 2 seats Tonoja)
 //     EXPO_HOST=spectator   the Party Host watches instead of playing
+//     EXPO_PARTY=old     a Party from before the host claim: the transitional crew fallback
 //     EXPO_PYTHON=...    the interpreter that runs server.py (default: python3, python on Windows)
 //
 // The script is the Party. It starts its own game server with a party key, launches a signed
-// roster the way Party Core does, and answers each page's ticket request with a ticket that says
-// whether that participant is the host right now (avrana-party ADR 0006, amendment 2026-10-04).
+// roster the way Party Core does, answers each page's ticket request with a ticket that says
+// whether that participant is the host right now, and answers the game server's own question
+// ("is this participant the host NOW?") before every host action (avrana-party ADR 0006,
+// amendment 2026-10-04).
 // The Party's page module (/party/lib/party-follow.js) is replaced by a stub that publishes
 // window.AvranaParty from the same truth. Nothing in the game or its client is stubbed.
 //
 // What it proves: one-viewport play; a pending strategic decision in view for whoever must
 // answer; a result that takes over the screen; Party Host and captain as separate authorities
-// in the page and at the server; host succession and reconnect; no route to the LAN Games hub.
+// in the page and at the server; the crew's moment to ask for distress before Begin; host
+// succession (a former host is refused at once, whatever tickets it kept); reloads during a
+// pending decision, a partly played trick and a result; focus held by what is on top; full
+// touch targets; no route to the LAN Games hub.
 // A simulated Party and a desktop Chrome are not a real phone (avrana-party docs/TESTING.md).
 import os from "os";
 import fs from "fs";
 import net from "net";
 import path from "path";
 import crypto from "crypto";
+import http from "http";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import assert from "node:assert/strict";
 import { puppeteer, CHROME_PATH } from "./_resolve.mjs";
-import { PHONES, oneViewport, onScreen, has, clickKey, playCard, resultOwnsTheScreen, withLongText } from "./_expo_phone.mjs";
+import { PHONES, oneViewport, onScreen, has, clickKey, playCard, resultOwnsTheScreen, withLongText, touchTargets, modalHolds, focused } from "./_expo_phone.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = process.argv[2] || path.join(os.tmpdir(), "expo-party-playtest");
 const HUMANS = Number(process.env.EXPO_HUMANS || 3);
 const WATCHING_HOST = process.env.EXPO_HOST === "spectator";
+const OLD_PARTY = process.env.EXPO_PARTY === "old";
 const PYTHON = process.env.EXPO_PYTHON || (process.platform === "win32" ? "python" : "python3");
 const NAMES = ["Ava","Milo","Noor","Iris","Sage","Dana"];
 fs.mkdirSync(OUT, {recursive:true});
@@ -45,8 +53,28 @@ function seal(payload) {
   return head + "." + b64(crypto.createHmac("sha256", KEY).update(head).digest());
 }
 const base = (typ, ttl) => { const now = Math.floor(Date.now() / 1000); return {v:"avrana.party-session/v0", typ, iss:"party", aud:"expo", sid:SID, iat:now, exp:now + ttl}; };
-const party = {host: null, members: [], ended: 0};          // members: {pid, name, role, page}
-const ticketFor = m => seal({...base("ticket", 120), pid:m.pid, role:m.role, jti:crypto.randomBytes(8).toString("hex"), host:party.host === m.pid});
+const party = {host: null, members: [], ended: 0, asked: 0};   // members: {pid, name, role, page}
+const ticketFor = (m, host = party.host === m.pid) => seal({...base("ticket", 120), pid:m.pid, role:m.role, jti:crypto.randomBytes(8).toString("hex"), ...(OLD_PARTY ? {} : {host})});
+// The Party's internal route: a game asks whether one participant is the host at this moment.
+function open(token, typ) {
+  const [prefix, body, mac] = String(token).split(".");
+  const want = b64(crypto.createHmac("sha256", KEY).update(prefix + "." + body).digest());
+  if (prefix !== "aps0" || mac !== want) return null;
+  const p = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+  return p.typ === typ && p.aud === "party" && p.iss === "expo" && p.sid === SID && p.exp > Date.now() / 1000 ? p : null;
+}
+const partyServer = http.createServer((req, res) => {
+  let raw = ""; req.on("data", d => { raw += d; }); req.on("end", () => {
+    const send = (status, body) => { res.writeHead(status, {"Content-Type":"application/json"}); res.end(JSON.stringify(body)); };
+    if (req.method !== "POST" || req.url !== "/internal/party-session/v0/host") return send(req.url === "/internal/party-session/v0/ended" ? 200 : 404, {ok:true});
+    let q = null; try { q = open(JSON.parse(raw).message, "host"); } catch { /* refused below */ }
+    if (!q) return send(403, {error:"bad_message"});
+    party.asked++;
+    send(200, {ok:true, answer:seal({...base("host_is", 30), pid:q.pid, nonce:q.nonce, host:party.host === q.pid})});
+  });
+});
+await new Promise(resolve => partyServer.listen(0, "127.0.0.1", resolve));
+const PARTY_URL = `http://127.0.0.1:${partyServer.address().port}`;
 
 const followStub = member => `
 window.__party=${JSON.stringify({me:member.pid, host:party.host, hostName:(party.members.find(m => m.pid === party.host) || {}).name || null, ended:0, home:0})};
@@ -67,7 +95,7 @@ const keys = fs.mkdtempSync(path.join(os.tmpdir(), "expo-party-keys-"));
 fs.writeFileSync(path.join(keys, "expo.key"), KEY.toString("hex"), {mode:0o600});
 const PORT = await freePort(), BASE = `http://127.0.0.1:${PORT}`;
 const server = spawn(PYTHON, ["server.py"], {cwd:ROOT, stdio:["ignore","pipe","pipe"],
-  env:{...process.env, LANGAMES_PORT:String(PORT), AVRANA_PARTY_KEYS:keys, AVRANA_PARTY_URL:"http://127.0.0.1:9", EXPO_SNAPSHOT_PATH:""}});
+  env:{...process.env, LANGAMES_PORT:String(PORT), AVRANA_PARTY_KEYS:keys, AVRANA_PARTY_URL:PARTY_URL, EXPO_SNAPSHOT_PATH:""}});
 let serverLog = ""; for (const s of [server.stdout, server.stderr]) s.on("data", d => { serverLog += d; });
 async function post(route, message) {
   const res = await fetch(`${BASE}/games/expo/avrana/session/v0/${route}`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({message})});
@@ -100,12 +128,36 @@ async function refused(pg, act) {
 const SEND_HOST = decision => `conn.hostAction({t:"lifecycle",decision:${JSON.stringify(decision)},attempt:ST.game.attempt,revision:ST.game.revision})`;
 const SEND_SEAT = proposal => `conn.send({t:"propose",proposal:${JSON.stringify(proposal)},attempt:ST.game.attempt,revision:ST.game.revision,request:crypto.randomUUID()})`;
 // The Party moves the host role: its next tickets say so and every page's Party view follows.
+// A phone reloads (or drops and comes back): the same person, and the table as the server has it.
+async function reload(member) {
+  await member.page.reload({waitUntil:"networkidle2"});
+  await member.page.waitForFunction(() => ST?.game && window.AvranaParty, {timeout:25000});
+  await pause(300);                       // the page reads the Party's view again within a tick
+  for (const m of party.members) await m.page.waitForFunction(() => ST?.game && !ST.game.away.length, {timeout:25000});
+  await pause(120);
+  return (await state(member.page)).game;
+}
+// The labels a player reads never use one authority's name for another's.
+async function labels(member, g) {
+  const s = await member.page.evaluate(() => ({host: document.getElementById("dock-host")?.querySelector(".dock-label")?.innerText || "",
+    action: document.getElementById("dock-action")?.querySelector(".dock-label")?.innerText || "",
+    tiles: [...document.querySelectorAll("#seats .seat")].map(n => ({seat: n.dataset.key.slice(5), said: n.getAttribute("aria-label")})), me: ST.you?.pid || null, seat: ST.game.me?.seat || null}));
+  if (g.lifecycle === "host") assert.match(s.host, /^Party Host \(table control\)/, `${member.name}: table control is the Party Host's`);
+  else assert.match(s.host, /^Crew \(decides (for now|together)\)/);
+  if (s.action) assert.match(s.action, !s.seat ? /^Watching \(no seat\)/ : s.seat === g.captain ? /^Captain( · Tonoja)? \(your role in the game\)/ : /^Crew member \(your role in the game\)/, `${member.name}: the in-game role is named as one`);
+  const hostSeat = (await state(party.members.find(m => m.pid === party.host).page)).you?.pid ?? null;
+  for (const tile of s.tiles) {
+    assert.equal(/Captain/.test(tile.said), tile.seat === g.captain, "only the captain's tile says Captain");
+    assert.equal(/Party Host/.test(tile.said), seated().some(m => m.pid === party.host) && tile.seat === hostSeat, "only the Party Host's tile says Party Host");
+    assert.doesNotMatch(tile.said.replace("Party Host", ""), /Host/, "no bare Host");
+  }
+}
 async function makeHost(member) {
   party.host = member.pid;
   for (const m of party.members) await m.page.evaluate((host, name) => { window.__party.host = host; window.__party.hostName = name; window.__partyMoved && window.__partyMoved(); }, member.pid, member.name);
   await pause(80);
 }
-async function open(member, viewport) {
+async function openPage(member, viewport) {
   const context = await browser.createBrowserContext(), pg = await context.newPage();
   member.page = pg;
   await pg.setViewport({...viewport, deviceScaleFactor:1, isMobile:true, hasTouch:true});
@@ -132,10 +184,28 @@ try {
   party.host = party.members.at(WATCHING_HOST ? -1 : 0).pid;
   // The launch: exactly {participant, name, role}. The game is never told who hosts.
   await post("launch", seal({...base("launch", 30), nonce:crypto.randomBytes(12).toString("hex"), roster:party.members.map(m => ({participant:m.pid, name:m.name, role:m.role}))}));
-  for (const [i, m] of party.members.entries()) await open(m, PHONES[i % PHONES.length]);
+  for (const [i, m] of party.members.entries()) await openPage(m, PHONES[i % PHONES.length]);
   for (const m of party.members) await m.page.waitForFunction(() => ST?.game && window.AvranaParty, {timeout:25000});
   const first = (await settle()).game;
-  assert.equal(first.lifecycle, "host", "the Party named its host: lifecycle is the host's");
+  if (OLD_PARTY) {
+    // A Party from before the host claim: the crew decides, for now, and everyone is told so.
+    assert.equal(first.lifecycle, "crew"); assert.equal(first.lifecycle_transitional, true);
+    for (const m of party.members) {
+      await labels(m, first);
+      assert.match(await m.page.evaluate(() => document.getElementById("dock-host").innerText), /^Crew \(decides for now\)/);
+      await m.page.click("#menu-toggle");
+      const menu = await m.page.evaluate(() => document.getElementById("sheet-body").innerText);
+      assert.match(menu, /does not tell EXPO who its Host is yet/); assert.match(menu, /That is temporary/);
+      assert.match(menu, /Party Host · .+\n+Ends EXPO and moves the Party\./, "the Party Host is not credited with what the crew decides");
+      await m.page.click("#sheet-close"); await oneViewport(m.page, "an older Party");
+    }
+    assert.match(serverLog, /do not say who its host is/, "the server says so once in its log");
+    assert.equal(await refused(party.members[0].page, SEND_HOST({kind:"begin"})), "Only the Party Host can do that.");
+    assert.equal(party.asked, 0, "a ticket without the claim never reaches the Party's host question");
+    assert.deepEqual(errors, []); finished = true;
+    console.log(`PASS: EXPO under a Party without the host claim, ${HUMANS} seated: transitional crew fallback, shown and logged`, OUT);
+  } else {
+  assert.equal(first.lifecycle, "host", "the Party named its host: lifecycle is the host's"); assert.equal(first.lifecycle_transitional, false);
   for (const m of party.members) assert.equal((await state(m.page)).party_round, true);
 
   // Host and captain are different people (unless the host only watches, who is nobody's captain).
@@ -165,8 +235,28 @@ try {
   const ready = (await settle()).game;
   assert.equal(ready.stage, "assistance");
 
+  // ---- the crew's moment: Begin is closed to the host for a few seconds, and nobody votes ----
+  let graceSeen = false;
+  if (ready.seats.includes("tonoja")) assert.equal(ready.begin_at, null, "no distress with Tonoja: nothing to wait for");
+  else {
+    assert.ok(ready.begin_at, "the server says when Begin opens");
+    const left = () => host.page.evaluate(() => ST.game.begin_at ? ST.game.begin_at - conn.now() / 1000 : 0);
+    if (await left() > 2) {
+      const b = await has(host.page, "begin");
+      assert.equal(b.disabled, true); assert.match(b.text, /^Begin in \d$/);
+      assert.match(await host.page.evaluate(() => document.getElementById("status").textContent), /The crew may ask for distress · you can begin in \d/);
+      const crew = seated().find(m => m !== host);
+      assert.match(await crew.page.evaluate(() => document.getElementById("status").textContent), new RegExp(`Want distress\\? Ask now · ${host.name} can begin in \\d`));
+      for (const k of ["distress-left","distress-right"]) assert.equal((await has(crew.page, k)).disabled, false, "any seated crew member may ask");
+      assert.equal(await has(crew.page, "agree"), null, "nobody is asked to confirm or say ready");
+      if (await left() > 1) { assert.equal(await refused(host.page, SEND_HOST({kind:"begin"})), "The crew has a moment to ask for distress first. Begin in a few seconds."); graceSeen = true; }
+    }
+    await host.page.waitForFunction(() => { const b = [...document.querySelectorAll("[data-key]")].find(x => x.dataset.key === "begin"); return b && !b.disabled && b.textContent === "Begin mission"; }, {timeout:9000});
+    assert.equal(await host.page.evaluate(() => graceLeft(ST.game)), 0);
+  }
+
   // ---- Begin: the host's, once the crew has had its say ----
-  for (const m of party.members) await oneViewport(m.page, "ready to begin");
+  for (const m of party.members) { await oneViewport(m.page, "ready to begin"); await touchTargets(m.page, `${m.name}: ready to begin`); await labels(m, ready); }
   for (const m of party.members.filter(m => m !== host)) {
     assert.equal(await has(m.page, "begin"), null, `${m.name} is not the host and is offered no Begin`);
     assert.match(await m.page.evaluate(() => document.getElementById("dock-host").innerText), new RegExp(`Waiting for ${host.name} to begin`));
@@ -189,14 +279,26 @@ try {
       assert.match(await m.page.evaluate(() => document.getElementById("status").textContent), /^Your answer is needed: Activate distress/);
       assert.match(await m.page.evaluate(() => document.getElementById("stage").innerText), /Activate distress and pass one color card left/);
     }
+    {
+      // A phone that must answer reloads: the question is still there, in view, with both answers.
+      const answering = seated().find(m => m !== asker), before = (await state(answering.page)).game;
+      const after = await reload(answering);
+      assert.deepEqual(after.proposal, before.proposal);
+      for (const k of ["agree","decline"]) await onScreen(answering.page, k, `${answering.name}: the decision after a reload`);
+      assert.match(await answering.page.evaluate(() => document.getElementById("status").textContent), /^Your answer is needed: Activate distress/);
+      await oneViewport(answering.page, "a pending decision after a reload"); await touchTargets(answering.page, "a pending decision");
+    }
     if (seated().includes(host)) assert.equal((await has(host.page, "begin")).disabled, true, "Begin waits for the crew's answer");
     assert.equal(await refused(host.page, SEND_HOST({kind:"begin"})), "The crew is deciding something. Wait for their answer.");
     await host.page.screenshot({path:path.join(OUT, "decision-pending.png")});
     const decliner = seated().find(m => m !== asker), r2 = (await state(decliner.page)).game.revision;
     await clickKey(decliner.page, "decline"); for (const m of party.members) await waitRevision(m.page, r2);
-    assert.equal((await settle()).game.proposal, null);
+    const declined = (await settle()).game;
+    assert.equal(declined.proposal, null); assert.equal(declined.begin_at, null, "a declined request starts no new wait");
     // the host's own authority stops at the table's routine steps
     assert.equal(await refused(host.page, SEND_HOST({kind:"distress", direction:"left"})), "The crew decides that together.");
+    assert.equal(await refused(host.page, SEND_HOST({kind:"end"})), "The crew decides that together.");
+    assert.equal(await refused(host.page, `conn.hostAction({t:"play_card",card:"blue:1",attempt:ST.game.attempt,revision:ST.game.revision,request:"x"})`), "Invalid lifecycle action.");
   }
   {
     const rev = (await state(host.page)).game.revision;
@@ -212,7 +314,7 @@ try {
     const s = await settle(); if (s.game.result) break;
     const actor = await byPid(s.game.turn === "tonoja" ? s.game.captain : s.game.turn), g = (await state(actor.page)).game;
     if (plays < 2 * s.game.seats.length) {
-      for (const m of party.members) await oneViewport(m.page, `${m.name} during trick play`);
+      for (const m of party.members) { await oneViewport(m.page, `${m.name} during trick play`); if (plays < 2) { await touchTargets(m.page, `${m.name} during trick play`); await labels(m, s.game); } }
       assert.match(await actor.page.evaluate(() => document.getElementById("status").textContent), /^Your turn/);
       const waiting = party.members.find(m => m !== actor);
       assert.match(await waiting.page.evaluate(() => document.getElementById("status").textContent), /to (play|lead)/);
@@ -226,7 +328,7 @@ try {
         await oneViewport(other.page, "looking at Tonoja's cards"); await clickKey(other.page, "hand-mine");
       }
     }
-    if (plays === 1) for (const size of PHONES) { await actor.page.setViewport({...actor.page.viewport(), ...size}); await pause(60); await oneViewport(actor.page, "mid-trick"); await withLongText(actor.page, () => oneViewport(actor.page, "mid-trick, long text")); await actor.page.screenshot({path:path.join(OUT, `play-${size.width}x${size.height}.png`)}); }
+    if (plays === 1) for (const size of PHONES) { await actor.page.setViewport({...actor.page.viewport(), ...size}); await pause(60); await oneViewport(actor.page, "mid-trick"); await withLongText(actor.page, async () => { await oneViewport(actor.page, "mid-trick at its fullest"); await touchTargets(actor.page, "mid-trick at its fullest"); }); await actor.page.screenshot({path:path.join(OUT, `play-${size.width}x${size.height}.png`)}); }
     // tapping a card chooses it; nothing is played until the dock's button
     await clickKey(actor.page, "card:" + g.me.legal_cards[0]);
     assert.equal((await state(actor.page)).game.revision, g.revision, "choosing a card plays nothing");
@@ -240,10 +342,17 @@ try {
     if (plays === 2 && !reconnected && seated().includes(host)) {
       // The host's phone reloads mid-trick: the same seat, the same hand, still the host.
       const before = (await state(host.page)).game;
-      await host.page.reload({waitUntil:"networkidle2"}); await host.page.waitForFunction(() => ST?.game?.me && !ST.game.away.length && window.AvranaParty);
-      const after = (await state(host.page)).game;
+      const after = await reload(host);
       assert.deepEqual(after.me.hand, before.me.hand); assert.deepEqual(after.trick, before.trick);
+      assert.ok(after.trick.length > 0 && after.trick.length < after.seats.length, "the trick is partly played");
       assert.equal(await host.page.evaluate(() => AvranaParty.isHost()), true);
+      await oneViewport(host.page, "a partly played trick after the host reloads");
+      // ... and a crew member who is not the host: the same seat, the same cards, the same trick.
+      const crew = seated().find(m => m !== host), was = (await state(crew.page)).game;
+      const now = await reload(crew);
+      assert.deepEqual(now.me.hand, was.me.hand); assert.deepEqual(now.trick, was.trick); assert.equal(now.turn, was.turn);
+      assert.equal(await crew.page.evaluate(() => document.querySelectorAll("#trick .slot .card").length), now.trick.length, "the cards already played are on the table");
+      await oneViewport(crew.page, "a partly played trick after a reload");
       reconnected = true;
     }
     await pause(110);
@@ -259,7 +368,28 @@ try {
     if (m === host) { for (const k of NEXT) assert.ok(keys.includes(k), `the host is offered ${k}`); assert.ok(keys.includes("end-expo")); }
     else {
       assert.deepEqual(keys.filter(k => [...NEXT, "retry-same", "retry-new", "next", "end-expo", "end-table"].includes(k)), [], `${m.name} is offered no lifecycle control`);
-      assert.match(seen.text, new RegExp(`Waiting for ${host.name} to choose what’s next`));
+      assert.match(seen.text, new RegExp(`Waiting for ${host.name} \\(Party Host\\) to choose what’s next`));
+    }
+    await touchTargets(m.page, `${m.name}: the result`); await modalHolds(m.page, "result", `${m.name}: the result`);
+  }
+  {
+    // Reloading on a result: it takes the screen over again, for the host with the controls and
+    // for the crew without them.
+    const crew = party.members.find(m => m !== host);
+    for (const m of [host, crew]) {
+      await reload(m);
+      const keys = (await resultOwnsTheScreen(m.page, `${m.name}: the result after a reload`)).keys.map(k => k.key);
+      assert.deepEqual(NEXT.filter(k => keys.includes(k)), m === host ? NEXT : [], `${m.name} after a reload`);
+    }
+    // "Look at the table": the way back is the whole dock, it says what it leads to, and for the
+    // host that includes the lifecycle controls.
+    for (const m of [host, crew]) {
+      await clickKey(m.page, "review"); await onScreen(m.page, "show-result", `${m.name}: the result put away`);
+      assert.equal(await focused(m.page), "show-result");
+      const way = (await has(m.page, "show-result")).text;
+      assert.match(way, m === host ? /^Mission (complete · show result and next mission|failed · show result and retry)$/ : /^Mission (complete|failed) · show result$/);
+      await oneViewport(m.page, `${m.name}: the table after the result`); await touchTargets(m.page, `${m.name}: the table after the result`);
+      await clickKey(m.page, "show-result"); await resultOwnsTheScreen(m.page, `${m.name}: the result shown again`);
     }
   }
   for (const size of PHONES) { await host.page.setViewport({...host.page.viewport(), ...size}); await pause(60); await resultOwnsTheScreen(host.page, "the host's result"); await host.page.screenshot({path:path.join(OUT, `result-host-${size.width}x${size.height}.png`)}); }
@@ -279,7 +409,17 @@ try {
 
   // ---- succession: the Party moves the host role, and the game follows with no message ----
   if (!WATCHING_HOST) {
-    const old = host; host = others[0]; await makeHost(host); succession = true;
+    const old = host, asked = party.asked;
+    // The old host keeps tickets fetched while host: each still says `host: true` for 120 s.
+    const hoard = [ticketFor(old, true), ticketFor(old, true), ticketFor(old, true)];
+    host = others[0]; await makeHost(host); succession = true;
+    assert.equal(await refused(old.page, SEND_HOST(decision)), "Only the Party Host can do that.");
+    for (const kept of hoard)       // the claim opens the question; the Party's answer, now, is no
+      assert.equal(await refused(old.page, `conn.send({t:"host",ticket:${JSON.stringify(kept)},action:{t:"lifecycle",decision:${JSON.stringify(decision)},attempt:ST.game.attempt,revision:ST.game.revision}})`), "Only the Party Host can do that.");
+    assert.equal(party.asked, asked + hoard.length, "the game asked the Party for each kept ticket, and for nothing else");
+    // Both phones reload after the role moved: the page and the server agree on who the host is.
+    await reload(old); await reload(host);
+    assert.equal(await old.page.evaluate(() => AvranaParty.isHost()), false); assert.equal(await host.page.evaluate(() => AvranaParty.isHost()), true);
     assert.equal(await refused(old.page, SEND_HOST(decision)), "Only the Party Host can do that.");
     const lost = (await resultOwnsTheScreen(old.page, "the former host")).keys.map(k => k.key);
     assert.deepEqual(lost.filter(k => [...NEXT, "end-expo"].includes(k)), [], "the former host's controls are gone");
@@ -300,7 +440,11 @@ try {
     assert.deepEqual(menu.links, [], "the table menu has no link out of the Party's round");
     if (m === host) assert.ok(await has(m.page, "menu-end"));
     else { assert.equal(await has(m.page, "menu-end"), null, `${m.name} cannot end EXPO`); assert.match(menu.text, new RegExp(`Only ${host.name} can end EXPO`)); }
-    if (m !== host) await m.page.click("#sheet-close");
+    assert.match(menu.text, /Party Host · .+\n+Begins each mission, retries, chooses the next one, ends EXPO and moves the Party\./);
+    assert.match(menu.text, /Crew · everyone seated\n+Decides together what the rules give the crew/);
+    assert.match(menu.text, /Captain · .+\n+.*A role in the game, not the Party Host\./);
+    await touchTargets(m.page, `${m.name}: the table menu`); await modalHolds(m.page, "sheet", `${m.name}: the table menu`);
+    if (m !== host) { await m.page.click("#sheet-close"); assert.equal(await m.page.evaluate(() => document.activeElement.id), "menu-toggle", "focus returns to the menu button"); }
   }
   assert.match(await refused(seated().find(m => m !== host).page, SEND_SEAT({kind:"end"})), /the Party Host ends EXPO/);
   await clickKey(host.page, "menu-end");
@@ -314,13 +458,14 @@ try {
   assert.deepEqual(errors, []);
   finished = true;
   console.log(`PASS: EXPO Party round, ${HUMANS} seated${WATCHING_HOST ? " + a watching host" : ""}${HUMANS === 2 ? " + Tonoja" : ""}: one-viewport play on ${PHONES.length} phone sizes, ` +
-    `result takeover (${ended.game.result.status}), host-only lifecycle, captain is not host${succession ? ", succession" : ""}${reconnected ? ", host reconnect" : ""}, Party-owned end, no hub route`, OUT);
+    `result takeover (${ended.game.result.status}), host-only lifecycle${graceSeen ? ", distress moment before Begin" : ""}, captain is not host${succession ? ", succession with kept tickets refused" : ""}${reconnected ? ", reloads mid-trick" : ""}, reloads on a decision and a result, focus and touch targets, Party-owned end, no hub route`, OUT);
+  }
 } catch (e) {
   for (const m of party.members) if (m.page) await m.page.screenshot({path:path.join(OUT, `failed-${m.name}.png`)}).catch(() => {});
   throw e;
 } finally {
   if (browser) await browser.close().catch(() => {});
-  server.kill();
+  server.kill(); partyServer.close();
   fs.rmSync(keys, {recursive:true, force:true});
   if (!finished) console.error(serverLog.split("\n").slice(-15).join("\n"));
 }
