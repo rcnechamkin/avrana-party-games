@@ -1041,10 +1041,10 @@ and is built.
   `status`.
 - The resolving phase: a mark in the state, a refusal for every seat, a server settle that the
   adapter calls after 0.8 s, on a late command, or at once on a restore. A timed mission's clock
-  stands during it and the hold is credited to the deadline, so the crew has the seconds it had
-  before; the attempt is longer on the wall clock by 0.8 s a trick. This is the one place the
-  change touches a number the rules care about, and it was chosen so that the hold takes
-  nothing from the crew.
+  runs through it and its deadline does not move (owner decision, 2026-10-05; see "Owner
+  decision" below). As first written this entry did the opposite: the clock stood and the hold
+  was credited to the deadline. This is the one place the change touches a number the rules
+  care about: the attempt is 150 seconds on the clock, and the holds are inside them.
 - `tasks.judge`, which labels a failure the evaluator already found. Two comparisons were made
   **by hand; neither is in the repository** and neither can be rerun from it. The author
   compared it with the evaluator before the change on 5.7 million judgements of all 96 task
@@ -1085,14 +1085,57 @@ and performance tiers were not implemented and are not planned by this entry.
 1. May a client be sent the whole attempt's events once the mission has a result (a debrief or a
    replay)? Now: no, the latest trick only.
 2. `RESOLVE_HOLD` is 0.8 s, from the draft's "under one second". It is one constant in
-   `games/expo/game.py`; changing it changes no rule. In timed mission 16 the clock stands for
-   the hold; the alternative, letting it run, would cost the crew about ten of its 150 seconds.
+   `games/expo/game.py`; changing it changes no rule. Its length is still the owner's to
+   confirm. What a timed mission's clock does during it is **decided** (2026-10-05, below): it
+   runs, so in timed mission 16 the holds take up to about ten of the crew's 150 seconds.
 3. The triggering seat is the trick's winner. That is an attribution of the deciding card, not
    of fault; a presentation that blames a player on it should know that.
 4. The drafts as committed: the example players' first names were replaced by the repository's
    stand-in names (Alice, Bob, Carol), 30 and 7 occurrences, and a banner was added. The title
    "The Team II" was left as written; it is the reference tabletop's name, which
    [VTT_REFERENCE](VTT_REFERENCE.md) already uses, not the publisher's.
+
+**Owner decision, 2026-10-05 (recorded on AVR-246).** "Timed missions do **not** gain time
+during the 0.8 s resolving hold. The mission clock continues to run on monotonic elapsed time
+while presentation/resolving temporarily prevents the next action. Implementation should
+preserve a clean trick-resolution boundary, but that boundary must not extend the mission
+deadline. If a deadline expires during resolving, finish resolving the already-committed trick,
+then evaluate expiry before opening another actionable turn."
+
+What changed for it, in `games/expo/engine.py` and `games/expo/game.py`:
+
+- `Engine.settle(credit)` is `Engine.settle(now)`. It never changes `expiry`. With the caller's
+  clock at or past the deadline it clears the resolving mark and ends the attempt by time
+  (`Engine.expire`, the same result and cause as every timeout) and emits no `TURN_STARTED`;
+  otherwise it opens the winner's turn as before. The engine still keeps no clock: `now` is
+  the adapter's monotonic reading, as it is for `observe_time`.
+- `Engine.observe_time` still records nothing while a trick is resolving, now for a different
+  reason: the committed trick is settled first, and `settle(now)` judges the deadline.
+- The adapter no longer computes a credit; it passes its clock to `settle`. The session's one
+  timer still waits for the end of the hold, where the deadline is judged in the same step.
+  The view's `expiry` is the deadline itself during a hold: the adjustment of commit 1abc97d
+  (deadline plus hold) is removed, and with it the limit it documented.
+- A restore settles with the clock when the clock can be trusted, and ends the timed attempt
+  before settling when it cannot, so neither path opens a turn on a table that has run out.
+- Untimed tables: no value differs. `settle` reads `now` only when there is a deadline.
+
+Not changed, and still the owner's: whether a client may be sent the whole attempt's events
+after a result (1), the length of the hold (2), the attribution of the triggering seat (3), the
+drafts' example names (4).
+
+A consequence to know: the hold is not cut short by the deadline. A timeout that falls inside
+a hold is recorded when the hold ends, up to 0.8 s after the deadline (the decision's "finish
+resolving the already-committed trick, then evaluate expiry"). No seat can act in that time,
+and a client's countdown reads zero while `resolving` is still set.
+
+Tests: the timed and resolving cases in `tests/test_expo_events.py` were rewritten; the four
+that asserted the credited deadline and the adjusted countdown were removed with the behaviour.
+Seventeen of the new cases fail on the code before this decision (checked by running the file
+against the engine and the adapter of commit 1abc97d). The engine-level case
+`test_the_deadline_of_a_timed_mission_is_the_same_after_any_number_of_holds` does not, because
+the old `settle` ignored a credit over 60 seconds; the adapter-level
+`test_a_timed_mission_lasts_exactly_its_configured_seconds_however_many_tricks_were_held`
+covers the same claim and does fail on it. Neither browser playtest was run for this change.
 
 **Not verified.** The author did not run the two browser playtests (the orchestrator did,
 afterwards: see the table), and no phone has shown the hold. Both scripts read whose turn it is and then expect a legal card, which
@@ -1112,3 +1155,4 @@ timer path itself is tested through real sockets
 | `pytest tests/test_expo.py tests/test_expo_*.py` (every EXPO test file) | 1113 passed, 2 skipped (distress with two players, C11), 2 expected failures (E-D2, E-D8) at 84e179b; the review repairs add five tests |
 | `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check | OK |
 | `pytest -q` (whole repository), the cross-repository tests, the two browser playtests, a real phone | not run for this change |
+| after the owner decision of 2026-10-05, on `main` at 9f9aa41 merged in: `pytest tests/test_expo.py tests/test_expo_*.py` | 1166 passed, 2 skipped, 2 expected failures; `tests/test_expo_events.py` 98 passed; the four checks of the row above OK; browser playtests and the whole repository not run |

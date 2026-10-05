@@ -80,7 +80,10 @@ log of what happened as meaning (a card, a resolved trick, a communication, an o
 progress and outcome, a modifier, the mission's result, a returning player), says what a failed
 attempt is attributed to (objective, triggering and affected seat, cards, trick), gives each task
 a state (PENDING, ACTIVE, COMPLETED, FAILED, IMPOSSIBLE), and holds the table for 0.8 s between
-tricks until the server settles it. No rule changed and no legal card is ever warned about. Each
+tricks until the server settles it. A timed mission gains no time from that hold: its clock runs
+through it and its deadline never moves (owner decision, 2026-10-05); a deadline that passes
+during a hold ends the attempt when the hold ends, before anyone is given a turn. No other rule
+changed and no legal card is ever warned about. Each
 viewer is sent only the latest resolved trick's events and what followed. **The client does not
 use any of it yet**: [GAME_STATE](docs/GAME_STATE.md#semantic-events-failure-causality-and-the-resolving-phase).
 

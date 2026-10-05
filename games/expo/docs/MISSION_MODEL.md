@@ -89,16 +89,19 @@ CONFIRMED C13 (owner, 2026-10-04): R starts the timer "after assigning the tasks
 and the distress decision before play. POLICY P10 starts the clock when the crew unanimously
 begins. Only mission 16 is enabled.
 
-POLICY, **awaiting the owner's confirmation** (AVR-246; [RECONCILIATION](RECONCILIATION.md#avr-246-2026-10-04),
-"For the owner"): the mission clock stands while a completed trick is resolving
-([GAME_STATE](GAME_STATE.md#the-resolving-phase)), because nobody may act then, and the deadline
-is moved by the length of that hold (0.8 s). A hold follows every trick that does not end the
-mission, so the crew keeps its 150 seconds of time in which it can act, and the attempt may last
-up to 150 + 0.8 x (tricks - 1) seconds on the wall clock: 9.6 s more at three players, 7.2 s at
-four, 5.6 s at five. A crew that finishes at 152 s of wall-clock time therefore succeeds, where
-before the hold existed it would have failed. The alternative, not built: let the clock run
-through the holds, which keeps the wall-clock length at 150 s and takes up to about ten seconds
-of acting time from the crew.
+CONFIRMED (owner, 2026-10-05, on AVR-246): "Timed missions do **not** gain time during the 0.8 s
+resolving hold. The mission clock continues to run on monotonic elapsed time while
+presentation/resolving temporarily prevents the next action. Implementation should preserve a
+clean trick-resolution boundary, but that boundary must not extend the mission deadline. If a
+deadline expires during resolving, finish resolving the already-committed trick, then evaluate
+expiry before opening another actionable turn." So a timed attempt of mission 16 lasts exactly
+150 seconds from Begin at three, four and five players. A hold follows every trick that does
+not end the mission, and no seat may act during it, so up to 0.8 x (tricks - 1) of those seconds
+(9.6 s at three players, 7.2 s at four, 5.6 s at five) are not the crew's to act in. A trick
+whose last card is accepted before the deadline stands, and wins the mission if it completes
+it; a deadline that passes during a hold ends the attempt when the hold ends, before anyone is
+given a turn ([GAME_STATE](GAME_STATE.md#the-resolving-phase)). This replaces the policy the
+branch first carried, in which the clock stood during the hold and the deadline moved by it.
 
 ## Mission table
 
