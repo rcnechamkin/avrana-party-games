@@ -34,9 +34,12 @@ GRACE = 'The crew has a moment to ask for distress first. Begin in a few seconds
 
 # A Party that does not say who its host is leaves Begin, Retry and Next to the crew. That is a
 # deploy-order allowance for a Party older than its host claim (avrana-party ADR 0006, amendment
-# 2026-10-04), not a mode: it is logged and shown to the players. Set this False once the Party
-# that names its host is the deployed one: those steps are then the Party Host's in every Party
-# round, and a Party that cannot say who that is cannot move the table on (only end it).
+# 2026-10-04), not a mode: it is logged and shown to the players.
+# It stays True through the first paired deployment, so either service can be rolled back
+# without stranding a table. Turning it off is its own small change, made only after the host
+# claim has been seen working in production (owner decision 2026-10-04): from then on those
+# steps are the Party Host's in every Party round, and a Party that cannot say who that is
+# cannot move the table on (only end it). That cutoff is not undone by a Party rollback.
 HOST_CLAIM_TRANSITION = True
 
 

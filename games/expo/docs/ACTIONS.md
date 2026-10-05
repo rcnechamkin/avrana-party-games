@@ -158,8 +158,9 @@ crew: `begin`, `retry` and `next` (`engine.LIFECYCLE`). Who commits them depends
 - **a Party from before the host claim** (`lifecycle` is `crew`, `lifecycle_transitional` true):
   the same, for now. This is a deploy-order allowance (`game.HOST_CLAIM_TRANSITION`), not a
   mode: the server logs it once per session, the page says the crew decides "for now" and why,
-  and it ends when that flag is set False, once the Party that names its host is the deployed
-  one: those steps are then the Party Host's in every Party round.
+  and it ends when that flag is set False: those steps are then the Party Host's in every Party
+  round. The flag stays True through the first paired deployment (so either side can be rolled
+  back) and is turned off in a separate change, after the host claim is confirmed in production.
 
 `end` in a Party round is the Party's: every seat's `propose end` is refused with `host` "In a
 Party, the Party Host ends EXPO for everyone." and the host ends the session from the Party

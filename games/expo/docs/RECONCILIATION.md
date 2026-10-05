@@ -882,6 +882,13 @@ that no seat ends it from inside.
 - **Card play changed shape.** A tap chooses a card and the dock's button plays it. This is a
   presentation choice against mis-taps on 44 px cards, not a rule: no legal card is warned about.
 
+**Two merges, not one.** The work above merged as avrana-party-games#44 (at 1d2e602) before
+the owner's decisions below were built. Everything from here to the results table is the
+follow-up PR on top of `main`. Between the two merges `main` vendors a session protocol
+(avrana-party 0892729) that is on neither Party's `main` nor its final branch, so the paired
+contract check fails for `main` until avrana-party#75 and the follow-up are both merged.
+Nothing is deployed from that interval.
+
 Owner decisions of 2026-10-04 on what that left open, and what was built for each:
 
 - **The host claim is accepted; a former host must have nothing to spend.** Built: the game
@@ -928,7 +935,11 @@ Still open:
 - **Mission, timed mode and Tonoja's seat** cannot be chosen in a Party round (AVR-245). The
   host's Next is the only way to another mission.
 - **Causality in the result** (AVR-246) and **the service worker** (AVR-274).
-- **Removing `HOST_CLAIM_TRANSITION`** once the Party that names its host is deployed.
+- **Turning `HOST_CLAIM_TRANSITION` off.** Not part of the first deployment. Order agreed with
+  the owner: avrana-party#75 merges, then this repository's hardening PR; both are deployed
+  together; a real-phone test on the appliance confirms the Party Host claim works in
+  production; only then a small follow-up sets the flag False. Until then a rollback of either
+  service leaves tables playable.
 - **Not AVR-267.** No art, animation, audio or event-driven presentation was added.
 
 | Check | Result (Windows 11) |
