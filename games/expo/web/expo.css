@@ -1,9 +1,25 @@
-/* EXPO (AVR-275). The game is one viewport: .app is exactly as tall as the screen and never
-   scrolls as a page. The board is a grid whose only flexible row is the stage (the trick), so the
-   hand and the dock keep their place whatever happens above them. Detail lives in sheets.
-   Layout and hierarchy only: the wasteland art direction (AVR-267) decorates this later. */
-:root{--sea:#65e5dd;--deep:#081c2b;--foam:#d9f7ed;--panel:#0f1c2c;--panel-2:#132436;--edge:#2a3f55;--accent:#5fb4ff;--ok:#5fd6a0;--bad:#ff6b81;
-  --gap:6px;--pad:10px;--hand-card:58px}
+/* EXPO (AVR-275, AVR-267). The game is one viewport: .app is exactly as tall as the screen and
+   never scrolls as a page. The board is a grid of five zones (mission stage, crew strip, shared
+   trick, crew objectives, private hand and controls) whose only flexible row is the trick, so
+   the hand and the dock keep their place whatever happens above them. Detail lives in sheets.
+
+   Wasteland treatment (AVR-267): PLACEHOLDERS ONLY. Every --slot-* variable below and every
+   #expo-slot-* symbol in index.html is a named asset slot filled with a neutral gradient or
+   polygon; final art is human-made or licensed and is not in this file (docs/ASSETS.md).
+   Motion: transform and opacity only. Ambient motion runs only at the high fidelity tier and
+   stops when the tab is hidden; reduced motion stops all of it. Nothing that carries meaning is
+   said by motion or colour alone. */
+:root{--sea:#7ee0c9;--deep:#0d0b08;--foam:#efe6cf;--panel:#1d1912;--panel-2:#241f16;--edge:#4a4030;--accent:#ff9d5c;--ok:#7fd89a;--bad:#ff6b6b;--gold:#ffd76a;
+  --bg:#12100c;--muted:#b9ae98;--surface:#18150f;--line:#4a4030;
+  --gap:6px;--pad:10px;--hand-card:58px;
+  /* ---- asset slots (placeholders) ---- */
+  --slot-stage-sky:linear-gradient(180deg,#33261b 0%,#553722 48%,#7a4b27 74%,#2a2016 100%);
+  --slot-stage-haze:linear-gradient(90deg,transparent 0%,#e9c58a26 28%,transparent 52%,#e9c58a1c 78%,transparent 100%);
+  --slot-stage-glow:radial-gradient(ellipse at 74% 38%,#ffd08a4d,transparent 62%);
+  --slot-board-ground:radial-gradient(ellipse at 15% 0%,#6b432440,transparent 60%);
+  --slot-card-face:linear-gradient(155deg,#ffffff14,#ffffff04);
+  --slot-result-failure:radial-gradient(ellipse at 50% 30%,#ff6b6b59,transparent 72%);
+  --slot-result-success:radial-gradient(ellipse at 50% 30%,#7fd89a59,transparent 72%)}
 *{box-sizing:border-box}
 /* The page itself never moves (iOS Safari scrolls and rubber-bands a body that is merely
    overflow:hidden): the body is pinned to the viewport and nothing chains a scroll to it. */
@@ -11,11 +27,12 @@ html,body{height:100%;overscroll-behavior:none}
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{position:fixed;inset:0;width:100%;margin:0;background:var(--bg);color:var(--text);overflow:hidden;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
+.slot-defs{position:absolute}
 
 /* As tall as what the browser shows right now: 100dvh follows Safari's bars as they come and
    go; 100vh (the bars-hidden height) is only for a browser without dvh, capped by the body. */
 .app{position:relative;display:flex;flex-direction:column;height:100vh;height:100dvh;max-height:100%;max-width:560px;margin:0 auto;overflow:hidden;
-  background:radial-gradient(ellipse at 15% 0%,#0d4a5940,transparent 60%),var(--bg)}
+  background:var(--slot-board-ground),var(--bg)}
 html[data-avrana="1"] .app{height:100%}
 
 /* ---- always there: top bar and status strip ---- */
@@ -43,53 +60,97 @@ h1,h2,h3,p{margin:0}
 .btn.armed{border-color:var(--bad);color:var(--bad)}
 .btn.on{border-color:var(--sea);color:var(--sea)}
 .pill{flex:none;display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;border:1px solid var(--edge);font-size:11px;font-weight:700;white-space:nowrap;color:var(--muted)}
-.pill.failed{border-color:var(--bad);color:var(--bad);background:#ff6b8118}
+.pill.failed{border-color:var(--bad);color:var(--bad);background:#ff6b6b18}
 .pill.done{border-color:var(--ok);color:var(--ok)}
-.pill.open{border-color:var(--accent);color:var(--accent)}
+.pill.open{border-color:var(--edge);color:var(--muted)}
+.pill.pending{border-color:var(--accent);color:var(--accent)}
 .pill.timer{font-family:var(--mono);color:var(--sea);border-color:var(--sea);font-size:13px}
+.ic{flex:none;width:12px;height:12px;fill:currentColor}
+/* The director's overlay: a transient pulse, drawn over its parent and never part of the layout.
+   It is invisible unless the director animates it. */
+.fx{position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;border:2px solid var(--sea);background:color-mix(in srgb,var(--sea) 14%,transparent)}
 
-/* ---- the board ---- */
-.board{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto minmax(0,1fr) auto auto auto;gap:var(--gap);padding:var(--gap) max(var(--pad),env(safe-area-inset-right)) calc(var(--gap) + env(safe-area-inset-bottom)) max(var(--pad),env(safe-area-inset-left))}
+/* ---- the board: five zones ---- */
+.board{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto auto auto;gap:var(--gap);padding:var(--gap) max(var(--pad),env(safe-area-inset-right)) calc(var(--gap) + env(safe-area-inset-bottom)) max(var(--pad),env(safe-area-inset-left))}
+
+/* ---- zone A: the mission stage, 15 to 25 percent of the screen ---- */
+.mstage{position:relative;isolation:isolate;overflow:hidden;height:clamp(92px,18vh,200px);border:1px solid var(--edge);border-radius:12px;background:var(--slot-stage-sky)}
+@supports(height:1dvh){.mstage{height:clamp(92px,18dvh,200px)}}
+.mstage-art{position:absolute;inset:0;z-index:-2;pointer-events:none}
+.mstage-art .glow{position:absolute;inset:0;background:var(--slot-stage-glow)}
+.mstage-art .haze{position:absolute;top:0;bottom:0;left:0;width:200%;background:var(--slot-stage-haze) 0 0/50% 100% repeat-x;opacity:.75;transform:translateX(-50%)}
+.mstage-art .h2{top:35%;opacity:.4;transform:translateX(-20%)}
+.mstage-art .ridge{position:absolute;left:0;right:0;bottom:0;width:100%;height:44%;fill:#17110b}
+/* A scrim between the art and the words: the art never costs the text its contrast. */
+.mstage::before{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,#0d0b08b8 0%,#0d0b0870 55%,#0d0b08d0 100%)}
+.mstage[data-env=storm]{--slot-stage-glow:radial-gradient(ellipse at 74% 38%,#ffb0556b,transparent 64%)}
+.mstage[data-env=distress]{--slot-stage-glow:radial-gradient(ellipse at 74% 38%,#ff7a4a66,transparent 64%)}
+.mstage[data-env=lost]{--slot-stage-glow:radial-gradient(ellipse at 50% 40%,#ff4d4d5c,transparent 70%)}
+.mstage[data-env=clear]{--slot-stage-glow:radial-gradient(ellipse at 50% 40%,#7fd89a52,transparent 70%)}
+.mstage-body{height:100%;min-height:0;display:flex;flex-direction:column;justify-content:space-between;gap:2px;padding:6px 9px}
 .mission-head{display:flex;align-items:center;gap:8px}
-.mission-head h1{flex:1;font-size:24px;line-height:1.1;letter-spacing:-.02em}
-.mission-head #trick-count{font-size:13px;padding:5px 12px;color:var(--text)}
+.mission-head h1{flex:1;min-width:0;font-size:23px;line-height:1.1;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mission-head #trick-count{font-size:13px;padding:4px 11px;color:var(--text);background:#0d0b0890}
+.mission-line{font-size:12.5px;line-height:1.3;color:var(--foam);display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.chips{display:flex;gap:5px;min-width:0}
+.chip{position:relative;display:inline-flex;align-items:center;gap:4px;min-width:0;padding:2px 8px;border:1px solid var(--edge);border-radius:999px;background:#0d0b08a8;font-size:11px;font-weight:700;color:var(--foam);white-space:nowrap}
+.chip span{overflow:hidden;text-overflow:ellipsis}
+.chip.storm,.chip.distress,.chip.degraded,.chip.shared{border-color:var(--accent);color:var(--accent)}
+.chip.lost,.chip.disabled{border-color:var(--bad);color:var(--bad)}
+.chip.clear{border-color:var(--sea);color:var(--sea)}
+.stage-news{min-height:14px;font-size:11.5px;line-height:1.2;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.briefing{position:absolute;inset:0;display:grid;grid-template-columns:minmax(0,1fr);place-items:center;pointer-events:none}
+.briefing p{grid-area:1/1;max-width:94%;font:700 17px var(--mono);letter-spacing:.12em;text-transform:uppercase;text-align:center;color:var(--foam);opacity:0}
+/* Ambient: the high tier only, never while the tab is hidden. */
+html[data-expo-fx="high"]:not([data-expo-paused]) .mstage-art .h1{animation:expo-drift 44s linear infinite}
+html[data-expo-fx="high"]:not([data-expo-paused]) .mstage-art .h2{animation:expo-drift-2 71s linear infinite}
+html[data-expo-fx="high"]:not([data-expo-paused]) .mstage-art .glow{animation:expo-shimmer 8s ease-in-out infinite}
+@keyframes expo-drift{from{transform:translateX(-50%)}to{transform:translateX(0)}}
+@keyframes expo-drift-2{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@keyframes expo-shimmer{0%,100%{opacity:.7}50%{opacity:1}}
 
-.objectives{display:grid;grid-template-columns:minmax(0,1fr);background:var(--panel);border:1px solid var(--edge);border-radius:10px}
-.objectives-open{display:grid;grid-template-columns:minmax(0,1fr);align-content:center;gap:2px;width:100%;min-width:0;min-height:44px;padding:3px;background:none;border:0;border-radius:9px;color:var(--text);font:inherit;text-align:left;cursor:pointer}
-.objective{display:flex;align-items:center;gap:8px;min-width:0;min-height:24px;padding:2px 7px;font-size:12.5px}
-.objective+.objective{border-top:1px solid #ffffff10;border-radius:0 0 7px 7px}
-.objective-text{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.objective-text b{color:var(--foam);font-weight:700}
-
+/* ---- zone B: the crew strip ---- */
 .crew-strip{display:grid;grid-template-columns:repeat(var(--n,3),minmax(0,1fr));gap:5px}
-.seat{display:grid;grid-template-columns:minmax(0,1fr);gap:1px;align-content:center;min-height:44px;padding:4px 6px;background:var(--panel);border:1px solid var(--edge);border-radius:10px;color:var(--text);font:inherit;text-align:left;cursor:pointer;min-width:0}
-.seat.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset;background:#5fb4ff14}
+.seat{position:relative;display:grid;grid-template-columns:minmax(0,1fr);gap:1px;align-content:center;min-height:44px;padding:4px 6px;background:var(--panel);border:1px solid var(--edge);border-radius:10px;color:var(--text);font:inherit;text-align:left;cursor:pointer;min-width:0}
+.seat.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset;background:#ff9d5c14}
 .seat.me .seat-name b{color:var(--sea)}
-.seat.away{opacity:.55}
-.seat-name{display:flex;align-items:center;gap:4px;min-width:0;font-size:13px}
-.seat-name b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.crown{font-size:12px;color:#ffd76a}
+.seat.away{border-style:dashed;border-color:#ffcf6b}
+.seat-name{display:flex;align-items:center;gap:3px;min-width:0;font-size:13px}
+.seat-name b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.crown{flex:none;font-size:12px;color:var(--gold)}
+.turn-pip{flex:none;font-size:9px;color:var(--accent)}
+.host-tag{flex:none;padding:0 3px;border:1px solid var(--edge);border-radius:4px;font:700 8.5px/1.5 var(--font);letter-spacing:.06em;color:var(--foam)}
 .seat-role{font-size:10px;color:var(--muted);line-height:1.1}
 .seat-count{font-size:10.5px;letter-spacing:-.01em;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.seat-sonar{font:700 10px var(--mono);color:var(--sea)}
+.seat-count.warn{color:#ffcf6b;font-weight:700}
+.seat-radio{font:600 10px/1.15 var(--font);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seat-radio.ready{color:var(--sea)}
+.seat-radio.sent{font:700 10.5px/1.15 var(--mono);color:var(--sea)}
 .crew-strip.tight .seat{padding:4px 5px}
 .crew-strip.tight .seat-name{font-size:12px}
 
-/* ---- the stage: the trick, or the one thing waiting to be decided ---- */
-.stage{min-height:0;display:flex;flex-direction:column;background:radial-gradient(ellipse at 50% 55%,#12304a55,transparent 70%)}
+/* ---- zone C: the shared trick, or the one thing waiting to be decided ---- */
+.stage{min-height:0;display:flex;flex-direction:column;background:radial-gradient(ellipse at 50% 55%,#4a2f1a55,transparent 70%)}
 .trick-stage{flex:1;min-height:0;display:flex;flex-direction:column;gap:4px;justify-content:center}
 .trick{flex:1;min-height:0;max-height:150px;display:grid;grid-template-columns:repeat(var(--n,3),minmax(0,84px));justify-content:center;gap:8px}
-.slot{min-height:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px;border:1px solid var(--edge);border-radius:10px;background:#0b1624cc}
-.slot-name{flex:none;max-width:100%;font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slot{position:relative;min-height:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px;border:1px solid var(--edge);border-radius:10px;background:#120f0bcc}
+.slot-top{flex:none;display:flex;align-items:center;gap:3px;max-width:100%;min-width:0}
+.slot-order{flex:none;width:14px;height:14px;display:grid;grid-template-columns:minmax(0,1fr);place-items:center;border-radius:50%;background:#ffffff16;font:700 9px/1 var(--mono);color:var(--muted)}
+.slot-name{min-width:0;font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .slot.me .slot-name{color:var(--sea)}
 .slot .card,.slot .card-empty{flex:1;min-height:0;width:100%;max-width:64px}
-.slot.active{border-color:var(--accent);box-shadow:0 0 14px #5fb4ff40}
-.slot.winner{border-color:#ffd76a;box-shadow:0 0 14px #ffd76a35}
+.slot.active{border-color:var(--accent);box-shadow:0 0 14px #ff9d5c40}
+.slot.winner{border-color:var(--gold);box-shadow:0 0 14px #ffd76a35}
 .slot.idle{opacity:.6}
-.card-empty{display:grid;grid-template-columns:minmax(0,1fr);place-items:center;border:1.5px dashed #6d8199;border-radius:8px;color:var(--muted);font-size:10px;text-align:center;line-height:1.1}
+/* A resolved trick as it rests: the winner forward, the others tucked. The director only
+   animates the way into this. */
+.slot.tucked .card{transform:translateY(3px) scale(.93);opacity:.66}
+.slot-tag{position:absolute;left:3px;bottom:3px;padding:0 4px;border:1px solid var(--edge);border-radius:4px;background:#0d0b08;font:700 8.5px/1.5 var(--font);letter-spacing:.06em;color:var(--foam)}
+.slot-tag.won{border-color:var(--gold);color:var(--gold)}
+.card-empty{display:grid;grid-template-columns:minmax(0,1fr);place-items:center;border:1.5px dashed #85765e;border-radius:8px;color:var(--muted);font-size:10px;text-align:center;line-height:1.1}
 .slot.idle .card-empty{border-style:solid;border-color:#ffffff14;background:#ffffff08}
 .stage-caption{flex:none;display:grid;grid-template-columns:minmax(0,1fr);gap:1px;text-align:center;font-size:12px;color:var(--muted)}
-.stage-caption strong{color:var(--foam);font-size:13px}
+.stage-caption strong{color:var(--foam);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 .prep,.decision{flex:1;min-height:0;display:flex;flex-direction:column;gap:6px;padding:9px;background:var(--panel);border:1px solid var(--edge);border-radius:12px;overflow-y:auto;overscroll-behavior:contain}
 .prep h2,.decision h2{font-size:15px}
@@ -106,15 +167,37 @@ h1,h2,h3,p{margin:0}
 .choice-row input{max-width:84px;flex:0 0 84px}
 input,select{min-height:44px;width:100%;background:var(--surface);border:1px solid var(--line);color:var(--text);border-radius:10px;font:inherit;font-size:16px;padding:8px 10px}
 
-/* ---- tabs to the sheets ---- */
-.tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
-.tab{display:flex;align-items:center;justify-content:center;gap:4px;min-height:44px;padding:4px 2px;background:var(--panel);border:1px solid var(--edge);border-radius:9px;color:var(--text);font:600 12px var(--font);cursor:pointer;white-space:nowrap;overflow:hidden}
-.tab-ic{color:var(--muted);font-size:13px}
-.tab.ready{border-color:var(--sea)}
-.tab.ready .tab-ic{color:var(--sea)}
+/* ---- the helmet radio (Burst Transmission): open, it takes the trick's place, lights the cards
+   that may be sent and lets the rest of the board step back ---- */
+.radio-console{border-color:var(--sea);box-shadow:0 0 0 1px #7ee0c940 inset;gap:5px}
+.radio-console h2{font-size:14px}
+.radio-console .choice-row{align-items:center}
+.radio-console .choice-row .btn{text-transform:capitalize}
+.radio-ask{flex:0 1 auto!important;font-weight:700}
+.radio-state{flex:none;padding:1px 7px;border:1px solid var(--sea);border-radius:999px;font-size:11px;font-weight:700;color:var(--sea);white-space:nowrap}
+.radio-state.degraded,.radio-state.shared{border-color:var(--accent);color:var(--accent)}
+.radio-state.disabled{border-color:var(--bad);color:var(--bad)}
+.board.radio-mode .mstage,.board.radio-mode .crew-strip,.board.radio-mode .ops,.board.radio-mode #dock-host{opacity:.5}
+.hand.radio .card:not(:disabled){box-shadow:0 0 0 1px var(--sea);transform:translateY(-3px)}
+.hand.radio .card:disabled{opacity:.4}
 
-/* ---- the hand ---- */
-.hand-panel{display:grid;grid-template-columns:minmax(0,1fr);gap:4px;padding:6px 8px 8px;background:var(--panel);border:1px solid var(--edge);border-radius:12px;min-width:0}
+/* ---- zone D: the crew's objectives, and the log beside them ---- */
+.ops{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px}
+.tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-height:44px;min-width:52px;padding:4px 6px;background:var(--panel);border:1px solid var(--edge);border-radius:9px;color:var(--text);font:600 11px var(--font);cursor:pointer;white-space:nowrap;overflow:hidden}
+.tab-ic{color:var(--muted);font-size:13px;line-height:1}
+.objectives{position:relative;display:grid;grid-template-columns:minmax(0,1fr);min-width:0;background:var(--panel);border:1px solid var(--edge);border-radius:10px}
+.objectives-open{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px;width:100%;min-width:0;min-height:44px;padding:3px;background:none;border:0;border-radius:9px;color:var(--text);font:inherit;text-align:left;cursor:pointer}
+.objective-list{display:grid;grid-template-columns:minmax(0,1fr);align-content:center;gap:2px;min-width:0}
+.objective{display:flex;align-items:center;gap:6px;min-width:0;min-height:20px;padding:1px 5px;font-size:12.5px}
+.objective+.objective{border-top:1px solid #ffffff10}
+.objective-text{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.objective-text b{color:var(--foam);font-weight:700}
+.objective .pill{padding:2px 7px;font-size:10.5px}
+.objective-count{display:grid;grid-template-columns:minmax(0,1fr);justify-items:center;align-content:center;padding:0 7px;border-left:1px solid #ffffff14;font-size:9.5px;line-height:1.1;color:var(--muted)}
+.objective-count b{font:700 14px/1.1 var(--mono);color:var(--foam)}
+
+/* ---- zone E: the hand ---- */
+.hand-panel{position:relative;display:grid;grid-template-columns:minmax(0,1fr);gap:4px;padding:6px 8px 8px;background:var(--panel);border:1px solid var(--edge);border-radius:12px;min-width:0}
 .hand-head{display:flex;align-items:center;gap:8px;min-height:20px;min-width:0}
 .hand-head:has(.hand-switch:not([hidden])){min-height:44px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
@@ -127,15 +210,20 @@ input,select{min-height:44px;width:100%;background:var(--surface);border:1px sol
 .hand .card,.hand .card-empty{height:var(--hand-card)}
 .hand .card-empty.gone{border-style:dotted;opacity:.4}
 
-.card{--suit:#b4c7d7;position:relative;display:flex;flex-direction:column;justify-content:space-between;min-width:0;padding:4px 5px;text-align:left;border:1.5px solid var(--suit);border-radius:8px;background:linear-gradient(155deg,#ffffff14,#ffffff04);color:var(--suit);font-family:var(--mono);overflow:hidden}
+.card{--suit:#b4c7d7;position:relative;display:flex;flex-direction:column;justify-content:space-between;min-width:0;padding:4px 5px;text-align:left;border:1.5px solid var(--suit);border-radius:8px;background:var(--slot-card-face);color:var(--suit);font-family:var(--mono);overflow:hidden}
 button.card{cursor:pointer;-webkit-appearance:none;appearance:none}
 .card .rank{font-size:20px;font-weight:700;line-height:1}
 .card .symbol{font-size:13px;line-height:1;align-self:flex-end}
 .card .suit{font:600 9px/1 var(--font);white-space:nowrap}
-.card.blue{--suit:#71bfff}.card.green{--suit:#8fdfaa}.card.pink{--suit:#f7a1cc}.card.yellow{--suit:#efda77}.card.submarine{--suit:#d7d7ef;background:#1a1d36}
-/* A card that cannot be played stays readable; a legal card never looks dangerous. */
+.card.blue{--suit:#71bfff}.card.green{--suit:#8fdfaa}.card.pink{--suit:#f7a1cc}.card.yellow{--suit:#efda77}.card.submarine{--suit:#d7d7ef;background:#1c1a2e}
+/* A card that cannot be played is muted and still readable. A card that can be played looks
+   like every other card that can be played: there is no style for "risky", and there never
+   will be one here. */
 .card:disabled{opacity:.5}
 .card[aria-pressed=true]{background:color-mix(in srgb,var(--suit) 26%,transparent);box-shadow:0 0 0 2px var(--suit),0 0 14px color-mix(in srgb,var(--suit) 50%,transparent);transform:translateY(-3px)}
+/* The public marker of a transmitted card: what the crew was told, until the card leaves. */
+.card .mark{position:absolute;left:2px;bottom:2px;padding:0 3px;border:1px solid currentColor;border-radius:4px;background:#0d0b08f0;font:700 8px/1.5 var(--font);letter-spacing:.03em;white-space:nowrap}
+.card.sent .suit{visibility:hidden}
 
 /* ---- the dock: table control and this player's action, kept apart ---- */
 .dock{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0;background:var(--panel-2);border:1px solid var(--edge);border-radius:12px}
@@ -145,13 +233,18 @@ button.card{cursor:pointer;-webkit-appearance:none;appearance:none}
 .dock-label{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dock-label b{color:var(--foam)}
 .dock-zone .btn{width:100%;min-height:44px}
+.action-row{display:flex;gap:4px;min-width:0}
+.action-row .btn{flex:1 1 0;min-width:0;padding:6px 8px}
+.action-row .radio-btn{flex:none;width:54px;display:grid;grid-template-columns:minmax(0,1fr);justify-items:center;align-content:center;gap:1px;padding:3px 2px;font-size:10.5px;font-weight:700}
+.radio-btn .ic{width:18px;height:18px}
+.radio-btn.ready{border-color:var(--sea);color:var(--sea)}
 .dock-note{display:grid;grid-template-columns:minmax(0,1fr);align-items:center;min-height:44px;font-size:12.5px;line-height:1.25;color:var(--foam)}
 .btn.failed{background:var(--bad);color:#1a0509;box-shadow:none}
 
 /* ---- sheets ---- */
 .sheet{position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;justify-content:flex-end}
-.sheet-backdrop{position:absolute;inset:0;border:0;background:#030712b8;cursor:pointer}
-.sheet-panel{position:relative;display:flex;flex-direction:column;max-height:82%;background:#0e1a29;border:1px solid var(--edge);border-bottom:0;border-radius:16px 16px 0 0;padding:8px max(12px,env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
+.sheet-backdrop{position:absolute;inset:0;border:0;background:#070503b8;cursor:pointer}
+.sheet-panel{position:relative;display:flex;flex-direction:column;max-height:82%;background:#1a160f;border:1px solid var(--edge);border-bottom:0;border-radius:16px 16px 0 0;padding:8px max(12px,env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
 .sheet-backdrop{touch-action:none}
 .sheet-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding-bottom:6px}
 .sheet-head h2{font-size:17px;text-transform:capitalize}
@@ -161,29 +254,33 @@ button.card{cursor:pointer;-webkit-appearance:none;appearance:none}
 .crew-row.active{border-color:var(--accent)}
 .crew-head,.task .meta{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .task .meta{color:var(--muted);font-size:12px}
-.task.failed{border-color:var(--bad)}.task.satisfied{border-color:#5fd6a070}
-.exposure{padding:7px 9px;background:#65e5dd12;border-radius:8px;font-size:13px}
+.task.failed{border-color:var(--bad)}.task.satisfied{border-color:#7fd89a70}
+.exposure{padding:7px 9px;background:#7ee0c912;border-radius:8px;font-size:13px}
 .objective-full{color:var(--foam)}
-.sonar-cards{grid-template-columns:repeat(auto-fill,minmax(46px,58px))}
 
 /* ---- mission result: the whole screen ---- */
-.result{position:absolute;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;padding:calc(12px + env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));background:#040a14f2}
-.result-card{width:100%;max-height:100%;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;display:grid;grid-template-columns:minmax(0,1fr);gap:8px;justify-items:center;text-align:center;padding:16px 14px;background:var(--panel);border:1px solid var(--edge);border-radius:16px}
+.result{position:absolute;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;padding:calc(12px + env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));background:#080604f2}
+.result>.fx{z-index:0;border:0;border-radius:0;background:var(--slot-result-failure)}
+.result.success>.fx{background:var(--slot-result-success)}
+.result-card{position:relative;z-index:1;width:100%;max-height:100%;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;display:grid;grid-template-columns:minmax(0,1fr);gap:8px;justify-items:center;text-align:center;padding:16px 14px;background:var(--panel);border:1px solid var(--edge);border-radius:16px}
 .result.failed .result-card{border-color:var(--bad)}
 .result.success .result-card{border-color:var(--ok)}
 .result-mark{width:56px;height:56px;display:grid;grid-template-columns:minmax(0,1fr);place-items:center;border-radius:50%;border:3px solid var(--bad);color:var(--bad);font-size:34px;line-height:1;font-weight:700}
 .result.success .result-mark{border-color:var(--ok);color:var(--ok)}
 .result h2{font-size:27px;letter-spacing:.04em;line-height:1.1}
 .result h2:focus{outline:none}
-.result-sub{font-size:18px;color:var(--foam)}
+.result-sub{font-size:15px;font-style:italic;color:var(--foam)}
 .result-reason{width:100%;padding-top:8px;border-top:1px solid var(--edge);font-size:15px;line-height:1.4;font-weight:600}
 .result-facts{width:100%;display:grid;grid-template-columns:minmax(0,1fr);gap:4px;font-size:12.5px;color:var(--muted);line-height:1.35}
 .fact b{color:var(--text)}
+.fact.cause{color:var(--foam)}
+.fact.note{font-style:italic}
 .result-trick{display:flex;justify-content:center;gap:6px;flex-wrap:wrap}
-.mini{display:grid;grid-template-columns:minmax(0,1fr);gap:2px;justify-items:center;font-size:10px;color:var(--muted);max-width:56px;overflow:hidden}
+.mini{display:grid;grid-template-columns:minmax(0,1fr);gap:2px;justify-items:center;font-size:10px;color:var(--muted);max-width:64px;overflow:hidden}
 .mini .card{width:40px;height:50px;padding:3px 4px}
 .mini .card .rank{font-size:16px}.mini .card .suit{display:none}
-.mini.winner span{color:#ffd76a}
+.mini.winner span{color:var(--gold)}
+.mini.about .card{box-shadow:0 0 0 2px #ffd76a80}
 .result-actions{width:100%;display:grid;grid-template-columns:minmax(0,1fr);gap:7px}
 .result-actions .btn{width:100%;min-height:46px;font-size:15px}
 .result-actions select{min-height:46px}
@@ -193,7 +290,7 @@ button.card{cursor:pointer;-webkit-appearance:none;appearance:none}
 
 /* ---- lobby (standalone tables only; a Party round has no lobby of its own) ---- */
 .lobby-scroll{flex:1;min-height:0;overflow-y:auto;padding:var(--pad)}
-.panel{background:linear-gradient(135deg,#112837ee,#0b1727ee);border:1px solid #65989935;border-radius:16px;padding:16px}
+.panel{background:linear-gradient(135deg,#2a2016ee,#17130dee);border:1px solid #98806535;border-radius:16px;padding:16px}
 .eyebrow{color:var(--sea);font-size:11px;letter-spacing:.16em;line-height:1.6}
 .lobby h1{font-size:28px;margin:6px 0 10px;letter-spacing:-.03em}
 .intro{color:var(--muted);margin-bottom:16px;line-height:1.5}
@@ -212,24 +309,39 @@ input[type=checkbox]{width:22px;min-height:22px;accent-color:var(--sea)}
 /* ---- short screens: a phone browser with its bars showing ---- */
 @media(max-height:700px){
   :root{--gap:5px;--hand-card:52px}
-  .brand span{display:none}
+  /* The status line moves up between the two top buttons: the row it had goes to the board. */
+  .brand{display:none}
+  .status-strip{position:absolute;z-index:1;top:calc(4px + env(safe-area-inset-top));left:calc(max(var(--pad),env(safe-area-inset-left)) + 50px);right:calc(max(var(--pad),env(safe-area-inset-right)) + 50px);height:44px;min-height:0;margin:0;padding:3px 8px;font-size:12.5px}
+  .conn{display:none}
   .mission-head h1{font-size:21px}
   .seat-role{display:none}
   .card .suit{display:none}
+  .result-mark{width:40px;height:40px;font-size:24px}
+  .mstage{height:clamp(92px,15.5vh,200px)}
+  .mstage-body{padding:4px 8px}
+  .objective+.objective{display:none}
+  .hand.two-rows .card,.hand.two-rows .card-empty{height:46px}
 }
 @media(max-height:610px){
   :root{--gap:4px;--hand-card:44px}
-  .objective+.objective{display:none}
-  .status-strip{min-height:26px;padding:4px 10px}
+  .mstage{height:clamp(90px,15.5vh,200px)}
+  .hand.two-rows .card,.hand.two-rows .card-empty{height:44px}
   .stage-caption span{display:none}
   .dock-zone{padding:4px 8px 6px}
   .mission-head h1{font-size:19px}
   .hand-panel{padding:4px 8px 6px}
+  .result-mark{display:none}
+  .result h2{font-size:23px}
+  .result-card{gap:6px;padding:12px}
+}
+@media(min-height:760px){
+  .mission-line{-webkit-line-clamp:2}
 }
 @media(min-height:820px){
   :root{--hand-card:66px;--gap:8px}
   .trick{max-height:190px}
   .slot .card,.slot .card-empty{max-width:76px}
   .card .rank{font-size:23px}
+  .mstage-body{padding:9px 11px}
 }
-@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}.card[aria-pressed=true]{transform:none}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}.card[aria-pressed=true],.hand.radio .card:not(:disabled){transform:none}}
