@@ -308,7 +308,8 @@ class ExpoSession(GameSession):
             try:
                 self._save()
             except OSError:
-                return [self.fx('toast', msg='The expired table could not be saved. Its deadline will be checked again on restoration.')]
+                # The timer fired for a deadline or for the end of a resolving trick.
+                return [self.fx('toast', msg='The table could not be saved just now. A restored table is checked again: its deadline, and a trick that was being resolved.')]
         else:
             self._bump(None)
         return []
@@ -318,6 +319,11 @@ class ExpoSession(GameSession):
             return None
         viewer = self.players.get(viewer_token)
         view = self.engine.view(viewer.pid if viewer and viewer_token in self.participants else None)
+        # During a resolving hold the mission's clock stands and the settle moves the deadline
+        # by the hold (Engine.settle). The browsers count down from what they are sent, so they
+        # are sent the deadline as it will stand then: never one that will not happen (AVR-246).
+        if view['expiry'] is not None and self._hold and view['resolving'] is not None:
+            view['expiry'] += RESOLVE_HOLD
         view['expiry'] = self._wall_moment(view['expiry'])
         # 'host': the Party Host begins, retries and moves on; 'crew': the seated crew agrees.
         view['lifecycle'] = self.lifecycle_authority()

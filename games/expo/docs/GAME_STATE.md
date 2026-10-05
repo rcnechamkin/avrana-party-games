@@ -162,7 +162,9 @@ declaration is sent to its author only.
 Every command carries the attempt number, the revision it was built against, and a request id
 chosen by the client. In order:
 
-1. An expired deadline is recorded first, whatever the command is.
+1. An expired deadline is recorded first, whatever the command is. The one exception: while a
+   trick is resolving the mission's clock stands and no expiry is recorded
+   ([The resolving phase](#the-resolving-phase)).
 2. The sender must be a seated human; nobody may be away.
 3. The verb and its fields must be exactly the expected names and types.
 4. A request id already accepted in this attempt: the identical message is a silent no-op; a
@@ -296,12 +298,12 @@ the trick in progress, and for the events of a resolution the trick that was res
 | `CARD_PLAYED` | an accepted `play_card` | `seat`, `controller`, `card`, `position` (1 for the lead), `lead_suit` |
 | `TRICK_RESOLVED` | the card that completes a trick | `winner`, `winning_card`, `leader`, `lead_suit`, `plays` |
 | `COMMUNICATION_SENT` | an accepted `communicate` | `seat`, `card`, `mode`, `token` (`personal` or `shared`), `assertion` (see masking below) |
-| `OBJECTIVE_PROGRESS` | a trick is resolved, a task is still open and its owner won the trick | `objective` (task id), `scope` (`task`), `owner`, `change` (`owner_won_trick`), `owner_tricks`. It says that what the task is judged on has changed, never whether that helps |
+| `OBJECTIVE_PROGRESS` | a trick is resolved, a task is still open and its owner won the trick | `objective` (task id), `scope` (`task`), `owner`, `change` (`owner_won_trick`), `owner_tricks`. Emitted in exactly that case and no other: it reports that the owner of a still-open task took a trick, and how many it now holds. It does not say whether that helps or hurts, it is not emitted for a change another seat's trick makes to the task (cards it needed going elsewhere, fewer tricks left), and for a task that is not judged on the owner's tricks or captured cards (a never-lead task) it reports the trick all the same |
 | `OBJECTIVE_COMPLETED` | a task becomes complete; a mission objective holds at the end | `objective`, `scope` (`task` or `mission_objective`), `owner` |
 | `OBJECTIVE_FAILED` | a task or a mission objective is lost | `objective`, `scope`, `owner`, `failure`, `state`, `trigger_seat`, `affected_seat`, `cards` (see causality) |
 | `MISSION_SUCCESS` | the attempt succeeds | `reason`, `attempts`, `distress` |
 | `MISSION_FAILURE` | the attempt fails, for any reason | `reason` (the result's sentence), `cause` (the whole causality record, or null) |
-| `PLAYER_RECONNECTED` | a seated player's first connection comes back | `seat` |
+| `PLAYER_RECONNECTED` | a seated player's first connection comes back | `seat`. Its `trick` is 0 before play, the trick in progress or about to be led during play, and after a result the last trick played or begun, so it is always among the events a viewer is sent |
 
 **Order.** Within one command the order is fixed by the code: `CARD_PLAYED`; if the card completes
 the trick, `TRICK_RESOLVED`, then the tasks in assignment order (`OBJECTIVE_COMPLETED`,
@@ -319,9 +321,12 @@ view carries anything about what it will do: the views of a seat about to lose t
 the same seat about to win it differ only in the public owner of the task
 (`test_nothing_in_any_view_tells_a_player_what_a_legal_card_will_do_before_it_is_played`).
 
-**Retention.** The newest 240 events are kept (`engine.EVENT_LIMIT`), across attempts. A whole
-attempt is about 90 events plus its objective events, so the log holds the attempt in play and
-most of the one before. It is part of the snapshot. It is kept for reconnect, review of the last
+**Retention.** The newest 240 events are kept (`engine.EVENT_LIMIT`), across attempts. Measured:
+a whole deal is 94 to 100 events with one task at two to five players, and up to 113 with a
+mission's drawn tasks in random playouts. So the log always holds the whole attempt in play and
+most or all of the one before. It is part of the snapshot: at most about 157 KB more (240 events
+of at most 653 bytes; about 50 KB observed), which comes out of the 4 MB the store accepts and
+out of whatever margin AVR-273 keeps. It is kept for reconnect, review of the last
 trick, a debrief, debugging and a later replay; only the part below is ever sent.
 
 **What a viewer is sent** (`Engine.events(seat)`, in the view as `events`, with `event_seq`, the
@@ -405,6 +410,18 @@ of each failure is kept in state key `failures`.
   (`ACTIVE`) in the result.
 - No "assist" or "enabled by" is recorded for a success: the engine cannot derive one reliably.
 - A success has no cause.
+- `IMPOSSIBLE` is never a live state. A task becomes `IMPOSSIBLE` in the same command that ends
+  the attempt, so it is only ever a label on a failure in a mission result; no view of a table
+  still in play contains it.
+- A viewer is sent only the latest resolved trick's events, also after the result. A client
+  therefore cannot yet build a debrief or a recap of the attempt from what it is sent (owner
+  question 1 in [RECONCILIATION](RECONCILIATION.md#avr-246-2026-10-04)).
+- An open (not currents) `COMMUNICATION_SENT` keeps its `assertion` for as long as the event is
+  in the window, so a viewer who arrives late can still read a declaration whose card has since
+  been played and has left the view's `exposures`. It was public when it was made.
+- If the hold's timer is lost, the first command that arrives afterwards settles the trick and
+  is itself refused as `stale`, because the settle raises `revision`; the sender has the new
+  state by then and the next command is accepted.
 
 ### The resolving phase
 
@@ -423,7 +440,9 @@ decided and in the state (winner, task statuses, the next leader); what waits is
   `game.RESOLVE_HOLD` (0.8 s) on the monotonic clock, arms the session's one timer for that
   moment (a mission deadline waits behind it), and settles when the timer fires. The view the adapter
   sends adds `resolving.until`, the wall-clock moment the next trick opens, for a client that
-  wants to time its presentation to it.
+  wants to time its presentation to it. During a hold the view's `expiry` is the deadline as it
+  will stand after the settle, so a countdown never shows a moment at which nothing will happen
+  (`test_the_view_of_a_timed_table_never_shows_a_deadline_that_the_hold_will_move`).
 - **It cannot strand a table.** A command that arrives after the hold settles the trick first,
   timer or no timer (the command itself is then stale, and the next one is accepted). A restore
   settles at once: the hold is not saved, and nobody is watching a table that has just been

@@ -990,9 +990,14 @@ and is built.
   before; the attempt is longer on the wall clock by 0.8 s a trick. This is the one place the
   change touches a number the rules care about, and it was chosen so that the hold takes
   nothing from the crew.
-- `tasks.judge`, which labels a failure the evaluator already found. It was compared with the
-  evaluator before the change on 5.7 million judgements of all 96 task definitions on random
-  tables (by hand, not kept as a test): every status was the same.
+- `tasks.judge`, which labels a failure the evaluator already found. Two comparisons were made
+  **by hand; neither is in the repository** and neither can be rerun from it. The author
+  compared it with the evaluator before the change on 5.7 million judgements of all 96 task
+  definitions on random tables: every status was the same. The independent reviewer reported,
+  separately: 1.92 million judge-against-evaluate comparisons equal; the engine before the
+  change and this one driven through 196 games and 69,584 commands with no divergence;
+  snapshots readable in both directions; 15 of 15 of the reviewer's own faults caught. What the
+  repository keeps is `test_the_failure_kind_is_a_label_and_never_changes_a_task_status`.
 
 **Not built, on purpose.**
 
@@ -1034,8 +1039,8 @@ and performance tiers were not implemented and are not planned by this entry.
    "The Team II" was left as written; it is the reference tabletop's name, which
    [VTT_REFERENCE](VTT_REFERENCE.md) already uses, not the publisher's.
 
-**Not verified.** The two browser playtests were not run for this change, and no phone or
-browser has shown the hold. Both scripts read whose turn it is and then expect a legal card, which
+**Not verified.** The author did not run the two browser playtests (the orchestrator did,
+afterwards: see the table), and no phone has shown the hold. Both scripts read whose turn it is and then expect a legal card, which
 a resolving table does not offer, so their wait for a settled table now also waits for
 `resolving` to clear (one condition each, `tests/playtest_expo.mjs` and
 `tests/playtest_expo_party.mjs`). That edit passes a syntax check and has not been run. The
@@ -1044,9 +1049,11 @@ timer path itself is tested through real sockets
 
 | Check | Result (Windows 11) |
 |---|---|
-| `pytest tests/test_expo_events.py` | 72 passed |
-| twenty-two faults put into the engine and the adapter, one at a time (by hand, not kept) | each caught by `tests/test_expo_events.py` |
+| `pytest tests/test_expo_events.py` | 77 passed (72 before the review repairs) |
+| twenty-two faults put into the engine and the adapter, one at a time (the author's claim: done by hand, the faults and the script are not in the repository) | each caught by `tests/test_expo_events.py` |
+| the reviewer's figures above (reported by the independent reviewer, also not in the repository) | as stated there |
+| `tests/playtest_expo.mjs` with 3 and 2 humans, `tests/playtest_expo_party.mjs` (run by the orchestrator at 84e179b, not by the author) | PASS each |
 | a snapshot written by this build, read by the build before it (and the reverse) | restored and played on, both ways |
-| `pytest tests/test_expo.py tests/test_expo_*.py` (every EXPO test file) | 1113 passed, 2 skipped (distress with two players, C11), 2 expected failures (E-D2, E-D8) |
+| `pytest tests/test_expo.py tests/test_expo_*.py` (every EXPO test file) | 1113 passed, 2 skipped (distress with two players, C11), 2 expected failures (E-D2, E-D8) at 84e179b; the review repairs add five tests |
 | `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check | OK |
 | `pytest -q` (whole repository), the cross-repository tests, the two browser playtests, a real phone | not run for this change |

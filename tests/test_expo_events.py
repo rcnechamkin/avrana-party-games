@@ -1062,6 +1062,107 @@ def test_a_lost_timer_credits_the_hold_and_not_the_time_it_was_late(tmp_path, mo
     assert e.s['expiry'] == pytest.approx(expiry + game.RESOLVE_HOLD)   # five seconds late are the crew's
 
 
+def shown_deadline(s, clock):
+    """Seconds left on the countdown a browser draws from the view it was just sent."""
+    views = [s.game_state(t)['expiry'] for t in list(s.participants) + [None]]
+    assert len(set(views)) == 1                                     # every viewer, the same moment
+    return views[0] - clock.wall
+
+
+@pytest.mark.parametrize('late', [0.0, 5.0])
+def test_the_view_of_a_timed_table_never_shows_a_deadline_that_the_hold_will_move(tmp_path, monkeypatch, late):
+    clock = BothClocks(monkeypatch, wall=5_000_000.0, mono=1000.0)
+    s, tokens = timed_table(tmp_path / 'expo.json', clock)
+    e, seat = s.engine, by_pid(s, tokens)
+    for _ in e.s['seats'][:-1]:
+        raw_card(s, seat)
+    left = e.s['expiry'] - clock.mono
+    assert shown_deadline(s, clock) == pytest.approx(left)          # no hold: the deadline itself
+    raw_card(s, seat)
+    if e.s['result']:
+        pytest.skip('the fixture ended in one trick')
+    assert e.s['resolving'] and e.s['expiry'] - clock.mono == pytest.approx(left)   # the engine's is unmoved
+    promised = s.game_state(tokens[0])['expiry']
+    assert shown_deadline(s, clock) == pytest.approx(left + game.RESOLVE_HOLD)
+    readings = []
+    for _ in range(4):                                              # the countdown through the hold
+        readings.append(shown_deadline(s, clock))
+        clock.pass_time(game.RESOLVE_HOLD / 4)
+    assert readings == sorted(readings, reverse=True) and readings[-1] > left   # falling, never below
+    assert shown_deadline(s, clock) == pytest.approx(left)          # the hold cost the crew nothing
+    clock.pass_time(late)                                           # the timer, on time or late
+    s.tick(s.gen)
+    assert e.s['resolving'] is None and e.s['result'] is None
+    assert s.game_state(tokens[0])['expiry'] == pytest.approx(promised)     # the moment it was told
+    assert e.s['expiry'] - clock.mono == pytest.approx(left - late)         # a late timer credits the hold only
+
+
+def test_a_hold_that_spans_the_old_deadline_is_never_shown_as_expired(tmp_path, monkeypatch):
+    clock = BothClocks(monkeypatch, wall=5_000_000.0, mono=1000.0)
+    s, tokens = timed_table(tmp_path / 'expo.json', clock)
+    e, seat = s.engine, by_pid(s, tokens)
+    for _ in e.s['seats'][:-1]:
+        raw_card(s, seat)
+    clock.pass_time(e.s['expiry'] - clock.mono - 0.3)               # 0.3 s are left
+    raw_card(s, seat)
+    if e.s['result']:
+        pytest.skip('the fixture ended in one trick')
+    clock.pass_time(0.5)                                            # past the deadline as it was
+    assert shown_deadline(s, clock) > 0 and e.s['result'] is None   # the phones do not show 0:00
+    clock.pass_time(game.RESOLVE_HOLD - 0.5)
+    s.tick(s.gen)
+    assert e.s['result'] is None and shown_deadline(s, clock) == pytest.approx(0.3)
+    clock.pass_time(0.3)
+    s.tick(s.gen)
+    assert e.s['result'] == {'status': 'failed', 'reason': 'Time has run out.'}
+
+
+def test_a_return_is_given_the_trick_of_its_phase_and_always_reaches_the_viewers():
+    def returned(e):
+        e.presence('p1', True)
+        e.presence('p1', False)
+        event = e.s['events'][-1]
+        assert event['type'] == 'PLAYER_RECONNECTED' and event['seat'] == 'p1'
+        for viewer in ('p0', 'p1', None):                           # inside the window it is sent in
+            assert e.view(viewer)['events'][-1] == event
+        return event['trick']
+    e = Engine(list(SEATS), random.Random(4), 1)
+    assert e.s['phase'] == 'allocation' and returned(e) == 0        # before play
+    allocated(e)
+    assert e.s['phase'] == 'assistance' and returned(e) == 0
+    e = open_table()
+    assert returned(e) == 1                                         # about to be led
+    play(e, *first_legal(e))
+    assert returned(e) == 1                                         # in progress
+    for _ in range(2):
+        play(e, *first_legal(e))
+    assert e.s['resolving'] and returned(e) == 2                    # resolved: the next one
+    e.settle()
+    assert returned(e) == 2
+    playout(e)
+    assert e.s['phase'] == 'mission_result' and len(e.s['history']) == e.s['planned']
+    assert returned(e) == e.s['planned']                            # after the last trick: that trick
+    e = dealt({'p0': ['pink:3']}, 'p0', 'noLeadRedGreen', 'p0')
+    play(e, 'p0', 'pink:3')
+    assert e.s['result'] and len(e.s['trick']) == 1 and returned(e) == 1    # ended inside a trick
+    e, _ = misplayed()
+    assert e.s['phase'] == 'mission_result' and returned(e) == 0    # ended before any card
+
+
+def test_a_timer_that_cannot_save_says_so_whatever_it_fired_for(tmp_path, monkeypatch):
+    Clock(monkeypatch)
+    s, tokens, seat = begun(tmp_path / 'expo.json')
+    for _ in s.engine.s['seats']:
+        raw_card(s, seat)
+    assert s.engine.s['resolving'] and s.engine.s['expiry'] is None     # nothing can expire here
+    monkeypatch.setattr(s.store, 'write', lambda snapshot: (_ for _ in ()).throw(OSError('disk')))
+    s._hold = (s._hold[0], game._mono())
+    fx = s.tick(s.gen)
+    assert s.engine.s['resolving'] is None                          # the trick is settled all the same
+    assert [f['kind'] for f in fx] == ['toast']
+    assert 'expired' not in fx[0]['msg'] and 'could not be saved' in fx[0]['msg']
+
+
 def test_real_phones_are_held_after_a_trick_and_released_by_the_servers_own_timer(table, monkeypatch):
     # The whole path: sockets, the room lock, the session's one timer in core/net.py. Nothing
     # here settles the trick; the hold is long enough to be seen on a busy machine.

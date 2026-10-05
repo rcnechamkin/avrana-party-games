@@ -89,6 +89,17 @@ CONFIRMED C13 (owner, 2026-10-04): R starts the timer "after assigning the tasks
 and the distress decision before play. POLICY P10 starts the clock when the crew unanimously
 begins. Only mission 16 is enabled.
 
+POLICY, **awaiting the owner's confirmation** (AVR-246; [RECONCILIATION](RECONCILIATION.md#avr-246-2026-10-04),
+"For the owner"): the mission clock stands while a completed trick is resolving
+([GAME_STATE](GAME_STATE.md#the-resolving-phase)), because nobody may act then, and the deadline
+is moved by the length of that hold (0.8 s). A hold follows every trick that does not end the
+mission, so the crew keeps its 150 seconds of time in which it can act, and the attempt may last
+up to 150 + 0.8 x (tricks - 1) seconds on the wall clock: 9.6 s more at three players, 7.2 s at
+four, 5.6 s at five. A crew that finishes at 152 s of wall-clock time therefore succeeds, where
+before the hold existed it would have failed. The alternative, not built: let the clock run
+through the holds, which keeps the wall-clock length at 150 s and takes up to about ten seconds
+of acting time from the crew.
+
 ## Mission table
 
 `status` is `enabled` or `blocked Cnn`. Two-player availability is narrower, see below.

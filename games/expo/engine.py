@@ -15,8 +15,10 @@ VERSION = 1
 # Routine steps of a table's life, as opposed to decisions the rules give the crew (AVR-252).
 LIFECYCLE = ('begin', 'retry', 'next')
 
-# Semantic events (AVR-246). The newest EVENT_LIMIT are kept, across attempts: more than one
-# whole attempt at any crew size, so the two tricks a viewer may be sent are always among them.
+# Semantic events (AVR-246). The newest EVENT_LIMIT are kept, across attempts. A whole deal
+# measured 94 to 100 events with one task at two to five players and up to 113 with a mission's
+# drawn tasks, so the attempt in play is always whole and the two tricks a viewer may be sent
+# are always among them (GAME_STATE, "Retention").
 EVENT_TYPES = ('TURN_STARTED', 'CARD_PLAYED', 'TRICK_RESOLVED', 'COMMUNICATION_SENT',
                'OBJECTIVE_PROGRESS', 'OBJECTIVE_COMPLETED', 'OBJECTIVE_FAILED',
                'MISSION_MODIFIER_ACTIVATED', 'MISSION_SUCCESS', 'MISSION_FAILURE',
@@ -188,7 +190,16 @@ class Engine:
             s['away'].append(seat)
         else:
             s['away'].remove(seat)
-            self._emit('PLAYER_RECONNECTED', seat=seat)
+            # The trick it belongs to: 0 before play; the trick in progress or about to be led;
+            # after a result, the last trick that was played or begun.
+            played = len(s['history'])
+            if s['phase'] in ('before_trick', 'in_trick'):
+                number = played + 1
+            elif s['result']:
+                number = played + 1 if s['trick'] else played
+            else:
+                number = 0
+            self._emit('PLAYER_RECONNECTED', trick=number, seat=seat)
         s['revision'] += 1
         return True
 
