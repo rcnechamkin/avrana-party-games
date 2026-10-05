@@ -72,7 +72,7 @@ class Table:
     def cmd(self, t, **kw):
         s = self.engine.s
         return {"t": t, "attempt": s["attempt"], "revision": s["revision"],
-                "request": f"r{s['revision']}-{random.random()}", **kw}
+                "request": f"r{s['revision']}-{random.getrandbits(48):x}", **kw}
 
     async def send(self, participant, msg):
         """One message from that phone; returns what the phone was told (invalid fx, if any)."""

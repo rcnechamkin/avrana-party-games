@@ -13,6 +13,9 @@ VERSION = 1
 LIFECYCLE = ('setup', 'begin', 'retry', 'next')
 PAUSED = 'Waiting for the crew to reconnect.'
 DECIDING = 'The crew is deciding something. Wait for their answer.'
+# What a request id is made of (AVR-273). The client sends a UUID. None of these characters is
+# escaped in the snapshot file, so the request memory of a full attempt has a known size.
+REQUEST_CHARS = frozenset('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-')
 
 
 class Invalid(ValueError):
@@ -655,8 +658,8 @@ class Engine:
         require(type(msg['attempt']) is int and type(msg['revision']) is int and
                 isinstance(msg['request'], str) and 1 <= len(msg['request']) <= 80
                 # An accepted id is kept in the request memory and written to the snapshot
-                # (AVR-268): plain printable text only.
-                and msg['request'].isascii() and msg['request'].isprintable(),
+                # (AVR-268), twice and as it stands (AVR-273): letters, digits and "-" only.
+                and REQUEST_CHARS.issuperset(msg['request']),
                 'payload', 'Invalid action scope.')
         if t == 'propose':
             self._decision_shape(msg['proposal'])

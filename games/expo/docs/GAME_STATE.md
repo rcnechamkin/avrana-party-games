@@ -42,7 +42,7 @@ Table lifetime:
 | `log` | one entry per completed mission: mission, recorded attempts (with the distress surcharge), distress flag |
 | `deck`, `used` | the private task deck order and the used pile. A task id is in one place at a time: the deck, the used pile or the mission in play (`selected`); no pile holds an id twice, the `pool` neither, and every id in them is an enabled task. The tasks of a mission that has ended are in the used pile and stay in `selected` until the next mission is prepared. A fixed mission (32) takes its named tasks out of both piles. A snapshot that breaks this is refused |
 | `away` | seated players without a connection |
-| `dedup` | accepted request ids of the current attempt with their fingerprints |
+| `dedup` | accepted request ids of the current attempt with their fingerprints. An id is 1 to 80 letters, digits and `-`, so a full memory (10,000 requests) has a known size in the snapshot file |
 | `proposal` | the pending crew decision and who has confirmed it; a captain's offer in missions 10 and 13 also names its `recipient`, the only seat that may answer |
 | `result` | none, or `{status, reason}` with status `success`, `failed` or `abandoned` |
 | `setup` | only in phase `setup` (a Party round before its first deal, AVR-245): the three values offered first, `{mission, timed, tonoja_position}`. The key is removed when the setup is confirmed, so a dealt table has exactly the keys it had before this phase existed. Additive: the format `version` is still 1, a snapshot written before 2026-10-05 has no such key and loads unchanged |
@@ -162,7 +162,8 @@ declaration is sent to its author only.
 ## Commands, ordering and repeats
 
 Every command carries the attempt number, the revision it was built against, and a request id
-chosen by the client. In order:
+chosen by the client: 1 to 80 characters, each an ASCII letter, a digit or `-` (the client sends
+a UUID). In order:
 
 1. An expired deadline is recorded first, whatever the command is.
 2. The sender must be a seated human; nobody may be away.
@@ -227,6 +228,25 @@ With the snapshot file:
 
 - A command whose snapshot cannot be written is rolled back and reported as a storage error. The
   table in memory stays as it was.
+- The file has one size limit, 4,000,000 bytes, for writing and for reading
+  (`MAX_SNAPSHOT_BYTES` in `games/expo/storage.py`). The bytes of the file are counted before
+  anything is written. A snapshot over the limit is a failed write like any other: the command
+  is rolled back, its request id is not remembered, the file stays as the last accepted command
+  left it and a restart restores that table. A file over the limit is refused on start.
+- Request ids alone cannot reach the limit. A full request memory (10,000 commands, every id
+  80 characters) made of the largest command a seat can have accepted, a task with the longest
+  id offered to Tonoja and declined, leaves a file of 3,069,966 bytes for two seats (measured).
+  The issue's run, proposing to end and declining, leaves 2,744,892 (measured). Longer seat
+  ids, attempt numbers and revisions add digits only: about 3.2 million bytes with a
+  four-digit attempt and seat ids, by calculation from the engine's own format. That leaves
+  about 0.8 million bytes for the rest of the table, which takes about 11,000.
+- A table at the limit is known to be reachable only from a large file written before this
+  rule (AVR-273), with request ids that are no longer accepted. Such a table refuses every
+  command that makes its file larger, which is nearly every command. A proposal to end the
+  table can still fit while the confirmation that would end it does not: every answer to it,
+  yes or no, is then refused with `storage`, and the table cannot be ended from inside. It is
+  still restored on every start. The way out is the operator's: stop the server and remove
+  the snapshot file; the next start has no table.
 - On start, the adapter restores the file if present. Every seated player starts away and must
   reconnect with their original credential. A table saved in `closed` goes straight to the
   platform's results.
