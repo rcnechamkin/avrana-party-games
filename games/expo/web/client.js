@@ -14,7 +14,7 @@ const $ = id => document.getElementById(id);
 let ST = null, pending = false, pendingTimer = null;
 const ui = { sheet: null, opener: null, selected: null, handView: "mine", turnKey: "",
              sonarCard: null, sonarMeaning: null, resultKey: "", resultHidden: false, armed: null,
-             grace: 0, modal: null, partySig: "", setup: null };
+             grace: 0, modal: null, partySig: "" };
 const symbols = {blue:"○",green:"△",pink:"□",yellow:"×",submarine:"◆"};
 const suitNames = {blue:"blue",green:"green",pink:"pink",yellow:"yellow",submarine:"sub"};
 const OBJECTIVES = {
@@ -282,7 +282,7 @@ function drawLobby(st) {
 // The lobby's own three controls, for whoever moves the table on: the Party Host, or the crew
 // under a Party that does not name its host. The choice is this phone's until it is sent as one
 // decision, as the next mission is after a success. What may be chosen, and the reason a control
-// cannot be used, are the server's (g.setup).
+// cannot be used, are the server's (g.setup). ui.setup is that choice while it is being made.
 const SETUP_PROFILE = ['label[for="name"]', "#name", "[data-avrana-global]", ".lobby .intro"];
 function setupOf(st) { const g = st && st.game; return g && g.stage === "setup" ? g : null; }
 function setupChoice(g) {
