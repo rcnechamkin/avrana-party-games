@@ -1204,7 +1204,9 @@ seat agreement as it blocks Begin (AVR-240 owns recovery); a Party that names no
 set a table up once `HOST_CLAIM_TRANSITION` is off, exactly as it could not Begin; the timed
 setting is offered with any mission, as in the lobby, and changes mission 16 only.
 
-**Merging with AVR-246 and AVR-267.** Both branches were written against a table that is always
+**Merging with AVR-246 and AVR-267.** This branch is merged with `origin/main` at b57135d.
+AVR-270 (e0c5f11) and AVR-246 (53e5bac) reached `main` after that and are not merged here: that
+integration is a separate step. Both branches were written against a table that is always
 dealt. The textual conflicts are keep-both. These are not conflicts and must be fixed by hand
 when either is merged with this one (confirmed by the independent review of 6903703):
 
@@ -1229,7 +1231,7 @@ tests reach the first two; only a browser reaches the third.
 |---|---|
 | `pytest -q tests/test_expo_*.py tests/test_expo.py` | 1170 passed, 2 skipped, 2 xfailed |
 | `tests/test_expo_authority.py`, eight runs in a row | 127 passed each time (the seeded helper of PR #52 is kept: the seed goes in after the launch and the deal is compared after the setup) |
-| Against `origin/main` (e0c5f11) and this branch's earlier head (e536ea7), loaded beside it: 160 engine tables (40 seeds at each crew size) and 40 Party rounds through the adapter, set up as offered (two players agreeing the offered seat) | state, random state, every view and the settings identical, but for `revision` and the request memory |
+| Against `origin/main` as merged here (b57135d), as it stood after AVR-270 (e0c5f11), and this branch's earlier head (e536ea7), each loaded beside it: 160 engine tables (40 seeds at each crew size) and 40 Party rounds through the adapter, set up as offered (two players agreeing the offered seat) | state, random state, every view and the settings identical, but for `revision` and the request memory |
 | `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check, `node --check` on `client.js` and the Party playtest | OK |
 | `git diff --stat origin/main -- core provider deploy tests/vectors` | empty |
 | Independent review | of 6903703 only (pass, findings fixed). The seat agreement has not been reviewed |
