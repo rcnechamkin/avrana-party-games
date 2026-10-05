@@ -104,6 +104,14 @@ class Player:
                 "pfp": self.pfp}
 
 
+class HostRefused(Exception):
+    """A Party Host action the game's own rules do not allow now (GameSession.host_action)."""
+
+    def __init__(self, message, code="host"):
+        self.code = code
+        super().__init__(message)
+
+
 class GameSession:
     # ---- subclass knobs -------------------------------------------------
     MIN_PLAYERS = 2                # humans needed before GO appears
@@ -123,6 +131,10 @@ class GameSession:
         self._pid_counter = 0   # detect stale queued bot actions
         self._outcome = None    # see take_outcome()
         self.party_round = False  # seated by party_start(): the Party ran the pregame
+        # core.net sets this once a Party ticket says who the Party Host is (avrana-party ADR
+        # 0006, amendment 2026-10-04). It is never who: host_action() is reached only with a
+        # fresh ticket that names the host at that moment. False under a party that does not say.
+        self.party_host = False
 
     # ---- game hooks (override these) ------------------------------------
 
@@ -138,6 +150,13 @@ class GameSession:
     def game_action(self, token: str, msg: dict) -> list:
         """A client message that isn't a lobby verb. Return fx."""
         return [self.fx("invalid", to=token, msg="Unknown action")]
+
+    def host_action(self, action: dict) -> list:
+        """The Party Host asks for something only the host may do in this game (AVR-252).
+        core.net calls this only after the Party confirmed, with a fresh single-use ticket, that
+        the sender is its host right now; the host may hold a seat or be watching. The game still
+        applies its own rules: raise HostRefused(message[, code]) to refuse. Return fx."""
+        raise HostRefused("There is nothing for the Party Host to do here.")
 
     def game_tick(self) -> list:
         """The deadline fired during one of YOUR phases. Return fx."""
@@ -464,6 +483,7 @@ class GameSession:
             "you": viewer.public() if viewer else None,
             "game": None,
             "party_round": self.party_round,
+            "party_host": self.party_host,
         }
         if spectator:
             st["spectator"] = True
