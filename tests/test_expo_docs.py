@@ -143,6 +143,6 @@ def test_every_pinned_defect_is_recorded_and_every_issue_is_named():
     assert pinned and all(n.startswith('test_defect_') for n in pinned)
     reconciliation = read('RECONCILIATION.md')
     assert all('`%s`' % n in reconciliation for n in pinned), pinned
-    for entry in ('E-D1', 'E-D2', 'E-D3', 'E-D4', 'E-D5', 'E-D6', 'E-D7', 'E-D8', 'E-D9', 'E-D10', 'E-D11'):
+    for entry in ('E-D1', 'E-D2', 'E-D3', 'E-D4', 'E-D5', 'E-D6', 'E-D7', 'E-D8', 'E-D9', 'E-D10', 'E-D11', 'E-D12'):
         row = next(line for line in reconciliation.splitlines() if line.startswith('| %s |' % entry))
         assert re.search(r'AVR-\d+', row), entry
