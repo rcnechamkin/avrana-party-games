@@ -14,7 +14,7 @@ const $ = id => document.getElementById(id);
 let ST = null, pending = false, pendingTimer = null;
 const ui = { sheet: null, opener: null, selected: null, handView: "mine", turnKey: "",
              sonarCard: null, sonarMeaning: null, resultKey: "", resultHidden: false, armed: null,
-             grace: 0, modal: null, partySig: "" };
+             grace: 0, modal: null, partySig: "", setup: null };
 const symbols = {blue:"○",green:"△",pink:"□",yellow:"×",submarine:"◆"};
 const suitNames = {blue:"blue",green:"green",pink:"pink",yellow:"yellow",submarine:"sub"};
 const OBJECTIVES = {
@@ -152,9 +152,9 @@ $("name").onchange = () => {
 };
 $("ready").onclick = () => conn.send({t:"ready",ready:!ST?.you?.ready});
 $("start").onclick = () => conn.send({t:"start"});
-$("mission").onchange = () => conn.send({t:"settings",patch:{mission:Number($("mission").value)}});
-$("timed").onchange = () => conn.send({t:"settings",patch:{timed:$("timed").checked}});
-$("tonoja-position").onchange = () => conn.send({t:"settings",patch:{tonoja_position:Number($("tonoja-position").value)}});
+$("mission").onchange = () => choose({mission:Number($("mission").value)});
+$("timed").onchange = () => choose({timed:$("timed").checked});
+$("tonoja-position").onchange = () => choose({tonoja_position:Number($("tonoja-position").value)});
 $("menu-toggle").onclick = e => openSheet("menu", e.currentTarget);
 $("help-toggle").onclick = e => openSheet("help", e.currentTarget);
 for (const tab of document.querySelectorAll(".tab")) tab.onclick = e => openSheet(tab.dataset.sheet, e.currentTarget);
@@ -226,10 +226,11 @@ function draw() {
   const focusKey = document.activeElement?.dataset?.key;
   const values = new Map([...document.querySelectorAll("[data-key]")]
     .filter(n => ["INPUT","SELECT"].includes(n.tagName)).map(n => [n.dataset.key, n.value]));
-  const lobby = ["lobby","countdown"].includes(st.phase);
+  const setup = setupOf(st);                       // a Party round before its first deal (AVR-245)
+  const lobby = ["lobby","countdown"].includes(st.phase) || Boolean(setup);
   $("lobby").hidden = !lobby; $("game").hidden = lobby || !st.game;
   $("countdown-overlay").hidden = st.phase !== "countdown";
-  if (lobby) { drawLobby(st); $("result").hidden = true; drawSheet(null, st); syncModal(); return; }
+  if (lobby) { setup ? drawSetup(st, setup) : drawLobby(st); $("result").hidden = true; drawSheet(null, st); syncModal(); return; }
   const g = st.game;
   if (!g) { $("status").textContent = "This table has ended."; $("result").hidden = true; drawSheet(null, st); syncModal(); return; }
   // A crew decision after a result is answered on the result: never leave it put away.
@@ -256,6 +257,7 @@ function draw() {
 }
 
 function drawLobby(st) {
+  leaveSetup();
   const ready = st.players.filter(p => p.ready && p.connected).length;
   // A Party round has no lobby of its own: the Party ran the pregame and its host started it.
   $("lobby-form").hidden = $("lobby-actions").hidden = Boolean(st.party_round);
@@ -276,6 +278,70 @@ function drawLobby(st) {
     : ready<2 ? "Ready at least two players to begin. With two, Tonoja joins your crew." : "Crew order follows joining order, clockwise.";
 }
 
+// ---- setup: a Party round chooses what it opens on, in EXPO, before anything is dealt (AVR-245) ----
+// The lobby's own three controls, for whoever moves the table on: the Party Host, or the crew
+// under a Party that does not name its host. The choice is this phone's until it is sent as one
+// decision, as the next mission is after a success. What may be chosen, and the reason a control
+// cannot be used, are the server's (g.setup).
+const SETUP_PROFILE = ['label[for="name"]', "#name", "[data-avrana-global]", ".lobby .intro"];
+function setupOf(st) { const g = st && st.game; return g && g.stage === "setup" ? g : null; }
+function setupChoice(g) {
+  if (!ui.setup) ui.setup = {mission:g.setup.mission, timed:g.setup.timed, tonoja_position:g.setup.tonoja_position};
+  return ui.setup;
+}
+function choose(patch) {
+  const g = setupOf(ST);
+  if (!g) { conn.send({t:"settings",patch}); return; }
+  Object.assign(setupChoice(g), patch); draw();
+}
+function setupWords(p, g) {
+  const seat = $("tonoja-position").querySelector(`option[value="${p.tonoja_position}"]`);
+  return `mission ${p.mission}${p.timed ? ", with mission 16 against the clock" : ""}${g.setup?.tonoja && seat ? `, Tonoja ${seat.textContent.toLowerCase()}` : ""}`;
+}
+function leaveSetup() {
+  ui.setup = null;
+  const box = $("setup-box"); if (box) box.remove();
+  for (const n of document.querySelectorAll("[data-setup-hid]")) { n.hidden = false; delete n.dataset.setupHid; }
+  document.querySelector('label[for="tonoja-position"]').hidden = $("tonoja-position").hidden = false;
+}
+function drawSetup(st, g) {
+  const focusKey = document.activeElement?.dataset?.key;
+  const mine = mayMoveOn(g), choice = setupChoice(g), wait = g.setup.waiting;
+  for (const n of SETUP_PROFILE.map(q => document.querySelector(q))) if (n && !n.hidden) { n.hidden = true; n.dataset.setupHid = "1"; }
+  $("lobby-form").hidden = !mine || Boolean(g.proposal);
+  $("lobby-actions").hidden = true;
+  choices($("mission"), g.setup.missions.map(m => ({value:m.id,text:`${m.id>32?"Deep dive":"Mission"} ${m.id}${m.enabled?"":" · unavailable"}`,disabled:!m.enabled})), choice.mission);
+  $("timed").checked = choice.timed; $("tonoja-position").value = String(choice.tonoja_position);
+  document.querySelector('label[for="tonoja-position"]').hidden = $("tonoja-position").hidden = !g.setup.tonoja;
+  const text = g.away.length ? `Waiting for ${names(g.away)} to reconnect.`
+    : g.proposal ? (mustAnswer(g) ? `Your answer is needed: ${question(g)}` : `Crew decision · waiting for ${names(stillAsked(g))}`)
+    : !hostOwned(g) ? "Agree on the mission to open on"
+    : amHost() ? "Choose the mission to open on" : `Waiting for ${theHost()} (Party Host) to choose the mission`;
+  $("status").textContent = (g.me ? "" : "Watching · ") + text;
+  $("status").classList.toggle("urgent", Boolean(g.proposal && mustAnswer(g)));
+  $("roster").replaceChildren();
+  for (const seat of g.seats) {
+    const p = st.players.find(q => q.pid === seat) || {}, row = el("div",undefined,"person"), avatar = el("span",p.avatar,"avatar");
+    if (p.pid) Hub.fillAvatar(avatar,p);
+    row.append(avatar, el("strong",name(seat),"name"), el("span", g.away.includes(seat) ? "Away" : "Aboard", "muted"));
+    $("roster").append(row);
+  }
+  $("lobby-reason").textContent = mine && wait && !g.proposal ? wait : hostOwned(g)
+    ? (amHost() ? "You are the Party Host: you choose. Nothing is dealt until you do." : "Nothing is dealt until the Party Host has chosen.")
+    : `Nothing is dealt until the whole crew agrees.${g.lifecycle_transitional ? " This Party does not tell EXPO who its Host is yet, so the crew decides for now." : ""}`;
+  let box = $("setup-box");
+  if (!box) { box = el("div", undefined, "actions"); box.id = "setup-box"; $("roster").before(box); }      // above the crew list: in view on a short phone
+  box.replaceChildren();
+  if (g.proposal) box.append(decisionNode(g));
+  else if (mine) {
+    box.append(button(`Deal mission ${choice.mission}`, () => lifecycle({kind:"setup",mission:choice.mission,timed:choice.timed,tonoja_position:choice.tonoja_position}),
+      "setup-confirm", Boolean(wait), wait || "", "btn-primary"));
+  }
+  if (!g.proposal && st.party_round && amHost()) box.append(endButton("End EXPO for everyone", "end-expo", "quiet"));
+  const back = focusKey && box.querySelector(`[data-key="${CSS.escape(focusKey)}"]`);
+  if (back && !back.disabled && document.activeElement !== back) back.focus({preventScroll:true});
+}
+
 // A new moment at the table: drop a selection made for the last one, and bring up the cards
 // that are about to be played (Tonoja's, for the captain on Tonoja's turn).
 function syncTurn(g) {
@@ -293,7 +359,7 @@ function question(g) {
     distress:`Activate distress and pass one color card ${p.direction}? This adds one recorded attempt to the mission.`,
     assign:p.task==="all"?`Give all tasks to ${name(p.owner)}?`:`Give this task to ${name(p.owner)}?`,
     retry:p.keep?"Retry with the same tasks?":"Retry with fresh tasks?",
-    next:`Begin mission ${p.mission}?`, end:"End this table?"}[p.kind];
+    next:`Begin mission ${p.mission}?`, end:"End this table?", setup:`Open on ${setupWords(p, g)}?`}[p.kind];
 }
 function mustAnswer(g) {
   const asked = g.proposal.recipient;

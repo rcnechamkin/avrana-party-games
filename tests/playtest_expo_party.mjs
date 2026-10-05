@@ -186,6 +186,47 @@ try {
   await post("launch", seal({...base("launch", 30), nonce:crypto.randomBytes(12).toString("hex"), roster:party.members.map(m => ({participant:m.pid, name:m.name, role:m.role}))}));
   for (const [i, m] of party.members.entries()) await openPage(m, PHONES[i % PHONES.length]);
   for (const m of party.members) await m.page.waitForFunction(() => ST?.game && window.AvranaParty, {timeout:25000});
+  // ---- setup (AVR-245): the round opens with nothing dealt. Whoever moves the table on (the
+  // Party Host, or the crew under an older Party) chooses the mission, the clock and Tonoja's
+  // seat inside EXPO. This run confirms what is offered, which is the table of before. ----
+  let setupInView = 0;
+  {
+    const open = (await settle()).game;
+    assert.equal(open.stage, "setup", "a Party round opens in setup"); assert.equal(open.mission, null, "nothing is dealt yet");
+    assert.deepEqual([open.setup.mission, open.setup.timed, open.setup.tonoja_position, open.setup.tonoja], [1, false, 2, HUMANS === 2]);
+    const chooser = OLD_PARTY ? seated()[0] : party.members.find(m => m.pid === party.host);
+    for (const m of party.members) {
+      const s = await state(m.page), may = OLD_PARTY ? m.role === "player" : m === chooser;
+      assert.deepEqual(s.game.me, m.role === "player" ? {seat: s.you.pid} : null, `${m.name}: a seat and nothing else, no hand before the deal`);
+      const scroll = await m.page.evaluate(() => [document.scrollingElement, document.body, document.getElementById("app")].map(n => [n.scrollHeight - n.clientHeight, n.scrollTop]));
+      for (const [over, top] of scroll) { assert.ok(over <= 1, `${m.name} at setup: the page does not scroll (${over}px)`); assert.equal(top, 0); }
+      const offered = await has(m.page, "setup-confirm");
+      if (!may) { assert.equal(offered, null, `${m.name} does not move the table on and is offered no setup`); continue; }
+      assert.equal(offered.disabled, false, `${m.name} may set the table up`); assert.equal(offered.text, "Deal mission 1");
+      assert.equal(await m.page.evaluate(() => [document.getElementById("mission").value, document.getElementById("timed").checked, document.getElementById("tonoja-position").value, document.getElementById("tonoja-position").hidden].join()), `1,false,2,${HUMANS !== 2}`, "the lobby's three controls, on what is offered");
+      // Whether the control is in the first view without scrolling the panel: measured, reported.
+      if (await m.page.evaluate(() => { const b = [...document.querySelectorAll("[data-key]")].find(x => x.dataset.key === "setup-confirm").getBoundingClientRect(); return b.top >= 0 && b.bottom <= innerHeight; })) setupInView++;
+      else console.log(`note: at ${m.page.viewport().width}x${m.page.viewport().height} the setup control is below the first view of its panel`);
+    }
+    if (!OLD_PARTY) {
+      const seat = seated().find(m => m !== chooser);
+      assert.equal(await refused(seat.page, SEND_SEAT({kind:"setup", mission:1, timed:false, tonoja_position:2})), "Only the Party Host can set up the mission.");
+      assert.equal(await refused(chooser.page, SEND_HOST({kind:"begin"})), "Finish task allocation and predictions first.");
+    }
+    await chooser.page.screenshot({path:path.join(OUT, "setup.png")});
+    const before = open.revision;
+    await clickKey(chooser.page, "setup-confirm");
+    for (const m of party.members) await waitRevision(m.page, before);
+    if (OLD_PARTY) for (const m of seated().filter(x => x !== chooser)) {
+      // no host claim: the crew agrees, each seat once, and nothing is dealt until the last one
+      const pending = (await settle()).game;
+      assert.equal(pending.stage, "setup"); assert.equal(pending.proposal.payload.kind, "setup");
+      await clickKey(m.page, "agree");
+      for (const x of party.members) await waitRevision(x.page, pending.revision);
+    }
+    for (const m of party.members) await m.page.waitForFunction(() => ST?.game?.stage === "allocation" && ST.game.mission.id === 1, {timeout:15000});
+    console.log(`setup (AVR-245): confirmed as offered by ${OLD_PARTY ? "the crew" : "the Party Host"}; its control was in the first view on ${setupInView} of ${OLD_PARTY ? seated().length : 1} phone(s)`);
+  }
   const first = (await settle()).game;
   if (OLD_PARTY) {
     // A Party from before the host claim: the crew decides, for now, and everyone is told so.
