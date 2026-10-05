@@ -20,6 +20,23 @@
       "token": "aps0.eyJhdWQiOiJibHVmZiIsImV4cCI6MjAwMDAwMDEyMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJwYXJ0eSIsInBpZCI6InBhcnRpY2lwYW50LTIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyIiwicm9sZSI6InBsYXllciIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJ0aWNrZXQiLCJ2IjoiYXZyYW5hLnBhcnR5LXNlc3Npb24vdjAifQ.AbgjDIVYtCxeVaCAgysw7O7nvw2s4nYcoOy1l6zTqDU"
     },
     {
+      "name": "ticket",
+      "payload": {
+        "v": "avrana.party-session/v0",
+        "typ": "ticket",
+        "iss": "party",
+        "aud": "expo",
+        "sid": "session-11111111111111111111111111111111",
+        "iat": 2000000000,
+        "exp": 2000000120,
+        "pid": "participant-22222222222222222222222222222222",
+        "role": "spectator",
+        "jti": "0123456789abcdef",
+        "host": true
+      },
+      "token": "aps0.eyJhdWQiOiJleHBvIiwiZXhwIjoyMDAwMDAwMTIwLCJob3N0Ijp0cnVlLCJpYXQiOjIwMDAwMDAwMDAsImlzcyI6InBhcnR5IiwianRpIjoiMDEyMzQ1Njc4OWFiY2RlZiIsInBpZCI6InBhcnRpY2lwYW50LTIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyIiwicm9sZSI6InNwZWN0YXRvciIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJ0aWNrZXQiLCJ2IjoiYXZyYW5hLnBhcnR5LXNlc3Npb24vdjAifQ._bb3gblKuLMYw9ieAevcGP1ZPzF19obC6HhSgoMs-eQ"
+    },
+    {
       "name": "launch",
       "payload": {
         "v": "avrana.party-session/v0",
