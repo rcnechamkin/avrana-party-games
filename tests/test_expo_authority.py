@@ -130,15 +130,17 @@ class Table:
         await shutdown(self.b, *self.socks.values())
 
 
-SETUP = {"mission": 1, "timed": False, "tonoja_position": 2}     # what a Party round offers first
+SETUP = {"mission": 1, "timed": False}       # what a Party round offers first, and all a setup carries
+SEAT = 2                                     # the seat offered for Tonoja: after both players
 
 
 async def table(host=ALICE, claims=True, players=PLAYERS, mission=1, seed=1, watchers=(), setup=True):
     """A launched Party round, dealt from `seed`: the same seed is the same deal, tasks and
-    captain every time, so a test meets the table it was written for. It opens in setup (AVR-245,
-    the last section of this file); unless `setup` is False the table is taken through it here,
-    on `mission`, by whoever moves this table on: the Party Host, or the crew under a Party that
-    does not name its host."""
+    captain every time, so a test meets the table it was written for. The round opens in setup
+    (AVR-245, the last sections of this file); unless `setup` is False the table is taken through
+    it here, on `mission`: two players first agree the seat offered for Tonoja, then whoever
+    moves this table on deals (the Party Host, or the crew under a Party that does not name its
+    host)."""
     b = GameBinding("expo", ExpoSession(rng=random.Random(seed)), party=proto.GameSide(KEY, "expo"))
     entries = [(p, n, "player") for p, n in players] + [(p, n, "spectator") for p, n in watchers]
     await b.party_launch(proto.launch_message(KEY, "expo", SID, roster(*entries)))
@@ -158,9 +160,12 @@ async def table(host=ALICE, claims=True, players=PLAYERS, mission=1, seed=1, wat
         await b.push_all(b.session.tick(b.session.gen))
     assert b.session.engine is not None and b.session.party_round
     assert b.session.phase == "setup" and b.session.engine.s["mission"] is None
+    assert b.session.engine.rng.getstate() == random.Random(seed).getstate()      # nothing drawn yet
     if not setup:
         return early
     chosen = dict(SETUP, mission=mission)
+    if len(players) == 2:                                  # the two players, whoever the host is
+        await agree_seat(early, players[0][0], players[1][0])
     if claims:
         role = "spectator" if host in dict(watchers) else "player"
         assert await early.host(host, "setup", role=role, **chosen) == []
@@ -181,15 +186,22 @@ async def table(host=ALICE, claims=True, players=PLAYERS, mission=1, seed=1, wat
                                                     "attempt": s["attempt"], "revision": s["revision"]}))
     assert b.session.phase == "allocation" and b.session.engine.s["mission"]["id"] == mission
     # The seed took: this is the table that seed deals, card for card and task for task. The
-    # setup is an accepted change and (for a crew that voted) remembered requests, so those two
-    # counters are the only difference from a table dealt directly.
-    direct = Engine([early.pid(p) for p, _ in players], random.Random(seed), mission)
+    # steps of the setup are accepted changes and (for a crew that voted) remembered requests,
+    # so those two counters are the only difference from a table dealt directly.
+    direct = Engine([early.pid(p) for p, _ in players], random.Random(seed), mission, False, SEAT)
     dealt = b.session.engine.s
     for key in set(dealt) | set(direct.s):
         if key not in ("revision", "dedup"):
             assert dealt.get(key) == direct.s.get(key), f"seed {seed} did not decide the deal ({key})"
     assert b.session.engine.rng.getstate() == direct.rng.getstate()
     return early
+
+
+async def agree_seat(t, proposer, other, position=SEAT):
+    """The two players agree where Tonoja sits: one proposes, the other confirms (R p22)."""
+    assert await t.act(proposer, "propose", proposal={"kind": "tonoja_seat", "position": position}) == []
+    assert await t.act(other, "confirm", yes=True) == []
+    assert t.engine.s["setup"]["tonoja_seat"] == position and t.engine.s["proposal"] is None
 
 
 def other_than(t, pid):
@@ -280,6 +292,9 @@ def test_a_host_who_is_not_the_captain_gets_none_of_the_captains_mechanics():
         # Mission 10: the captain alone decides who takes the tasks (AVR-251).
         t = await table(mission=10)
         captain = t.engine.s["captain"]
+        # The deal this test needs, which seed 1 gives: tasks the captain may keep. About one
+        # mission 10 deal in sixteen draws a captain comparison task, which the captain may not own.
+        assert all(t.engine.eligible(k, captain) for k in t.engine.s["pool"])
         host = other_than(t, captain)
         t.party_host = host
         owner = t.pid(host)
@@ -829,19 +844,22 @@ def test_the_lifecycle_command_is_one_revision_and_leaves_no_decision_behind():
     assert again.value.code == "phase"
 
 
-# ---- setup before the first deal (AVR-245, owner decision 2026-10-05) ---------------------------
-# A Party round skips EXPO's lobby, so the mission, the timed setting and Tonoja's seat are chosen
-# inside EXPO before anything is dealt. The Party launch contract is untouched. Setup is one more
-# routine step of the table's life, committed the way the next mission is after a success: by the
-# Party Host, or by the whole crew where the crew moves the table on.
+# ---- setup before the first deal (AVR-245, owner decisions 2026-10-05) --------------------------
+# A Party round skips EXPO's lobby, so the mission and the timed setting are chosen inside EXPO
+# before anything is dealt. The Party launch contract is untouched. Setup is one more routine step
+# of the table's life, committed the way the next mission is after a success: by the Party Host,
+# or by the whole crew where the crew moves the table on. Tonoja's seat is not part of it: the
+# rulebook gives it to the players (R p22), so with two humans the two of them agree it as a crew
+# decision of their own, and nothing is dealt until they have. Nothing ever starts by itself.
 
 import json
 
 from games.expo import content
-from games.expo.engine import DECIDING, PAUSED
+from games.expo.engine import ANSWER_FIRST, DECIDING, PAUSED, SEAT_FIRST, SEAT_NOT_SETUP
 from games.expo.rules import DECK
 
 CREWS = (["p1", "p2"], ["p1", "p2", "p3"], ["p1", "p2", "p3", "p4"], ["p1", "p2", "p3", "p4", "p5"])
+TWO = ["p1", "p2"]
 
 
 def setup_engine(humans=("p1", "p2", "p3"), seed=7):
@@ -852,36 +870,85 @@ def set_up(e, **chosen):
     return e.lifecycle(lifecycle(e, "setup", **{**SETUP, **chosen}))
 
 
+def seat_msg(e, t, request, **kw):
+    return {"t": t, "attempt": 0, "revision": e.s["revision"], "request": request, **kw}
+
+
+def propose_seat(e, who, position, request=None):
+    return e.apply(who, seat_msg(e, "propose", request or f"seat-{e.s['revision']}",
+                                 proposal={"kind": "tonoja_seat", "position": position}))
+
+
+def answer(e, who, yes=True):
+    return e.apply(who, seat_msg(e, "confirm", f"answer-{e.s['revision']}", yes=yes))
+
+
+def agree(e, position=SEAT):
+    """The two players agree where Tonoja sits: one proposes, the other confirms."""
+    a, b = e.s["humans"]
+    assert propose_seat(e, a, position) and answer(e, b)
+    assert e.s["setup"]["tonoja_seat"] == position and e.s["proposal"] is None
+    return e
+
+
+def two_engine(seed=7, position=SEAT):
+    return agree(setup_engine(TWO, seed), position)
+
+
 @pytest.mark.parametrize("humans", CREWS, ids=lambda h: f"{len(h)}-humans")
 def test_setting_up_what_is_offered_deals_exactly_the_table_a_direct_start_deals(humans):
-    """The proof that nothing else changed: confirming mission 1, untimed, Tonoja after both
-    players gives the deal, the tasks, the captain, the random state and every view of a table
-    started without a setup step, for the same seed. The one difference is the count of accepted
-    changes, because confirming the setup is one."""
+    """The proof that nothing else changed: confirming mission 1, untimed (and, for two players,
+    their agreement on the seat offered for Tonoja, after both of them) gives the deal, the
+    tasks, the captain, the random state and every view of a table started without a setup step,
+    for the same seed. The one difference is the count of accepted changes: the setup is one,
+    and the two players' proposal and confirmation are two more."""
+    steps = 3 if len(humans) == 2 else 1
     for seed in range(25):
         direct = Engine(list(humans), random.Random(seed))
         waited = setup_engine(humans, seed)
         assert waited.s["phase"] == "setup"
+        if len(humans) == 2:
+            agree(waited)
         assert waited.rng.getstate() == random.Random(seed).getstate()      # nothing was drawn
         assert set_up(waited) is True
         a, b = dict(direct.s), dict(waited.s)
-        assert (a.pop("revision"), b.pop("revision")) == (0, 1)
+        assert (a.pop("revision"), b.pop("revision")) == (0, steps)
         assert a == b and direct.rng.getstate() == waited.rng.getstate()
         for viewer in list(humans) + [None]:
             va, vb = direct.view(viewer), waited.view(viewer)
-            assert (va.pop("revision"), vb.pop("revision")) == (0, 1)
+            assert (va.pop("revision"), vb.pop("revision")) == (0, steps)
             assert va == vb
 
 
-def test_setup_chooses_the_mission_the_clock_and_tonojas_seat():
+@pytest.mark.parametrize("humans", CREWS[1:], ids=lambda h: f"{len(h)}-humans")
+def test_three_to_five_humans_have_no_seat_to_agree_and_nothing_changed_for_them(humans):
+    """No Tonoja, no seat, no extra step: the host's setup deals at once, as it did before the
+    seat became the players' decision, and nobody can open a decision about a seat."""
+    e = setup_engine(humans, 3)
+    view = e.view(None)["setup"]
+    assert (view["tonoja"], view["tonoja_seat"], view["waiting"], view["seat_waiting"], view["seat_proposal"]) \
+        == (False, None, None, None, None)
+    before = e.snapshot()
+    with pytest.raises(Invalid) as refused:
+        propose_seat(e, humans[0], 2)
+    assert refused.value.code == "seat" and str(refused.value) == "Tonoja sits only with a crew of two players."
+    assert e.snapshot() == before
+    assert set_up(e, mission=5) is True
+    assert e.s == {**Engine(list(humans), random.Random(3), 5).s, "revision": 1}
+    assert "tonoja" not in e.s["seats"]
+
+
+def test_setup_chooses_the_mission_and_the_clock_and_the_players_choose_tonojas_seat():
     for position in (0, 1, 2):
-        e = setup_engine(["p1", "p2"])
-        assert e.s["seats"] == ["p1", "p2"]                 # Tonoja has no seat until one is chosen
-        set_up(e, mission=5, tonoja_position=position)
+        e = setup_engine(TWO)
+        assert e.s["seats"] == TWO                          # Tonoja has no seat until one is agreed
+        agree(e, position)
+        assert e.s["seats"] == TWO                          # and takes it only at the deal
+        set_up(e, mission=5)
         assert e.s["seats"].index("tonoja") == position and e.s["mission"]["id"] == 5
-        assert e.s == {**Engine(["p1", "p2"], random.Random(7), 5, False, position).s, "revision": 1}
+        assert e.s == {**Engine(TWO, random.Random(7), 5, False, position).s, "revision": 3}
     e = setup_engine()
-    set_up(e, mission=16, timed=True, tonoja_position=0)    # the seat is unused with three or more
+    set_up(e, mission=16, timed=True)
     assert e.s["timed"] is True and e.s["mission"]["seconds"] == 150 and "tonoja" not in e.s["seats"]
     assert e.s == {**Engine(["p1", "p2", "p3"], random.Random(7), 16, True).s, "revision": 1}
     e = setup_engine()
@@ -908,12 +975,13 @@ def lobby_answer(humans, mission, timed):
 @pytest.mark.parametrize("humans", (2, 3, 5))
 def test_setup_allows_exactly_what_the_standalone_lobby_allows(humans):
     crew = [f"p{i}" for i in range(humans)]
+    fresh = lambda: agree(setup_engine(crew)) if humans == 2 else setup_engine(crew)
     offered = {m["id"] for m in setup_engine(crew).view()["setup"]["missions"] if m["enabled"]}
     accepted = set()
     for mission in range(0, 52):
         for timed in (False, True):
             lobby = lobby_answer(humans, mission, timed)
-            e = setup_engine(crew)
+            e = fresh()
             before = e.snapshot()
             try:
                 set_up(e, mission=mission, timed=timed)
@@ -930,23 +998,167 @@ def test_setup_allows_exactly_what_the_standalone_lobby_allows(humans):
 
 
 @pytest.mark.parametrize("decision,code", [
-    ({"mission": 1, "timed": False}, "payload"),                      # a field missing
+    ({"mission": 1}, "payload"),                                      # a field missing
     ({**SETUP, "extra": 1}, "payload"),
+    ({**SETUP, "position": 2}, "payload"),                            # the seat is not smuggled in
+    ({**SETUP, "tonoja_seat": 2}, "payload"),
     ({**SETUP, "mission": True}, "payload"),                          # a boolean is not a mission
     ({**SETUP, "mission": "1"}, "payload"),
     ({**SETUP, "timed": 1}, "payload"),
-    ({**SETUP, "tonoja_position": 1.0}, "payload"),
-    ({**SETUP, "tonoja_position": 3}, "seat"),
-    ({**SETUP, "tonoja_position": -1}, "seat"),
+    ({**SETUP, "tonoja_position": 2}, "seat"),                        # what the setup used to carry
+    ({**SETUP, "tonoja_position": 0}, "seat"),
+    ({"tonoja_position": 2}, "seat"),
     ({**SETUP, "mission": 3}, "mission"),                             # blocked content stays blocked
     ({**SETUP, "mission": 51}, "mission"),
 ])
 def test_a_refused_setup_changes_nothing_and_deals_nothing(decision, code):
-    for e in (setup_engine(), setup_engine(["p1", "p2"])):
+    for e in (setup_engine(), two_engine(position=1)):
         before = e.snapshot()
         with pytest.raises(Invalid) as refused:
-            e.lifecycle({"t": "lifecycle", "decision": {"kind": "setup", **decision}, "attempt": 0, "revision": 0})
+            e.lifecycle({"t": "lifecycle", "decision": {"kind": "setup", **decision}, "attempt": 0,
+                         "revision": e.s["revision"]})
         assert refused.value.code == code and e.snapshot() == before and e.s["phase"] == "setup"
+        if "tonoja_position" in decision:
+            assert str(refused.value) == SEAT_NOT_SETUP     # in words, at any crew size, never trimmed
+        # and a seat may not propose it that way either
+        with pytest.raises(Invalid) as proposed:
+            e.apply("p1", seat_msg(e, "propose", "x", proposal={"kind": "setup", **decision}))
+        assert proposed.value.code == code and e.snapshot() == before
+
+
+def test_the_setup_never_carries_or_decides_tonojas_seat():
+    """Owner decision 2: the seat is the two players'. A setup that names one is refused, whoever
+    sends it and whatever the players have agreed; it never overrides and is never read."""
+    e = setup_engine(TWO)
+    for sender in (lambda d: e.lifecycle(lifecycle(e, "setup", **d)),
+                   lambda d: e.apply("p1", seat_msg(e, "propose", "x", proposal={"kind": "setup", **d}))):
+        with pytest.raises(Invalid) as refused:
+            sender({**SETUP, "tonoja_position": 0})
+        assert (refused.value.code, str(refused.value)) == ("seat", SEAT_NOT_SETUP)
+    assert e.s["setup"]["tonoja_seat"] is None and e.s["revision"] == 0
+    agree(e, 1)
+    with pytest.raises(Invalid) as refused:
+        e.lifecycle(lifecycle(e, "setup", **SETUP, tonoja_position=0))
+    assert str(refused.value) == SEAT_NOT_SETUP and e.s["setup"]["tonoja_seat"] == 1
+    # nor is the seat a step of the table's life: the lifecycle authority cannot commit it
+    with pytest.raises(Invalid) as refused:
+        e.lifecycle(lifecycle(e, "tonoja_seat", position=0))
+    assert (refused.value.code, str(refused.value)) == ("strategic", "The crew decides that together.")
+    assert e.s["setup"]["tonoja_seat"] == 1 and e.s["phase"] == "setup"
+
+
+def test_two_players_are_dealt_nothing_until_they_have_agreed_tonojas_seat():
+    """Decisions 2 and 3: no seat by default, however long the table waits; agreement on the
+    seat that is offered counts, and it has to be made (one proposes, the other confirms)."""
+    e = setup_engine(TWO)
+    start = e.snapshot()
+    assert e.s["setup"] == {**SETUP, "tonoja_position": SEAT, "tonoja_seat": None}
+    for _ in range(3):
+        e.observe_time(10 ** 9)                             # no clock deals a table
+        with pytest.raises(Invalid) as refused:
+            set_up(e)
+        assert (refused.value.code, str(refused.value)) == ("seat", SEAT_FIRST)
+    with pytest.raises(Invalid) as refused:                 # a seat cannot propose past it either
+        e.apply("p1", seat_msg(e, "propose", "x", proposal={"kind": "setup", **SETUP}))
+    assert (refused.value.code, str(refused.value)) == ("seat", SEAT_FIRST)
+    assert e.snapshot() == start and e.view(None)["setup"]["waiting"] == SEAT_FIRST
+    # one player proposing the offered seat is not agreement
+    assert propose_seat(e, "p1", SEAT)
+    assert e.s["setup"]["tonoja_seat"] is None
+    with pytest.raises(Invalid) as refused:
+        set_up(e)
+    assert (refused.value.code, str(refused.value)) == ("vote", DECIDING)      # the existing gate
+    assert answer(e, "p2")
+    assert e.s["setup"]["tonoja_seat"] == SEAT and e.view(None)["setup"]["waiting"] is None
+    assert e.rng.getstate() == random.Random(7).getstate()  # and still nothing is dealt
+    assert set_up(e) is True and e.s["seats"] == ["p1", "p2", "tonoja"]
+
+
+@pytest.mark.parametrize("position,code", [(3, "seat"), (-1, "seat"), (True, "payload"), (1.0, "payload"),
+                                           ("2", "payload"), (None, "payload")])
+def test_a_seat_that_is_not_a_seat_is_refused(position, code):
+    e = setup_engine(TWO)
+    before = e.snapshot()
+    with pytest.raises(Invalid) as refused:
+        propose_seat(e, "p1", position)
+    assert refused.value.code == code and e.snapshot() == before
+    with pytest.raises(Invalid) as refused:
+        e.apply("p1", seat_msg(e, "propose", "y", proposal={"kind": "tonoja_seat", "position": 2, "extra": 1}))
+    assert refused.value.code == "payload" and e.snapshot() == before
+
+
+def test_the_seat_is_agreed_by_the_existing_crew_decision_rules():
+    e = setup_engine(TWO)
+    msg = seat_msg(e, "propose", "one", proposal={"kind": "tonoja_seat", "position": 1})
+    assert e.apply("p1", msg) is True
+    assert e.s["proposal"] == {"payload": {"kind": "tonoja_seat", "position": 1}, "votes": ["p1"]}
+    view = e.view(None)["setup"]
+    assert view["seat_proposal"] == {"position": 1, "by": "p1", "asked": ["p2"]}
+    assert (view["tonoja_seat"], view["waiting"], view["seat_waiting"]) == (None, DECIDING, ANSWER_FIRST)
+    pending = e.snapshot()
+    assert e.apply("p1", msg) is False and e.snapshot() == pending          # a replay is nothing
+    with pytest.raises(Invalid) as reused:                  # the same id for another request
+        e.apply("p1", {**msg, "proposal": {"kind": "tonoja_seat", "position": 0}})
+    assert reused.value.code == "request"
+    for who, sent, code in (("p1", seat_msg(e, "confirm", "own", yes=True), "vote"),    # one vote each
+                            ("p2", seat_msg(e, "propose", "two", proposal={"kind": "tonoja_seat", "position": 0}), "vote"),
+                            ("p3", seat_msg(e, "confirm", "who", yes=True), "actor"),   # nobody else is asked
+                            (None, seat_msg(e, "confirm", "none", yes=True), "actor"),
+                            ("p2", {**seat_msg(e, "confirm", "old", yes=True), "revision": 0}, "stale")):
+        with pytest.raises(Invalid) as refused:
+            e.apply(who, sent)
+        assert refused.value.code == code and e.snapshot() == pending
+    # one decline and no seat is agreed
+    decline = seat_msg(e, "confirm", "no", yes=False)
+    assert e.apply("p2", decline) is True and e.apply("p2", decline) is False
+    assert e.s["proposal"] is None and e.s["setup"]["tonoja_seat"] is None
+    assert e.view(None)["setup"]["waiting"] == SEAT_FIRST and e.view(None)["setup"]["seat_proposal"] is None
+    # either player may propose; the other confirms; a duplicate confirmation is nothing
+    assert propose_seat(e, "p2", 0)
+    yes = seat_msg(e, "confirm", "yes", yes=True)
+    assert e.apply("p1", yes) is True and e.apply("p1", yes) is False
+    assert e.s["setup"]["tonoja_seat"] == 0 and e.s["proposal"] is None and e.s["phase"] == "setup"
+    assert e.rng.getstate() == random.Random(7).getstate()  # agreeing a seat deals nothing
+
+
+def test_the_players_may_agree_another_seat_until_the_deal_and_not_after():
+    e = two_engine(position=2)
+    agree(e, 0)                                             # a new proposal and its confirmation
+    assert e.s["setup"]["tonoja_seat"] == 0
+    assert propose_seat(e, "p2", 1)
+    assert e.s["setup"]["tonoja_seat"] == 0                 # a proposal alone changes nothing,
+    with pytest.raises(Invalid) as refused:
+        set_up(e)
+    assert (refused.value.code, str(refused.value)) == ("vote", DECIDING)      # but it holds the deal
+    assert answer(e, "p1", yes=False)
+    assert e.s["setup"]["tonoja_seat"] == 0                 # declined: what they agreed still stands
+    assert set_up(e, mission=2) is True and e.s["seats"] == ["tonoja", "p1", "p2"]
+    dealt = e.snapshot()
+    with pytest.raises(Invalid) as late:
+        e.apply("p1", {"t": "propose", "attempt": 1, "revision": e.s["revision"], "request": "late",
+                       "proposal": {"kind": "tonoja_seat", "position": 2}})
+    assert (late.value.code, str(late.value)) == ("phase", "Tonoja’s seat is decided before the first deal.")
+    assert e.snapshot() == dealt
+
+
+def test_an_away_player_pauses_the_seat_agreement():
+    e = setup_engine(TWO)
+    e.s["away"] = ["p2"]
+    before = e.snapshot()
+    with pytest.raises(Invalid) as refused:
+        propose_seat(e, "p1", 2)
+    assert (refused.value.code, str(refused.value)) == ("paused", PAUSED) and e.snapshot() == before
+    view = e.view("p1")["setup"]
+    assert view["waiting"] == PAUSED and view["seat_waiting"] == PAUSED
+    e.s["away"] = []
+    assert propose_seat(e, "p1", 2)
+    e.s["away"] = ["p1"]                                    # the proposer drops: the answer waits too
+    with pytest.raises(Invalid) as refused:
+        answer(e, "p2")
+    assert refused.value.code == "paused" and e.s["setup"]["tonoja_seat"] is None
+    assert e.view(None)["setup"]["seat_proposal"] == {"position": 2, "by": "p1", "asked": ["p2"]}
+    e.s["away"] = []
+    assert answer(e, "p2") and e.s["setup"]["tonoja_seat"] == 2
 
 
 def test_setup_happens_once_and_a_repeat_or_a_late_one_is_refused():
@@ -965,76 +1177,133 @@ def test_setup_happens_once_and_a_repeat_or_a_late_one_is_refused():
         e.lifecycle(lifecycle(e, "setup", **dict(SETUP, mission=5)))
     assert again.value.code == "phase" and e.snapshot() == dealt
     # a table that opened without a setup step has none to take, whoever asks
-    direct = Engine(["p1", "p2", "p3"], random.Random(7))
-    with pytest.raises(Invalid) as none:
-        direct.apply("p1", {"t": "propose", "proposal": {"kind": "setup", **SETUP},
-                            "attempt": 1, "revision": 0, "request": "x"})
-    assert none.value.code == "phase" and direct.s["proposal"] is None
+    for humans in (["p1", "p2", "p3"], TWO):
+        direct = Engine(humans, random.Random(7))
+        for proposal in ({"kind": "setup", **SETUP}, {"kind": "tonoja_seat", "position": 0}):
+            with pytest.raises(Invalid) as none:
+                direct.apply("p1", {"t": "propose", "proposal": proposal,
+                                    "attempt": 1, "revision": 0, "request": "x"})
+            assert none.value.code == "phase" and direct.s["proposal"] is None
 
 
 def test_no_card_task_or_table_command_works_before_the_deal():
-    e = setup_engine()
-    before = e.snapshot()
     proposals = ({"kind": "begin"}, {"kind": "end"}, {"kind": "retry", "keep": True}, {"kind": "next", "mission": 2},
                  {"kind": "distress", "direction": "left"}, {"kind": "assign", "owner": "p1", "task": "all"})
-    for msg in ({"t": "play_card", "card": "blue:1"}, {"t": "choose_task", "task": "x"}, {"t": "pass_task"},
-                {"t": "volunteer", "yes": True}, {"t": "predict", "task": "x", "count": 0},
-                {"t": "pass_card", "card": "blue:1"}, {"t": "communicate", "card": "blue:1", "assertion": "only"},
-                {"t": "confirm", "yes": True}, *({"t": "propose", "proposal": p} for p in proposals)):
-        with pytest.raises(Invalid) as refused:
-            e.apply("p1", {**msg, "attempt": 0, "revision": 0, "request": "x"})
-        assert refused.value.code not in ("snapshot", "payload"), msg      # refused by a rule, cleanly
-        assert e.snapshot() == before, msg
+    for e in (setup_engine(), setup_engine(TWO), two_engine()):
+        before = e.snapshot()
+        for msg in ({"t": "play_card", "card": "blue:1"}, {"t": "choose_task", "task": "x"}, {"t": "pass_task"},
+                    {"t": "volunteer", "yes": True}, {"t": "predict", "task": "x", "count": 0},
+                    {"t": "pass_card", "card": "blue:1"}, {"t": "communicate", "card": "blue:1", "assertion": "only"},
+                    {"t": "confirm", "yes": True}, *({"t": "propose", "proposal": p} for p in proposals)):
+            with pytest.raises(Invalid) as refused:
+                e.apply("p1", {**msg, "attempt": 0, "revision": e.s["revision"], "request": "x"})
+            assert refused.value.code not in ("snapshot", "payload"), msg      # refused by a rule, cleanly
+            assert e.snapshot() == before, msg
 
 
 def test_the_setup_view_is_public_and_holds_nothing_of_a_deal():
-    e = setup_engine(["p1", "p2"])
+    e = setup_engine(TWO)
     public = e.view(None)
     assert set(public) == {"kind", "attempt", "revision", "stage", "mission", "seats", "away", "proposal",
                            "result", "expiry", "log", "setup", "me"}
     assert public["stage"] == "setup" and public["me"] is None and public["mission"] is None
-    assert public["setup"] == {**SETUP, "tonoja": True, "waiting": None, "missions": content.catalog(2)}
-    for seat in ("p1", "p2"):
+    assert public["setup"] == {**SETUP, "tonoja_position": SEAT, "tonoja_seat": None, "tonoja": True,
+                               "waiting": SEAT_FIRST, "seat_waiting": None, "seat_proposal": None,
+                               "missions": content.catalog(2)}
+    for seat in TWO:
         assert e.view(seat) == {**public, "me": {"seat": seat}}             # a seat learns only its seat
-    said = json.dumps([e.view(v) for v in ("p1", "p2", None)]) + json.dumps(e.s)
+    # the same while a seat is proposed and once it is agreed: who proposed and who must answer
+    # are public, and a player is shown nothing a watcher is not
+    propose_seat(e, "p2", 0)
+    asked = e.view(None)
+    assert asked["setup"]["seat_proposal"] == {"position": 0, "by": "p2", "asked": ["p1"]}
+    assert asked["proposal"] == {"payload": {"kind": "tonoja_seat", "position": 0}, "votes": ["p2"]}
+    answer(e, "p1")
+    agreed = e.view(None)
+    assert (agreed["setup"]["tonoja_seat"], agreed["setup"]["waiting"], agreed["setup"]["seat_proposal"]) == (0, None, None)
+    for view in (asked, agreed):
+        assert set(view["setup"]) == set(public["setup"])
+    for seat in TWO:
+        assert e.view(seat) == {**agreed, "me": {"seat": seat}}
+    said = json.dumps([e.view(v) for v in ("p1", "p2", None)] + [public, asked]) + json.dumps(e.s)
     assert not any(card in said for card in DECK)           # no card exists yet, so none can leak
     assert not {"hands", "columns", "captain", "pool", "deck_order"} & set(e.s) and e.s["deck"] == []
-    assert setup_engine().view(None)["setup"]["tonoja"] is False            # no seat to choose for three
+    three = setup_engine().view(None)["setup"]                              # no seat to agree for three
+    assert (three["tonoja"], three["tonoja_seat"], three["waiting"], three["seat_waiting"]) == (False, None, None, None)
 
 
-def test_a_table_saved_in_setup_restores_and_then_deals_the_same_table():
-    e = setup_engine(["p1", "p2"], seed=5)
-    offer = {"kind": "setup", **dict(SETUP, mission=5, tonoja_position=0)}
-    e.apply("p1", {"t": "propose", "proposal": offer, "attempt": 0, "revision": 0, "request": "a"})
+def test_a_table_saved_while_the_seat_is_being_agreed_restores_and_then_deals_the_same_table():
+    e = setup_engine(TWO, seed=5)
+    propose_seat(e, "p1", 0)
     saved = json.loads(json.dumps(e.snapshot()))
     assert saved["state"]["version"] == 1                    # the format did not change
+    assert set(saved["state"]["setup"]) == {"mission", "timed", "tonoja_position", "tonoja_seat"}
     back = Engine.restore(saved)
-    assert back.s == e.s and back.view("p2") == e.view("p2") and back.view("p2")["proposal"]["payload"] == offer
+    assert back.s == e.s and back.view("p2") == e.view("p2")
+    assert back.view("p2")["setup"]["seat_proposal"] == {"position": 0, "by": "p1", "asked": ["p2"]}
     for table_ in (e, back):
         assert table_.apply("p2", {"t": "confirm", "yes": True, "attempt": 0, "revision": 1, "request": "b"})
+    assert back.s == e.s and back.s["setup"]["tonoja_seat"] == 0
+    back = Engine.restore(json.loads(json.dumps(back.snapshot())))          # and once it is agreed
+    assert back.s == e.s and back.view(None) == e.view(None)
+    for table_ in (e, back):
+        assert set_up(table_, mission=5)
     assert back.s == e.s and back.rng.getstate() == e.rng.getstate()
     assert "setup" not in e.s and e.s["mission"]["id"] == 5 and e.s["seats"][0] == "tonoja"
+    assert e.s == {**Engine(TWO, random.Random(5), 5, False, 0).s, "revision": e.s["revision"]}
     # a dealt table is saved with the keys it always had: nothing of the setup stays behind
     dealt = Engine.restore(json.loads(json.dumps(e.snapshot())))
-    assert set(dealt.s) == set(Engine(["p1", "p2"], random.Random(1)).s)
+    assert set(dealt.s) == set(Engine(TWO, random.Random(1)).s)
 
 
-@pytest.mark.parametrize("forge", [
-    lambda s: s.update(phase="allocation"),                  # no deal behind it
-    lambda s: s.update(attempt=1),
-    lambda s: s.pop("setup"),
-    lambda s: s.update(setup={"mission": 1}),
-    lambda s: s.update(setup={**SETUP, "mission": "1"}),
-    lambda s: s.update(seats=["p1", "tonoja", "p2", "p3"]),
-    lambda s: s.update(expiry=5.0),
-    lambda s: s.update(result={"status": "success", "reason": "forged"}),
-    lambda s: s.update(proposal={"payload": {"kind": "begin"}, "votes": ["p1"]}),
-], ids=range(9))
-def test_a_forged_setup_snapshot_is_refused(forge):
-    saved = setup_engine().snapshot()
+def test_a_setup_proposal_saved_under_a_party_without_a_host_restores_too():
+    e = two_engine(seed=5, position=1)
+    offer = {"kind": "setup", **dict(SETUP, mission=5)}
+    e.apply("p1", seat_msg(e, "propose", "a", proposal=offer))
+    back = Engine.restore(json.loads(json.dumps(e.snapshot())))
+    assert back.s == e.s and back.view("p2")["proposal"]["payload"] == offer
+    for table_ in (e, back):
+        assert answer(table_, "p2")
+    assert back.s == e.s and back.rng.getstate() == e.rng.getstate() and e.s["seats"][1] == "tonoja"
+
+
+OLD_SETUP = {"mission": 1, "timed": False, "tonoja_position": 2}     # this branch's setup before the seat moved
+
+
+@pytest.mark.parametrize("humans,forge", [
+    (3, lambda s: s.update(phase="allocation")),             # no deal behind it
+    (3, lambda s: s.update(attempt=1)),
+    (3, lambda s: s.pop("setup")),
+    (3, lambda s: s.update(setup={"mission": 1})),
+    (3, lambda s: s.update(setup=dict(OLD_SETUP))),          # written before the seat was the players'
+    (2, lambda s: s.update(setup=dict(OLD_SETUP))),
+    (2, lambda s: s.update(setup=dict(OLD_SETUP), proposal={"payload": {"kind": "setup", **OLD_SETUP}, "votes": ["p1"]})),
+    (2, lambda s: s.update(proposal={"payload": {"kind": "setup", **OLD_SETUP}, "votes": ["p1"]})),
+    (3, lambda s: s["setup"].update(mission="1")),
+    (3, lambda s: s["setup"].update(tonoja_seat=2)),         # a seat agreed where there is no Tonoja
+    (2, lambda s: s["setup"].update(tonoja_seat=3)),
+    (2, lambda s: s["setup"].update(tonoja_seat=True)),
+    (2, lambda s: s["setup"].update(tonoja_seat="2")),
+    (3, lambda s: s.update(seats=["p1", "tonoja", "p2", "p3"])),
+    (2, lambda s: s.update(seats=["p1", "p2", "tonoja"])),   # seated before the deal
+    (3, lambda s: s.update(expiry=5.0)),
+    (3, lambda s: s.update(result={"status": "success", "reason": "forged"})),
+    (3, lambda s: s.update(proposal={"payload": {"kind": "begin"}, "votes": ["p1"]})),
+    (3, lambda s: s.update(proposal={"payload": {"kind": "tonoja_seat", "position": 2}, "votes": ["p1"]})),
+    (2, lambda s: s.update(proposal={"payload": {"kind": "tonoja_seat", "position": 7}, "votes": ["p1"]})),
+    (2, lambda s: s.update(proposal={"payload": {"kind": "tonoja_seat"}, "votes": ["p1"]})),
+    (2, lambda s: s.update(proposal={"payload": {"kind": "tonoja_seat", "position": 2}, "votes": ["p9"]})),
+    (2, lambda s: s.update(proposal={"payload": {"kind": "tonoja_seat", "position": 2}})),
+    (2, lambda s: s.update(proposal="tonoja_seat")),
+    (2, lambda s: s.update(proposal={"payload": {"kind": "tonoja_seat", "position": 2}, "votes": []})),
+], ids=range(25))
+def test_a_forged_or_older_setup_snapshot_is_refused_and_never_crashes(humans, forge):
+    saved = setup_engine(CREWS[humans - 2]).snapshot()
+    Engine.restore(json.loads(json.dumps(saved)))            # as written, it restores
     forge(saved["state"])
-    with pytest.raises(Invalid):
+    with pytest.raises(Invalid) as refused:                  # Invalid, and nothing else
         Engine.restore(saved)
+    assert refused.value.code in ("snapshot", "seat")
     dealt = Engine(["p1", "p2", "p3"], random.Random(7)).snapshot()
     dealt["state"]["phase"] = "setup"                        # a dealt table relabelled
     with pytest.raises(Invalid):
@@ -1061,29 +1330,74 @@ def host_setup(s, **chosen):
                           "decision": {"kind": "setup", **{**SETUP, **chosen}}})
 
 
+def room_says(s, token, t, request, **kw):
+    e = s.engine.s
+    return s.game_action(token, {"t": t, "attempt": e["attempt"], "revision": e["revision"], "request": request, **kw})
+
+
+def room_agree(s, tokens, position=SEAT):
+    assert room_says(s, tokens[0], "propose", f"seat-{s.engine.s['revision']}",
+                     proposal={"kind": "tonoja_seat", "position": position}) == []
+    assert room_says(s, tokens[1], "confirm", f"yes-{s.engine.s['revision']}", yes=True) == []
+    assert s.engine.s["setup"]["tonoja_seat"] == position
+
+
 def test_an_unconfirmed_table_waits_and_no_timer_ever_starts_it():
-    s, _ = party_room()
-    revision = s.engine.s["revision"]
-    assert s.deadline is None and s.remaining() is None
-    for _ in range(3):
-        s.tick(s.gen)                                        # whatever fires, nothing is dealt
-        s.game_tick()
-    assert s.phase == "setup" and s.engine.s["mission"] is None and s.deadline is None
-    assert s.engine.s["revision"] == revision
+    """Owner decision 3: an unconfirmed table never starts itself, with or without a seat agreed."""
+    for names, agreed in ((("Alice", "Bob", "Cara"), False), (("Alice", "Bob"), False), (("Alice", "Bob"), True)):
+        s, tokens = party_room(names)
+        if agreed:
+            room_agree(s, tokens)
+        revision, rng = s.engine.s["revision"], s.engine.rng.getstate()
+        assert s.deadline is None and s.remaining() is None
+        for _ in range(3):
+            s.tick(s.gen)                                    # whatever fires, nothing is dealt
+            s.game_tick()
+        assert s.phase == "setup" and s.engine.s["mission"] is None and s.deadline is None
+        assert s.engine.s["revision"] == revision and s.engine.rng.getstate() == rng
+        assert s.engine.s["setup"]["tonoja_seat"] == (SEAT if agreed else None)       # and no seat by default
 
 
 @pytest.mark.parametrize("names", (("Alice", "Bob"), ("Alice", "Bob", "Cara")))
 def test_a_party_round_set_up_as_offered_is_the_table_a_party_round_opened_on_before(names):
     s, tokens = party_room(names, seed=11)
+    if len(names) == 2:
+        with pytest.raises(HostRefused) as refused:
+            host_setup(s)
+        assert (refused.value.code, str(refused.value)) == ("seat", SEAT_FIRST) and s.phase == "setup"
+        room_agree(s, tokens)
     host_setup(s)
     pids = [s.players[t].pid for t in tokens]
     direct = Engine(pids, random.Random(11), 1, False, 2)   # what game_start dealt before AVR-245
     assert s.engine.s == {**direct.s, "revision": s.engine.s["revision"]}
+    assert s.engine.rng.getstate() == direct.rng.getstate()
     assert s.settings == ExpoSession.DEFAULT_SETTINGS and s.phase == "allocation"
     for token, pid in zip(tokens, pids):
         view = s.game_state(token)
         assert (view.pop("lifecycle"), view.pop("begin_at"), view.pop("lifecycle_transitional")) == ("crew", None, True)
         assert {**view, "revision": 0} == direct.view(pid)
+
+
+def test_the_host_action_never_sets_tonojas_seat_and_the_agreed_seat_becomes_the_tables_setting():
+    s, tokens = party_room(("Alice", "Bob"), seed=11)
+    e = s.engine.s
+    for decision, code, words in (
+            ({"kind": "setup", **SETUP, "tonoja_position": 0}, "seat", SEAT_NOT_SETUP),
+            ({"kind": "tonoja_seat", "position": 0}, "strategic", "The crew decides that together."),
+            ({"kind": "setup", **SETUP}, "seat", SEAT_FIRST)):
+        with pytest.raises(HostRefused) as refused:
+            s.host_action({"t": "lifecycle", "attempt": 0, "revision": e["revision"], "decision": decision})
+        assert (refused.value.code, str(refused.value)) == (code, words)
+    assert s.engine.s["setup"]["tonoja_seat"] is None and s.engine.s["revision"] == e["revision"]
+    room_agree(s, tokens, 0)
+    with pytest.raises(HostRefused) as refused:              # agreed or not, the host's payload never names it
+        host_setup(s, tonoja_position=1)
+    assert str(refused.value) == SEAT_NOT_SETUP and s.phase == "setup"
+    host_setup(s, mission=2)
+    pids = [s.players[t].pid for t in tokens]
+    assert s.engine.s["seats"] == ["tonoja", *pids]
+    assert s.settings == {"mission": 2, "timed": False, "tonoja_position": 0}
+    assert s.engine.s == {**Engine(pids, random.Random(11), 2, False, 0).s, "revision": s.engine.s["revision"]}
 
 
 def test_a_setup_that_cannot_be_saved_is_not_taken():
@@ -1102,6 +1416,22 @@ def test_a_setup_that_cannot_be_saved_is_not_taken():
     assert s.settings == {"mission": 5, "timed": True, "tonoja_position": 2}
 
 
+def test_a_seat_agreement_that_cannot_be_saved_is_not_taken():
+    s, tokens = party_room(("Alice", "Bob"))
+
+    class Full:
+        def write(self, snapshot):
+            raise OSError("disk full")
+    assert room_says(s, tokens[0], "propose", "a", proposal={"kind": "tonoja_seat", "position": 1}) == []
+    s.store = Full()
+    said = room_says(s, tokens[1], "confirm", "b", yes=True)
+    assert [f["code"] for f in said] == ["storage"]
+    assert s.engine.s["setup"]["tonoja_seat"] is None and s.engine.s["proposal"]["votes"] == [s.players[tokens[0]].pid]
+    s.store = None
+    assert room_says(s, tokens[1], "confirm", "c", yes=True) == []
+    assert s.engine.s["setup"]["tonoja_seat"] == 1
+
+
 def test_a_seat_that_never_arrived_holds_the_setup_until_it_does():
     s, tokens = party_room(arrive=False)
     for t in tokens[:2]:
@@ -1118,25 +1448,44 @@ def test_a_seat_that_never_arrived_holds_the_setup_until_it_does():
 
 def test_a_session_saved_in_setup_comes_back_in_setup_with_every_seat_away():
     s, tokens = party_room(("Alice", "Bob"))
+    assert room_says(s, tokens[0], "propose", "seat", proposal={"kind": "tonoja_seat", "position": 1}) == []
     saved = json.loads(json.dumps(s.snapshot()))
     assert saved["version"] == 1
     back = ExpoSession(random.Random(99))
     back.restore(saved)
     assert back.phase == "setup" and back.engine.s["mission"] is None and back.deadline is None
     assert sorted(back.engine.s["away"]) == sorted(back.engine.s["humans"])
-    assert back.game_state(tokens[0])["setup"]["waiting"] == PAUSED
+    view = back.game_state(tokens[0])["setup"]
+    assert view["waiting"] == PAUSED and view["seat_waiting"] == PAUSED and view["tonoja_seat"] is None
     for t in tokens:
         back.join(t)
     # restored outside a Party the table is its crew's, as any standalone table is
     assert back.game_state(tokens[0])["lifecycle"] == "crew"
     pids = [back.players[t].pid for t in tokens]
-    scope = lambda: {"attempt": 0, "revision": back.engine.s["revision"]}
-    assert back.game_action(tokens[0], {"t": "propose", "request": "a", **scope(),
-                                        "proposal": {"kind": "setup", **dict(SETUP, tonoja_position=1)}}) == []
-    assert back.game_action(tokens[1], {"t": "confirm", "yes": True, "request": "b", **scope()}) == []
+    asked = back.game_state(tokens[1])["setup"]["seat_proposal"]            # the question came back with it
+    assert asked == {"position": 1, "by": pids[0], "asked": [pids[1]]}
+    assert room_says(back, tokens[1], "confirm", "yes", yes=True) == []
+    assert back.engine.s["setup"]["tonoja_seat"] == 1 and back.phase == "setup"
+    assert room_says(back, tokens[0], "propose", "a", proposal={"kind": "setup", **SETUP}) == []
+    assert room_says(back, tokens[1], "confirm", "b", yes=True) == []
     assert back.phase == "allocation" and back.engine.s["seats"] == [pids[0], "tonoja", pids[1]]
-    host_setup(s, tonoja_position=1)                         # the table that was never restarted
+    assert room_says(s, tokens[1], "confirm", "yes", yes=True) == []         # the table that was never restarted
+    host_setup(s)
     assert back.engine.s["hands"] == s.engine.s["hands"] and back.engine.s["columns"] == s.engine.s["columns"]
+
+
+def test_an_older_setup_snapshot_fails_closed_in_the_adapter(tmp_path):
+    """A setup saved by this branch before the seat moved to the players (never deployed) is not
+    read as anything: the session says the saved table could not be restored, and does not raise."""
+    s, _ = party_room(("Alice", "Bob"))
+    saved = json.loads(json.dumps(s.snapshot()))
+    saved["engine"]["state"]["setup"] = dict(OLD_SETUP)
+    path = tmp_path / "expo.json"
+    path.write_text(json.dumps(saved), encoding="utf-8")
+    back = ExpoSession(snapshot_path=path)
+    assert back.engine is None and back.recovery_error
+    with pytest.raises(ValueError):
+        ExpoSession(random.Random(1)).restore(saved)
 
 
 def test_a_standalone_table_has_no_setup_step():
@@ -1150,9 +1499,24 @@ def test_a_standalone_table_has_no_setup_step():
     s.tick(s.gen)
     assert s.phase == "allocation" and "setup" not in s.engine.s and s.game_state(tokens[0])["stage"] == "allocation"
     assert s.engine.s == Engine([s.players[t].pid for t in tokens], random.Random(4), 5, False, 2).s
-    said = s.game_action(tokens[0], {"t": "propose", "proposal": {"kind": "setup", **SETUP},
-                                     "attempt": 1, "revision": 0, "request": "x"})
-    assert [f["code"] for f in said] == ["phase"] and s.engine.s["proposal"] is None
+    for proposal in ({"kind": "setup", **SETUP}, {"kind": "tonoja_seat", "position": 1}):
+        said = s.game_action(tokens[0], {"t": "propose", "proposal": proposal,
+                                         "attempt": 1, "revision": 0, "request": "x"})
+        assert [f["code"] for f in said] == ["phase"] and s.engine.s["proposal"] is None
+
+
+def test_a_standalone_table_of_two_still_seats_tonoja_from_its_lobby():
+    """P22 is unchanged where there is a lobby: its players set the seat there, before Start."""
+    s = ExpoSession(random.Random(4))
+    tokens = ["a-token-1", "b-token-2"]
+    for t in tokens:
+        s.join(t, t)
+        s.set_ready(t, True)
+    s.set_settings(tokens[0], {"tonoja_position": 0})
+    s.start(tokens[0])
+    s.tick(s.gen)
+    pids = [s.players[t].pid for t in tokens]
+    assert s.phase == "allocation" and s.engine.s == Engine(pids, random.Random(4), 1, False, 0).s
 
 
 # ---- who sets a Party round up -----------------------------------------------------------------
@@ -1165,6 +1529,7 @@ def test_a_party_round_opens_in_setup_and_only_the_party_host_sets_it_up():
         game = state["game"]
         assert game["stage"] == "setup" and game["lifecycle"] == "host" and game["me"] == {"seat": t.pid(BOB)}
         assert {k: game["setup"][k] for k in SETUP} == SETUP and game["setup"]["waiting"] is None
+        assert (game["setup"]["tonoja"], game["setup"]["tonoja_seat"]) == (False, None)      # three: no Tonoja
         before = t.engine.snapshot()
         # a seat, the old way; then the host message from someone the Party does not call its host
         said = await t.act(BOB, "propose", proposal={"kind": "setup", **SETUP})
@@ -1174,10 +1539,14 @@ def test_a_party_round_opens_in_setup_and_only_the_party_host_sets_it_up():
         t.party_host = BOB                                   # the role moved: a kept ticket is nothing
         assert [m["code"] for m in await t.host(ALICE, "setup", **SETUP)] == ["host"]
         t.party_host = ALICE
-        # the host cannot skip the setup, nor choose what the lobby would refuse
+        # the host cannot skip the setup, nor choose what the lobby would refuse, nor name a seat
         assert [m["code"] for m in await t.host(ALICE, "begin")] == ["phase"]
         assert [(m["code"], m["msg"]) for m in await t.host(ALICE, "setup", **dict(SETUP, mission=3))] \
             == [("mission", content.BLOCKED[3])]
+        assert [(m["code"], m["msg"]) for m in await t.host(ALICE, "setup", **SETUP, tonoja_position=2)] \
+            == [("seat", SEAT_NOT_SETUP)]
+        said = await t.act(BOB, "propose", proposal={"kind": "tonoja_seat", "position": 2})
+        assert [m["code"] for m in said] == ["seat"]         # and with three there is no seat to agree
         assert t.engine.snapshot() == before
         assert await t.host(ALICE, "setup", **dict(SETUP, mission=5, timed=True)) == []
         s = t.engine.s
@@ -1254,27 +1623,174 @@ def test_during_setup_no_seat_ends_expo_and_the_partys_end_still_releases_the_ro
     run(scenario())
 
 
+# ---- Tonoja's seat: the two players decide it, not the Party Host (owner decision 2) -----------
+# "The Party Host controls party/game flow. Game-specific decisions remain with whoever the game's
+# rules assign them to." (owner, 2026-10-05)
+
+def seat_view(t, who):
+    return t.socks[who][0].last_state()["game"]["setup"]
+
+
+def test_a_party_host_who_plays_decides_tonojas_seat_only_as_a_player_with_the_others_consent():
+    async def scenario():
+        t = await table(players=PLAYERS[:2], setup=False, seed=4)            # Alice hosts and plays
+        a, b = t.pid(ALICE), t.pid(BOB)
+        for who in (ALICE, BOB):
+            view = seat_view(t, who)
+            assert (view["tonoja"], view["tonoja_seat"], view["waiting"], view["seat_waiting"]) \
+                == (True, None, SEAT_FIRST, None)
+        start = t.engine.snapshot()
+        # as host: the deal is refused until the players have agreed, and no payload names the seat
+        assert [(m["code"], m["msg"]) for m in await t.host(ALICE, "setup", **SETUP)] == [("seat", SEAT_FIRST)]
+        assert [(m["code"], m["msg"]) for m in await t.host(ALICE, "setup", **SETUP, tonoja_position=0)] \
+            == [("seat", SEAT_NOT_SETUP)]
+        assert [(m["code"], m["msg"]) for m in await t.host(ALICE, "tonoja_seat", position=0)] \
+            == [("strategic", "The crew decides that together.")]
+        assert t.engine.snapshot() == start
+        # as a player: a proposal, which is not a decision until Bob answers
+        msg = t.cmd("propose", proposal={"kind": "tonoja_seat", "position": 0})
+        assert await t.send(ALICE, msg) == []
+        revision = t.engine.s["revision"]
+        assert await t.send(ALICE, msg) == [] and t.engine.s["revision"] == revision       # sent twice: once
+        for who in (ALICE, BOB):
+            view = seat_view(t, who)
+            assert view["seat_proposal"] == {"position": 0, "by": a, "asked": [b]}
+            assert (view["tonoja_seat"], view["waiting"], view["seat_waiting"]) == (None, DECIDING, ANSWER_FIRST)
+        assert [m["code"] for m in await t.act(ALICE, "confirm", yes=True)] == ["vote"]     # not her own
+        assert [(m["code"], m["msg"]) for m in await t.host(ALICE, "setup", **SETUP)] == [("vote", DECIDING)]
+        assert t.engine.s["mission"] is None and t.engine.s["setup"]["tonoja_seat"] is None
+        # Bob declines: no seat is agreed and nothing is dealt
+        assert await t.act(BOB, "confirm", yes=False) == []
+        assert t.engine.s["proposal"] is None and seat_view(t, BOB)["tonoja_seat"] is None
+        assert [(m["code"], m["msg"]) for m in await t.host(ALICE, "setup", **SETUP)] == [("seat", SEAT_FIRST)]
+        # Bob proposes the seat that is offered; agreement on it still has to be given
+        assert await t.act(BOB, "propose", proposal={"kind": "tonoja_seat", "position": SEAT}) == []
+        assert [m["code"] for m in await t.host(ALICE, "setup", **SETUP)] == ["vote"]
+        assert await t.act(ALICE, "confirm", yes=True) == []
+        assert seat_view(t, BOB)["tonoja_seat"] == SEAT and seat_view(t, BOB)["waiting"] is None
+        # they change their minds before the deal
+        await agree_seat(t, BOB, ALICE, 1)
+        assert seat_view(t, ALICE)["tonoja_seat"] == 1 and t.engine.s["mission"] is None
+        assert t.engine.rng.getstate() == random.Random(4).getstate()
+        # only now does the host's Deal work, and it deals the seat the players agreed
+        assert await t.host(ALICE, "setup", **dict(SETUP, mission=2)) == []
+        s = t.engine.s
+        assert s["phase"] == "allocation" and s["seats"] == [a, "tonoja", b] and s["proposal"] is None
+        assert s == {**Engine([a, b], random.Random(4), 2, False, 1).s, "revision": s["revision"], "dedup": s["dedup"]}
+        assert t.socks[BOB][0].last_state()["settings"] == {"mission": 2, "timed": False, "tonoja_position": 1}
+        said = await t.act(BOB, "propose", proposal={"kind": "tonoja_seat", "position": 2})
+        assert [(m["code"], m["msg"]) for m in said] == [("phase", "Tonoja’s seat is decided before the first deal.")]
+        await t.close()
+    run(scenario())
+
+
+def test_a_watching_party_host_has_no_say_in_tonojas_seat():
+    async def scenario():
+        t = await table(host=DANA, watchers=((DANA, "Dana"),), players=PLAYERS[:2], setup=False, seed=6)
+        a, b = t.pid(ALICE), t.pid(BOB)
+        view = t.socks[DANA][0].last_state()["game"]
+        assert view["me"] is None and view["lifecycle"] == "host" and view["setup"] == seat_view(t, ALICE)
+        start = t.engine.snapshot()
+        # the host's own message, every way it could be tried
+        assert [(m["code"], m["msg"]) for m in await t.host(DANA, "setup", role="spectator", **SETUP)] \
+            == [("seat", SEAT_FIRST)]
+        assert [(m["code"], m["msg"]) for m in await t.host(DANA, "setup", role="spectator", **SETUP, tonoja_position=1)] \
+            == [("seat", SEAT_NOT_SETUP)]
+        assert [m["code"] for m in await t.host(DANA, "tonoja_seat", role="spectator", position=1)] == ["strategic"]
+        # and a seat's message from someone who holds no seat: the room does not even answer it
+        await t.act(DANA, "propose", proposal={"kind": "tonoja_seat", "position": 1})
+        assert t.engine.snapshot() == start
+        assert await t.act(ALICE, "propose", proposal={"kind": "tonoja_seat", "position": 0}) == []
+        watching = t.socks[DANA][0].last_state()["game"]                    # read-only, and all of it public
+        assert watching["setup"]["seat_proposal"] == {"position": 0, "by": a, "asked": [b]}
+        assert watching["setup"] == seat_view(t, BOB) and watching["me"] is None
+        pending = t.engine.snapshot()
+        for yes in (True, False):                            # the host can neither confirm nor decline it
+            await t.act(DANA, "confirm", yes=yes)
+        assert [(m["code"], m["msg"]) for m in await t.host(DANA, "setup", role="spectator", **SETUP)] \
+            == [("vote", DECIDING)]
+        assert t.engine.snapshot() == pending
+        assert await t.act(BOB, "confirm", yes=True) == []
+        assert t.socks[DANA][0].last_state()["game"]["setup"]["tonoja_seat"] == 0
+        assert await t.host(DANA, "setup", role="spectator", **SETUP) == []
+        s = t.engine.s
+        assert s["seats"] == ["tonoja", a, b] and t.socks[DANA][0].last_state()["game"]["me"] is None
+        assert s == {**Engine([a, b], random.Random(6), 1, False, 0).s, "revision": s["revision"], "dedup": s["dedup"]}
+        await t.close()
+    run(scenario())
+
+
+def test_the_seat_agreement_waits_for_an_away_player_and_survives_a_reload():
+    async def scenario():
+        t = await table(players=PLAYERS[:2], setup=False)
+        a, b = t.pid(ALICE), t.pid(BOB)
+        ws, task = t.socks.pop(BOB)
+        await ws.close()
+        await task
+        await settle()
+        said = await t.act(ALICE, "propose", proposal={"kind": "tonoja_seat", "position": 1})
+        assert [(m["code"], m["msg"]) for m in said] == [("paused", PAUSED)]
+        view = seat_view(t, ALICE)
+        assert (view["waiting"], view["seat_waiting"], view["tonoja_seat"]) == (PAUSED, PAUSED, None)
+        t.socks[BOB] = await connect(t.b, {"t": "hello", "ticket": ticket(BOB, False)})
+        assert await t.act(ALICE, "propose", proposal={"kind": "tonoja_seat", "position": 1}) == []
+        ws, task = t.socks.pop(BOB)                          # the player who must answer reloads
+        await ws.close()
+        await task
+        await settle()
+        assert t.engine.s["proposal"]["votes"] == [a] and seat_view(t, ALICE)["waiting"] == PAUSED
+        t.socks[BOB] = await connect(t.b, {"t": "hello", "ticket": ticket(BOB, False)})
+        back = t.socks[BOB][0].last_state()["game"]
+        assert back["stage"] == "setup" and back["me"] == {"seat": b} and back["away"] == []
+        assert back["setup"]["seat_proposal"] == {"position": 1, "by": a, "asked": [b]}
+        assert await t.act(BOB, "confirm", yes=True) == []
+        assert seat_view(t, ALICE)["tonoja_seat"] == 1 and t.engine.s["mission"] is None
+        ws, task = t.socks.pop(BOB)                          # agreed, and a player away: the deal waits
+        await ws.close()
+        await task
+        await settle()
+        assert [(m["code"], m["msg"]) for m in await t.host(ALICE, "setup", **SETUP)] == [("paused", PAUSED)]
+        t.socks[BOB] = await connect(t.b, {"t": "hello", "ticket": ticket(BOB, False)})
+        assert t.socks[BOB][0].last_state()["game"]["setup"]["tonoja_seat"] == 1    # what they agreed is kept
+        assert await t.host(ALICE, "setup", **SETUP) == []
+        assert t.engine.s["seats"] == [a, "tonoja", b]
+        await t.close()
+    run(scenario())
+
+
 def test_under_a_party_that_does_not_name_its_host_the_crew_agrees_on_the_setup():
+    """The transitional path. The crew confirms the setup as before, and with two players the
+    seat is the same kind of unanimous decision, made first: one rule for every Party round."""
     async def scenario():
         t = await table(claims=False, players=PLAYERS[:2], setup=False)
         game = t.socks[ALICE][0].last_state()["game"]
         assert game["stage"] == "setup" and game["lifecycle"] == "crew" and game["lifecycle_transitional"] is True
         assert [m["code"] for m in await t.host(ALICE, "setup", host=None, **SETUP)] == ["host"]
+        # nothing is dealt for two until the seat is agreed, and the setup never carries it
+        said = await t.act(ALICE, "propose", proposal={"kind": "setup", **SETUP})
+        assert [(m["code"], m["msg"]) for m in said] == [("seat", SEAT_FIRST)]
+        said = await t.act(ALICE, "propose", proposal={"kind": "setup", **SETUP, "tonoja_position": 1})
+        assert [(m["code"], m["msg"]) for m in said] == [("seat", SEAT_NOT_SETUP)]
+        await agree_seat(t, BOB, ALICE, 1)
         # two players: the volunteer mission is refused in the lobby's own words
         said = await t.act(ALICE, "propose", proposal={"kind": "setup", **dict(SETUP, mission=16)})
         assert [(m["code"], m["msg"]) for m in said] == [("mission", content.catalog(2)[15]["reason"])]
-        offer = {"kind": "setup", **dict(SETUP, mission=2, tonoja_position=1)}
+        offer = {"kind": "setup", **dict(SETUP, mission=2)}
         msg = t.cmd("propose", proposal=offer)
         assert await t.send(ALICE, msg) == []
         pending = t.socks[BOB][0].last_state()["game"]
         assert pending["stage"] == "setup" and pending["proposal"] == {"payload": offer, "votes": [t.pid(ALICE)]}
         assert pending["setup"]["waiting"] == DECIDING and t.engine.s["mission"] is None
+        assert pending["setup"]["seat_proposal"] is None and pending["setup"]["seat_waiting"] == ANSWER_FIRST
         revision = t.engine.s["revision"]
         assert await t.send(ALICE, msg) == []                # the same request again: nothing happens
         assert t.engine.s["revision"] == revision
         assert [m["code"] for m in await t.act(ALICE, "confirm", yes=True)] == ["vote"]    # one vote each
+        said = await t.act(BOB, "propose", proposal={"kind": "tonoja_seat", "position": 0})
+        assert [(m["code"], m["msg"]) for m in said] == [("vote", ANSWER_FIRST)]            # one decision at a time
         assert await t.act(BOB, "confirm", yes=False) == []  # one decline and nothing is dealt
         assert t.engine.s["proposal"] is None and t.engine.s["phase"] == "setup"
+        assert t.engine.s["setup"]["tonoja_seat"] == 1       # the seat they agreed is still agreed
         assert await t.act(BOB, "propose", proposal=offer) == []
         assert await t.act(ALICE, "confirm", yes=True) == []
         s = t.engine.s
@@ -1285,7 +1801,8 @@ def test_under_a_party_that_does_not_name_its_host_the_crew_agrees_on_the_setup(
 
 def test_when_the_transition_is_over_a_party_without_the_claim_cannot_set_the_table_up(monkeypatch):
     """HOST_CLAIM_TRANSITION False: setup, like Begin, Retry and Next, is the Party Host's in
-    every Party round. A Party that cannot say who that is leaves only its own end."""
+    every Party round. A Party that cannot say who that is leaves only its own end. The two
+    players' seat is still theirs to agree; it deals nothing."""
     monkeypatch.setattr(expo_game, "HOST_CLAIM_TRANSITION", False)
 
     async def scenario():
@@ -1297,5 +1814,11 @@ def test_when_the_transition_is_over_a_party_without_the_claim_cannot_set_the_ta
         assert t.b.session.phase == "setup" and t.engine.s["proposal"] is None
         await t.b.party_end(proto.end_message(KEY, "expo", SID))
         assert t.b.session.engine is None
+        await t.close()
+        t = await table(claims=False, players=PLAYERS[:2], setup=False)
+        await agree_seat(t, ALICE, BOB)
+        said = await t.act(ALICE, "propose", proposal={"kind": "setup", **SETUP})
+        assert [(m["code"], m["msg"]) for m in said] == [("host", HOST_ONLY["setup"])]
+        assert t.b.session.phase == "setup" and t.engine.s["mission"] is None
         await t.close()
     run(scenario())

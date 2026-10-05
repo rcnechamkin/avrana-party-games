@@ -126,9 +126,10 @@ and a row that names something untested says why it cannot be tested. Every test
 
 In order. Each item has its issue; none is started by this document.
 
-1. **Owner decisions.** AVR-243 was answered on 2026-10-04 and AVR-245 on 2026-10-05. Still
-   open: the questions inside AVR-240 and AVR-252, and who confirms a Party round's setup
-   (built on the rule for Next; see the AVR-245 report in RECONCILIATION).
+1. **Owner decisions.** AVR-243 was answered on 2026-10-04 and AVR-245 on 2026-10-05,
+   including who confirms a Party round's setup (the Party Host), who decides Tonoja's seat
+   (the two players) and that an unconfirmed table never starts itself (the AVR-245 report in
+   RECONCILIATION). Still open: the questions inside AVR-240 and AVR-252.
    **Decided behaviour changes from AVR-243**, each small and independent: ~~a single card is
    communicated only as "only" (AVR-248)~~ done 2026-10-04; ~~enable `5with7` (AVR-249)~~ done 2026-10-04; ~~one shared
    sonar token for two players (AVR-250)~~ done 2026-10-04; ~~captain's authority in missions 10 and 13 (AVR-251)~~ done 2026-10-04.
@@ -141,7 +142,8 @@ In order. Each item has its issue; none is started by this document.
 7. **Blocked content** (AVR-244). Each mission or task is enabled only with source evidence or an
    owner ruling, a fixture per definition, and an update to the register.
 8. ~~Party-round setup (AVR-245)~~: built 2026-10-05, inside EXPO before the first deal, with
-   no change to the Party launch contract. **Presentation contract** (AVR-246).
+   no change to the Party launch contract; Tonoja's seat agreed by the two players, not set by
+   the Party Host. **Presentation contract** (AVR-246).
 
 Not on this list and not authorised by it: deployment, appliance keys, real-phone acceptance.
 

@@ -13,6 +13,12 @@ VERSION = 1
 LIFECYCLE = ('setup', 'begin', 'retry', 'next')
 PAUSED = 'Waiting for the crew to reconnect.'
 DECIDING = 'The crew is deciding something. Wait for their answer.'
+ANSWER_FIRST = 'Confirm or decline the crew decision first.'
+# Tonoja's seat is the two players' decision (R p22; owner decision 2026-10-05, AVR-245). It is
+# never part of the setup the Party Host confirms, and nothing is dealt for two until it is agreed.
+SEAT_FIRST = 'The two players decide where Tonoja sits first.'
+SEAT_NOT_SETUP = ('The two players decide where Tonoja sits. '
+                  'Setup carries the mission and the timed setting only.')
 # What a request id is made of (AVR-273). The client sends a UUID. None of these characters is
 # escaped in the snapshot file, so the request memory of a full attempt has a known size.
 REQUEST_CHARS = frozenset('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-')
@@ -45,13 +51,17 @@ class Engine:
                   'away': [], 'result': None, 'proposal': None}
         if setup:
             # The crew is seated and nothing is dealt (AVR-245, owner decision 2026-10-05): the
-            # table waits in `setup` until a `setup` decision says which mission, whether it is
-            # timed and where Tonoja sits. The values given here are only what is offered first.
+            # table waits in `setup` until a `setup` decision says which mission and whether it
+            # is timed. The values given here are only what is offered first. With two humans the
+            # two of them agree where Tonoja sits (`tonoja_seat`, a crew decision of its own):
+            # `tonoja_position` is the seat offered to them and `tonoja_seat` the seat agreed,
+            # none until they have, and never one by default.
             # No card, task or captain exists yet and the random generator is untouched, so a
             # table set up with these same values is the table this constructor deals directly.
             self._position(tonoja_position)
             self.s.update(phase='setup', expiry=None, setup={
-                'mission': mission_id, 'timed': timed, 'tonoja_position': tonoja_position})
+                'mission': mission_id, 'timed': timed, 'tonoja_position': tonoja_position,
+                'tonoja_seat': None})
             self.check()
             return
         self._seat(tonoja_position)
@@ -441,12 +451,19 @@ class Engine:
             except ValueError as e:
                 raise Invalid('mission', str(e)) from e
         elif kind == 'setup':
-            # What a standalone table's lobby lets its players choose, by the same checks: a
-            # mission this crew may play, and a seat for Tonoja (unused with three or more).
+            # What a standalone table's lobby lets its players choose, by the same check: a
+            # mission this crew may play. Tonoja's seat is not in it: with two humans the two
+            # of them must have agreed one (`tonoja_seat`) before anything is dealt.
             require(s['phase'] == 'setup', 'phase', 'The mission is already set up.')
+            require(len(s['humans']) != 2 or s['setup']['tonoja_seat'] is not None, 'seat', SEAT_FIRST)
             reason = unavailable(payload['mission'], len(s['humans']), payload['timed'])
             require(reason is None, 'mission', reason)
-            self._position(payload['tonoja_position'])
+        elif kind == 'tonoja_seat':
+            # R p22: the players decide where the dummy sits. Either of the two proposes, the
+            # other confirms; until the deal they may agree another seat the same way.
+            require(s['phase'] == 'setup', 'phase', 'Tonoja’s seat is decided before the first deal.')
+            require(len(s['humans']) == 2, 'seat', 'Tonoja sits only with a crew of two players.')
+            self._position(payload['position'])
         elif kind == 'end':
             # Before the first deal there is no table to end. (A Party round's end is the Party's.)
             require(s['phase'] != 'setup', 'phase', 'Set up the mission first.')
@@ -493,9 +510,11 @@ class Engine:
                 self.prepare(payload['mission'])
         elif kind == 'setup':
             s['timed'] = payload['timed']
-            self._seat(payload['tonoja_position'])
+            self._seat(s['setup']['tonoja_seat'])
             del s['setup']
             self.prepare(payload['mission'])
+        elif kind == 'tonoja_seat':
+            s['setup']['tonoja_seat'] = payload['position']
         elif kind == 'end':
             self._finish('abandoned', 'The crew ended the table.')
             s['phase'] = 'closed'
@@ -597,11 +616,15 @@ class Engine:
         keys = {'begin': {'kind'}, 'end': {'kind'}, 'retry': {'kind', 'keep'},
                 'next': {'kind', 'mission'}, 'distress': {'kind', 'direction'},
                 'assign': {'kind', 'owner', 'task'},
-                'setup': {'kind', 'mission', 'timed', 'tonoja_position'}}
+                'setup': {'kind', 'mission', 'timed'}, 'tonoja_seat': {'kind', 'position'}}
+        # A setup that names a seat for Tonoja is refused in words, never trimmed: a page from
+        # before the players' decision must not seem to have chosen the seat (owner decision 2).
+        require(not (isinstance(p, dict) and p.get('kind') == 'setup' and 'tonoja_position' in p),
+                'seat', SEAT_NOT_SETUP)
         # Every field is a plain value of its own type (AVR-264): what is accepted here is
         # stored in the pending decision, copied and sent to every viewer.
         types = {'kind': str, 'keep': bool, 'mission': int, 'direction': str, 'owner': str, 'task': str,
-                 'timed': bool, 'tonoja_position': int}
+                 'timed': bool, 'position': int}
         require(isinstance(p, dict) and isinstance(p.get('kind'), str) and p['kind'] in keys
                 and set(p) == keys[p['kind']] and all(type(p[k]) is types[k] for k in p),
                 'payload', 'Invalid crew decision.')
@@ -672,7 +695,7 @@ class Engine:
                 'stale', 'That moment has passed. Use the latest table state.')
         require(len(s['dedup']) < 10000, 'requests', 'This attempt has reached its request limit.')
         require(s['phase'] != 'closed', 'phase', 'This table is closed.')
-        require(s['proposal'] is None or t == 'confirm', 'vote', 'Confirm or decline the crew decision first.')
+        require(s['proposal'] is None or t == 'confirm', 'vote', ANSWER_FIRST)
         old, rng_state = deepcopy(s), self.rng.getstate()
         try:
             self._dispatch(actor, msg, now)
@@ -686,17 +709,36 @@ class Engine:
         return True
 
     def _check_setup(self):
-        # Before the first deal: the seated humans, the values offered, and nothing of a deal.
+        # Before the first deal: the seated humans, the values offered, the seat the two players
+        # have agreed for Tonoja (if they have), and nothing of a deal. A pending decision can
+        # only be the setup or Tonoja's seat, in the shape a seat could have sent it.
         s = self.s
         offered = s.get('setup')
+        asked = s.get('proposal')
+        pending = asked.get('payload') if isinstance(asked, dict) else None
+        require(isinstance(s.get('humans'), list) and (asked is None or (
+                    set(asked) == {'payload', 'votes'} and isinstance(pending, dict)
+                    and pending.get('kind') in ('setup', 'tonoja_seat') and type(asked['votes']) is list
+                    and asked['votes'] and all(isinstance(q, str) and q in s['humans'] for q in asked['votes']))),
+                'snapshot', 'Setup check failed.')
+        if pending is not None:
+            try:
+                self._decision_shape(pending)
+            except Invalid:
+                raise Invalid('snapshot', 'Setup check failed.') from None
         require(s['mission'] is None and s['attempt'] == 0 and s['result'] is None and s['expiry'] is None
                 and type(s['timed']) is bool and type(s['revision']) is int and s['revision'] >= 0
                 and len(s['humans']) in (2, 3, 4, 5) and len(set(s['humans'])) == len(s['humans'])
                 and s['seats'] == s['humans'] and set(s['away']) <= set(s['humans'])
-                and isinstance(offered, dict) and set(offered) == {'mission', 'timed', 'tonoja_position'}
+                and isinstance(offered, dict)
+                and set(offered) == {'mission', 'timed', 'tonoja_position', 'tonoja_seat'}
                 and type(offered['mission']) is int and type(offered['timed']) is bool
                 and type(offered['tonoja_position']) is int
-                and (s['proposal'] is None or s['proposal']['payload']['kind'] == 'setup'),
+                and (offered['tonoja_seat'] is None or (
+                    type(offered['tonoja_seat']) is int and 0 <= offered['tonoja_seat'] <= 2
+                    and len(s['humans']) == 2))
+                and (pending is None or pending['kind'] == 'setup'
+                     or (len(s['humans']) == 2 and 0 <= pending['position'] <= 2)),
                 'snapshot', 'Setup check failed.')
 
     def check(self):
@@ -768,14 +810,23 @@ class Engine:
 
     def _setup_view(self, actor):
         # All of it is public: who is seated, what is offered and what may be chosen. There is no
-        # hand to show anyone yet. `waiting` is why the setup cannot be confirmed at this moment.
+        # hand to show anyone yet. `waiting` is why the setup cannot be confirmed at this moment
+        # (the sentence Deal is refused with) and `seat_waiting` why a seat for Tonoja cannot be
+        # proposed at this moment. `seat_proposal` says who proposed a seat and who must answer.
         s = self.s
-        waiting = PAUSED if s['away'] else DECIDING if s['proposal'] else None
+        two = len(s['humans']) == 2
+        missing = two and s['setup']['tonoja_seat'] is None
+        waiting = PAUSED if s['away'] else DECIDING if s['proposal'] else SEAT_FIRST if missing else None
+        seat_waiting = (PAUSED if s['away'] else ANSWER_FIRST if s['proposal'] else None) if two else None
+        asked = s['proposal'] if s['proposal'] and s['proposal']['payload']['kind'] == 'tonoja_seat' else None
         return {'kind': 'expo', 'attempt': s['attempt'], 'revision': s['revision'], 'stage': 'setup',
                 'mission': None, 'seats': list(s['seats']), 'away': list(s['away']),
                 'proposal': deepcopy(s['proposal']), 'result': None, 'expiry': None,
                 'log': deepcopy(s['log']),
-                'setup': {**s['setup'], 'tonoja': len(s['humans']) == 2, 'waiting': waiting,
+                'setup': {**s['setup'], 'tonoja': two, 'waiting': waiting, 'seat_waiting': seat_waiting,
+                          'seat_proposal': asked and {
+                              'position': asked['payload']['position'], 'by': asked['votes'][0],
+                              'asked': [q for q in s['humans'] if q not in asked['votes']]},
                           'missions': catalog(len(s['humans']), s['setup']['timed'])},
                 'me': {'seat': actor} if actor in s['humans'] else None}
 

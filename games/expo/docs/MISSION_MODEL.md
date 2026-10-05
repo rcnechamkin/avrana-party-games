@@ -152,11 +152,20 @@ A table opens on a mission its crew chose, with the table's `timed` setting and,
 players, Tonoja's seat (R p22). A standalone table chooses them in its lobby. A Party-launched
 table has no lobby and chooses them in EXPO's `setup` phase before the first deal (owner
 decision 2026-10-05, AVR-245, POLICY P24 in [RECONCILIATION](RECONCILIATION.md#digital-policy-audit);
-[ACTIONS](ACTIONS.md#setup-before-the-first-deal-a-party-round)). Both ask the same function,
+[ACTIONS](ACTIONS.md#setup-before-the-first-deal-a-party-round)). There the mission and the
+timed setting are the Party Host's to confirm, and Tonoja's seat is the two players' to agree:
+R p22 says the players decide where the dummy sits, and the owner decided on 2026-10-05
+(DECIDED): "Tonoja's seat must follow the rulebook. The players decide it. Do not give that
+decision solely to the Party Host." Nothing is dealt for two players until they have agreed a
+seat, and nothing is ever dealt by itself ("An unconfirmed table must never start itself.
+Explicit setup confirmation is required."). The principle: "The Party Host controls party/game
+flow. Game-specific decisions remain with whoever the game's rules assign them to." Both ways
+of opening ask the same function,
 `content.unavailable(mission, humans, timed)`: a mission is refused when it does not exist, is
 blocked (its conflict code is the reason), or is the volunteer mission with two players. The
-first thing offered is mission 1, untimed, Tonoja after both players. The same mission, setting
-and seat give the same preparation whichever way they were chosen.
+first thing offered is mission 1, untimed, Tonoja after both players (a seat that is offered
+is still not agreed until one player proposes it and the other confirms). The same mission,
+setting and seat give the same preparation whichever way they were chosen.
 
 ### Two players
 

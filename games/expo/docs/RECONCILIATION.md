@@ -38,7 +38,9 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
   routine progression, was decided on 2026-10-04 and is built for Party rounds: the Party Host
   owns Begin, Retry and Next (AVR-252, with AVR-275). A sixth was decided on 2026-10-05 and is
   built: a Party round chooses its mission, timed setting and Tonoja's seat inside EXPO before
-  the first deal (AVR-245, P24).
+  the first deal (AVR-245, P24). Three more on AVR-245 were decided that evening and are built:
+  the Party Host alone confirms the setup, the two players decide Tonoja's seat, and an
+  unconfirmed table never starts itself.
 - Eight missions and four tasks stay blocked on source material (AVR-244).
 - The earlier specification was wrong or stale in eleven places (E-S1 to E-S11).
 
@@ -155,9 +157,9 @@ a source's wording makes the choice non-obvious and the owner has not confirmed 
 | P19 | Durable restoration is opt-in, atomic, and fails closed; Party rounds do not use it | platform has no store | `test_atomic_store_session_restart_and_fail_closed`, `test_storage_failure_rejects_action_without_losing_table`, `test_closed_snapshot_restores_shared_lobby_reset_and_rejects_corrupt_phase`, `test_a_party_round_never_inherits_or_writes_a_standalone_snapshot`, `test_a_snapshot_from_other_content_or_rules_is_refused` | uncontested |
 | P20 | A secret prediction is revealed to everyone at the mission result | R is silent | `test_prediction_zero_is_locked_and_secret_is_private` (privacy before the result only) | uncontested |
 | P21 | Ending the table is `abandoned` unless a mission result already stood, in which case the outcome reported to Party is `completed` | Party protocol vocabulary | `test_ending_the_table_is_abandoned`, `test_ending_the_table_after_a_decided_mission_is_completed` | uncontested |
-| P22 | The dummy's seat is a lobby setting, default after both players | R p22: the players decide where it sits | `test_deals_conserve_and_captain` | uncontested standalone; in a Party round it is part of the setup (P24, Q11) |
+| P22 | The dummy's seat is a lobby setting, default after both players | R p22: the players decide where it sits | `test_deals_conserve_and_captain`, `test_a_standalone_table_of_two_still_seats_tonoja_from_its_lobby` | uncontested standalone; in a Party round the two players agree it before the deal and the Party Host cannot set it (P24, Q11; owner decision 2026-10-05) |
 | P23 | Mission 8 is offered to two players and counts the dummy in the balance | C11 | the same evaluator on mission 21: `test_mission_twenty_one_counts_tonoja_in_the_balance_of_color_ones` | confirmed 2026-10-04 (Q6): the dummy is the third crew member for crew-count mechanics |
-| P24 | A Party round opens in `setup` with the crew seated and nothing dealt. One `setup` decision (mission, timed setting, Tonoja's seat), checked by the standalone lobby's own rules, is committed by whoever moves that table on: the Party Host, or the whole crew under a Party that does not name its host. Mission 1, untimed, Tonoja after both players is offered first. No timer starts an unconfirmed table | owner decision 2026-10-05 (AVR-245): setup inside EXPO before the first deal, no change to the Party launch contract. Who confirms is not in that decision: it follows the rule already in force for the next mission (AVR-252) | `test_setting_up_what_is_offered_deals_exactly_the_table_a_direct_start_deals`, `test_setup_allows_exactly_what_the_standalone_lobby_allows`, `test_a_party_round_opens_in_setup_and_only_the_party_host_sets_it_up`, `test_under_a_party_that_does_not_name_its_host_the_crew_agrees_on_the_setup`, `test_an_unconfirmed_table_waits_and_no_timer_ever_starts_it`, `test_a_standalone_table_has_no_setup_step` | where it happens: decided 2026-10-05 (Q11). Who confirms, and whether an unconfirmed table ever starts by itself: open, see the AVR-245 report |
+| P24 | A Party round opens in `setup` with the crew seated and nothing dealt. One `setup` decision (mission, timed setting), checked by the standalone lobby's own rules, is committed by whoever moves that table on: the Party Host, or the whole crew under a Party that does not name its host. With two humans the two players first agree Tonoja's seat as a crew decision of their own (`tonoja_seat`: one proposes, the other confirms; changeable until the deal); the setup never carries a seat and is refused until one is agreed. Mission 1, untimed, Tonoja after both players is offered first; an offered seat is not an agreed one. No timer starts an unconfirmed table | owner decisions 2026-10-05 (AVR-245), DECIDED: setup inside EXPO before the first deal, no change to the Party launch contract; "Setup confirmation remains Party Host only."; "Tonoja's seat must follow the rulebook. The players decide it. Do not give that decision solely to the Party Host."; "An unconfirmed table must never start itself. Explicit setup confirmation is required." Principle: "The Party Host controls party/game flow. Game-specific decisions remain with whoever the game's rules assign them to." R p22 for the seat | `test_setting_up_what_is_offered_deals_exactly_the_table_a_direct_start_deals`, `test_setup_allows_exactly_what_the_standalone_lobby_allows`, `test_a_party_round_opens_in_setup_and_only_the_party_host_sets_it_up`, `test_the_setup_never_carries_or_decides_tonojas_seat`, `test_two_players_are_dealt_nothing_until_they_have_agreed_tonojas_seat`, `test_the_seat_is_agreed_by_the_existing_crew_decision_rules`, `test_the_players_may_agree_another_seat_until_the_deal_and_not_after`, `test_a_party_host_who_plays_decides_tonojas_seat_only_as_a_player_with_the_others_consent`, `test_a_watching_party_host_has_no_say_in_tonojas_seat`, `test_three_to_five_humans_have_no_seat_to_agree_and_nothing_changed_for_them`, `test_under_a_party_that_does_not_name_its_host_the_crew_agrees_on_the_setup`, `test_an_unconfirmed_table_waits_and_no_timer_ever_starts_it`, `test_a_standalone_table_has_no_setup_step` | decided 2026-10-05: where it happens (Q11), who confirms, who decides Tonoja's seat, and that nothing starts by itself. No owner question is open on it |
 
 ## Stale or incorrect earlier specification
 
@@ -432,8 +434,9 @@ dummy's seat?** Now: fixed at mission 1, untimed, dummy after both players. R p2
 dummy's seat a player choice.
 Decided 2026-10-05 (owner, on AVR-245): yes, **inside EXPO before the first deal**, game-side,
 with no change to the Party launch contract or pregame unless a later product decision moves
-setup into Party. Built as P24. The decision does not say who confirms the setup; what was built
-and what is still the owner's is in the [AVR-245 report](#avr-245-2026-10-05).
+setup into Party. Built as P24. Decided the same evening (owner, final): "Setup confirmation remains Party Host only." "Tonoja's seat must follow the rulebook. The players decide it. Do not give that decision solely to the Party Host." "An unconfirmed table must never start itself. Explicit setup confirmation is required."
+The principle: "The Party Host controls party/game flow. Game-specific decisions remain with whoever the game's rules assign them to." What was built for them is in the
+[AVR-245 report](#avr-245-2026-10-05).
 
 **Q12 (AVR-246). Presentation drafts.** Commit them as non-canonical drafts or keep them out; and
 whether a causality record is wanted in results.
@@ -1118,41 +1121,88 @@ avrana-party.
 
 - **The phase.** `Engine(..., setup=True)` seats the humans and stops in phase `setup` with no
   mission, no deal and an untouched random generator. The adapter asks for it in a Party round
-  only (`ExpoSession.game_start`). A `setup {mission, timed, tonoja_position}` decision then
-  stores the setting, seats Tonoja and calls the ordinary preparation.
+  only (`ExpoSession.game_start`). A `setup {mission, timed}` decision then stores the
+  setting, seats Tonoja where the two players agreed and calls the ordinary preparation.
 - **One check, shared.** `content.unavailable` is what the lobby's Start already did inline; the
   lobby now calls it too. Tonoja's seat is validated by the function the constructor used.
 - **Who confirms.** `setup` was added to `engine.LIFECYCLE`, so it travels the existing path
   for Next: the Party Host's ticketed `host` message where the Party names its host, a crew
   decision where it does not, and nothing at all once `HOST_CLAIM_TRANSITION` is off and the
-  Party names nobody. No new authority was written and `core/net.py` did not change. **This is
-  the implementation's reading, not an owner decision** (see the open questions).
+  Party names nobody. No new authority was written and `core/net.py` did not change. DECIDED
+  by the owner on 2026-10-05 (decision 1 below).
 - **Same table as before.** For what is offered first the state, the random state and every
-  view equal a table dealt directly, except `revision`, which is 1 instead of 0 because the
-  confirmation is one accepted change. Checked in the tests for 25 seeds at each crew size, and
+  view equal a table dealt directly, except `revision`, which counts the accepted changes of
+  the setup: 1 instead of 0 for three to five humans (the confirmation), 3 for two (the seat's
+  proposal, its confirmation, and the setup). Checked in the tests for 25 seeds at each crew size, and
   by hand against `origin/main` (9f9aa41) loaded beside this branch: 160 engine tables and
   three Party rounds through the adapter, identical but for that counter.
-- **No draft on the server.** The choice lives on the choosing phone until it is sent. A reload
-  during setup shows what is offered again; nothing can be half-chosen in the table's state.
-- **Client.** The setup screen is the lobby panel with its three controls, for whoever may set
-  the table up, and a waiting line for everyone else. It reuses the lobby's elements in place:
+- **No draft on the server.** The choice of mission and clock lives on the choosing phone until
+  it is sent. A reload during setup shows what is offered again; no mission can be half-chosen
+  in the table's state. (The seat the two players agreed, and a seat proposal waiting for its
+  answer, are decisions and are table state: they survive a reload.)
+- **Client.** The setup screen is the lobby panel with its mission and clock controls, for
+  whoever may set the table up, and a waiting line for everyone else. For two players it also
+  shows the seat agreed for Tonoja to everyone and gives each of the two players a seat list
+  and a propose button; the answer is the usual decision panel. It reuses the lobby's elements in place:
   `index.html` and `expo.css` did not change. It was written without a browser: see the table.
 
-Open owner questions (nothing below is decided):
+**Owner decisions, 2026-10-05 (evening). DECIDED, final.** They close the three questions this
+report first listed as open (who confirms the setup; Tonoja's seat; an unconfirmed table). No
+owner question from them remains.
 
-1. **Who confirms the setup.** Built: the Party Host alone, as for Next. The decision of
-   2026-10-05 says where setup happens, not who decides it. The alternative is the crew
-   agreeing together (as it does for distress), or the host choosing and the crew consenting.
-2. **Tonoja's seat.** R p22 says the players decide where the dummy sits. Under the built rule
-   a Party Host who is watching, or is one of the two players, decides it alone.
-3. **An unconfirmed table.** Built: it waits for ever, with no default start and no timer; the
-   Party Host can end EXPO from the Party. Whether it should ever start by itself on mission 1
-   is the packet's open point and was not invented here.
+1. "Setup confirmation remains Party Host only."
+2. "Tonoja's seat must follow the rulebook. The players decide it. Do not give that decision solely to the Party Host."
+3. "An unconfirmed table must never start itself. Explicit setup confirmation is required."
 
-Consequences of rules already in force, not questions: an away seat blocks the setup as it
-blocks Begin (AVR-240 owns recovery); a Party that names no host cannot set a table up once
-`HOST_CLAIM_TRANSITION` is off, exactly as it could not Begin; the timed setting is offered with
-any mission, as in the lobby, and changes mission 16 only.
+The principle: "The Party Host controls party/game flow. Game-specific decisions remain with whoever the game's rules assign them to."
+
+What that changed in the build (decision 2; decisions 1 and 3 confirm what was built):
+
+- **Tonoja's seat left the setup.** `setup` is now `{mission, timed}`. A payload that still
+  carries `tonoja_position` is refused with `seat` "The two players decide where Tonoja sits.
+  Setup carries the mission and the timed setting only." It is refused rather than ignored, the
+  stricter of the two readings: a page from before this change is told in words that it did not
+  choose the seat, and cannot deal on a seat nobody agreed.
+- **A crew decision of its own.** `tonoja_seat {position}` exists in phase `setup` with exactly
+  two humans. It travels the existing proposal path (`propose`, `confirm`): the proposer's
+  confirmation is recorded, the other player's makes it take effect, one decline cancels it,
+  one decision is pending at a time, request ids are remembered, an away seat pauses it. No new
+  voting code was written. The agreed seat is `setup.tonoja_seat`; Tonoja takes the seat at
+  the deal.
+- **The host has no say.** `tonoja_seat` is not in `engine.LIFECYCLE`, so the `host` message
+  cannot commit it (`strategic` "The crew decides that together."), and `ExpoSession._host_owned`
+  does not reserve it, so the two seats may propose it in every kind of Party round. A Party
+  Host who is one of the two players proposes or confirms as that seat and needs the other
+  player's confirmation; a watching host holds no seat and is not asked.
+- **The Deal waits.** With two humans `setup` is refused with `seat` "The two players decide
+  where Tonoja sits first." until a seat is agreed, and with the existing `vote` sentence while
+  a seat proposal is pending. No default seat exists: the seat offered first (after both
+  players) must be proposed by one player and confirmed by the other like any other seat.
+- **Changing it.** A new proposal and its confirmation replace the agreed seat until the deal.
+  A declined change leaves the seat agreed before it. After the deal the kind is refused
+  (`phase`).
+- **A Party from before the host claim.** The same two decisions in the same order: the two
+  players agree the seat, then the crew (the same two) confirms `setup {mission, timed}`. One
+  payload shape and one rule for every Party round; the crew's setup does not carry the seat
+  either.
+- **Three to five humans.** Nothing changed: no Tonoja, no seat, no extra step, `tonoja_seat`
+  refused (`seat` "Tonoja sits only with a crew of two players."), and the dealt table equals
+  the one this branch dealt before and the one `origin/main` deals, but for `revision`.
+- **View.** `setup.tonoja_seat`, `setup.seat_proposal {position, by, asked}`,
+  `setup.seat_waiting` and, in `setup.waiting`, the sentence the Deal is refused with. All
+  public; the same for a player, the host and a watcher.
+- **Snapshot.** Format version 1. `setup` gained one key, `tonoja_seat`. A setup snapshot in
+  the earlier shape of this branch (never deployed) is refused as an invalid snapshot; the
+  session reports that the saved table could not be restored and raises nothing else.
+
+One reading the decisions do not spell out, taken conservatively: a declined proposal to change
+an agreed seat leaves the earlier agreement standing (both players did agree to it), instead of
+clearing it.
+
+Consequences of rules already in force, not questions: an away seat blocks the setup and the
+seat agreement as it blocks Begin (AVR-240 owns recovery); a Party that names no host cannot
+set a table up once `HOST_CLAIM_TRANSITION` is off, exactly as it could not Begin; the timed
+setting is offered with any mission, as in the lobby, and changes mission 16 only.
 
 **Merging with AVR-246 and AVR-267.** Both branches were written against a table that is always
 dealt. The textual conflicts are keep-both. These are not conflicts and must be fixed by hand
@@ -1160,24 +1210,28 @@ when either is merged with this one (confirmed by the independent review of 6903
 
 - `Engine._setup_view` must carry the keys their adapter and client read from every view:
   `resolving: None` and `events: []`. AVR-246's `ExpoSession.game_state` reads
-  `view['resolving']` and raises without it.
+  `view['resolving']` and raises without it. If AVR-246 emits an event for every committed crew
+  decision, a committed `tonoja_seat` happens in `setup` too, with no mission to name.
 - `Engine._emit` reads `s['mission']['id']`, and `Engine.presence()` reads `len(s['history'])`
   and then emits `PLAYER_RECONNECTED`. In `setup` there is no mission and no history: both must
   tolerate that (record the presence change, emit nothing), or a seat that reconnects during
   setup raises.
 - `drawSetup` writes `#status.textContent`. AVR-267 splits that line into two spans and writes
   it through `say()`. The merge is textually clean and breaks every later draw, because the
-  spans are gone: `drawSetup` must call `say(text)` instead.
+  spans are gone: `drawSetup` must call `say(text)` instead. `question()` gained a
+  `tonoja_seat` entry and `seatWords()` reads the lobby's `#tonoja-position` options: both must
+  survive whatever AVR-267 does to the lobby markup.
 
 `test_setup_waits_for_an_away_seat_and_survives_reloads` and the other socket-level setup
 tests reach the first two; only a browser reaches the third.
 
-| Check | Result (Windows 11) |
+| Check | Result (Windows 11), after the owner decisions of 2026-10-05 |
 |---|---|
-| `pytest -q tests/test_expo_*.py tests/test_expo.py` | 1111 passed, 2 skipped, 2 xfailed |
-| `tests/test_expo_authority.py` | 87 passed |
-| Independent review at 6903703, as reported to the implementer | pass with findings, none Important; the findings in the client (the reason a mission is unavailable, a choice kept from an earlier table, focus after the deal, the wording of a timed setup) were fixed afterwards |
-| `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check, `node --check games/expo/web/client.js` | OK |
-| `git diff --stat origin/main -- core provider deploy tests/vectors web` | empty |
-| `tests/playtest_expo_party.mjs`, `tests/playtest_expo.mjs` | **not run** by the implementer (no browser in that session). Run by the orchestrator at 6903703, as reported: standalone 2 and 3 humans, Party 3, 2 with Tonoja, 5, a watching host and an older Party, PASS each, the setup control in the first view on every phone. The client fixes made after that have not been run in a browser |
+| `pytest -q tests/test_expo_*.py tests/test_expo.py` | 1170 passed, 2 skipped, 2 xfailed |
+| `tests/test_expo_authority.py`, eight runs in a row | 127 passed each time (the seeded helper of PR #52 is kept: the seed goes in after the launch and the deal is compared after the setup) |
+| Against `origin/main` (e0c5f11) and this branch's earlier head (e536ea7), loaded beside it: 160 engine tables (40 seeds at each crew size) and 40 Party rounds through the adapter, set up as offered (two players agreeing the offered seat) | state, random state, every view and the settings identical, but for `revision` and the request memory |
+| `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check, `node --check` on `client.js` and the Party playtest | OK |
+| `git diff --stat origin/main -- core provider deploy tests/vectors` | empty |
+| Independent review | of 6903703 only (pass, findings fixed). The seat agreement has not been reviewed |
+| `tests/playtest_expo_party.mjs`, `tests/playtest_expo.mjs` | **not run** by the implementer (no browser in that session). The orchestrator ran them at 6903703, before the seat became the players' decision. The setup screen's seat line, seat list and propose button, and the playtest's new two-player steps, have never been run in a browser |
 | A real phone | not run |

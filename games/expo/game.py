@@ -125,7 +125,8 @@ class ExpoSession(GameSession):
             # A Party round skips the lobby, so its crew chooses in the game instead: the table
             # opens in `setup` and nothing is dealt until that is confirmed (AVR-245, owner
             # decision 2026-10-05). The settings are what is offered first. Nothing starts it by
-            # itself: no timer is armed and an unconfirmed table stays where it is.
+            # itself: no timer is armed and an unconfirmed table stays where it is. Tonoja's seat
+            # is offered too, and it is the two players' to agree, never the host's to set.
             self.engine = Engine(humans, self.rng, self.settings['mission'], self.settings['timed'],
                                  self.settings['tonoja_position'], setup=self.party_round)
         except ValueError as e:
@@ -207,7 +208,9 @@ class ExpoSession(GameSession):
         # for everyone. Where the Party also says who its host is, Begin, Retry and Next are the
         # host's too (host_action) and no seat may propose them. A Party that does not say
         # leaves them to the crew, as a standalone table does. Decisions the rules give the crew
-        # or the captain (distress, assignments) are never the host's.
+        # or the captain (distress, assignments, where Tonoja sits) are never the host's: the
+        # Party Host controls the flow of the party and the game, and a game's own decisions
+        # stay with whoever its rules give them to (owner principle, 2026-10-05).
         if not self.party_round or msg.get('t') != 'propose' or not isinstance(msg.get('proposal'), dict):
             return None
         kind = msg['proposal'].get('kind')

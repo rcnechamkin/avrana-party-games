@@ -767,13 +767,14 @@ def test_a_party_round_refuses_lobby_settings_and_opens_in_setup_with_nothing_de
     s.tick(s.gen)
     e = s.engine.s
     assert s.phase == e['phase'] == 'setup' and e['mission'] is None and e['attempt'] == 0
-    assert e['setup'] == {'mission': 1, 'timed': False, 'tonoja_position': 2}      # offered, not dealt
+    assert e['setup'] == {'mission': 1, 'timed': False, 'tonoja_position': 2,      # offered, not dealt
+                          'tonoja_seat': None}                 # (a seat is agreed only by two players)
     assert not {'hands', 'columns', 'captain', 'pool'} & set(e)
     assert s.deadline is None                                   # and no timer will start it
     s.set_settings('t1', {'mission': 5, 'timed': True})         # still not the lobby's to change
     assert s.settings == {'mission': 1, 'timed': False, 'tonoja_position': 2} and e['mission'] is None
     s.host_action({'t': 'lifecycle', 'attempt': 0, 'revision': e['revision'],
-                   'decision': {'kind': 'setup', 'mission': 5, 'timed': True, 'tonoja_position': 2}})
+                   'decision': {'kind': 'setup', 'mission': 5, 'timed': True}})
     assert s.engine.s['mission']['id'] == 5 and s.engine.s['timed'] is True
     assert s.settings == {'mission': 5, 'timed': True, 'tonoja_position': 2}
 
