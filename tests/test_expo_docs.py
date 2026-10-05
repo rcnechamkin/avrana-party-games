@@ -5,7 +5,9 @@ games/expo/docs/ is the durable design record. These checks stop it drifting:
   * the mission table in MISSION_MODEL.md equals games/expo/content.py;
   * the task catalog in VTT_REFERENCE.md equals games/expo/content/tasks.json;
   * every conflict code the content uses to block something is a row of the conflict register;
-  * every test the documents cite exists, and every pinned defect test is cited.
+  * every test the documents cite exists, and every pinned defect test is cited;
+  * a file in games/expo/docs/ is either one of the canonical documents or a declared
+    non-canonical draft that says so in its first lines (AVR-246).
 
 They read files only. A failure here means a definition or a test changed without its document
 (or the reverse); fix both in the same commit.
@@ -25,7 +27,11 @@ REQUIRED = ('RULES_SPEC.md', 'GAME_STATE.md', 'ACTIONS.md', 'MISSION_MODEL.md', 
             'IMPLEMENTATION_PLAN.md', 'RECONCILIATION.md')
 TEST_FILES = ('test_expo.py', 'test_expo_party.py', 'test_expo_contract.py', 'test_expo_coverage.py',
               'test_expo_persistence.py', 'test_expo_input.py', 'test_expo_deck.py',
-              'test_expo_authority.py', 'test_expo_repair.py')
+              'test_expo_authority.py', 'test_expo_repair.py', 'test_expo_events.py')
+# Draft product and design specifications kept for their intent (AVR-246, owner decision Q12).
+# They define nothing: each opens with a banner that says so and names what wins.
+NON_CANONICAL = ('STATE_DRIVEN_GAMEPLAY_BEHAVIOR_SPEC.md', 'MISSION_GAMEPLAY_UI_UX_SPEC.md')
+BANNER = '> **NON-CANONICAL DRAFT. Design and product reference only.**'
 
 
 def read(name):
@@ -55,6 +61,32 @@ def test_the_six_required_documents_and_the_reconciliation_exist():
     for name in REQUIRED:
         assert (DOCS / name).is_file(), name
         assert read(name).startswith('# EXPO'), name
+
+
+def test_every_file_in_the_docs_directory_is_canonical_or_a_declared_non_canonical_draft():
+    assert {p.name for p in DOCS.iterdir()} == set(REQUIRED) | set(NON_CANONICAL)
+    assert not set(REQUIRED) & set(NON_CANONICAL)
+    manifest = {d['path']: d for d in json.loads(
+        (ROOT / 'docs' / 'manifest.json').read_text(encoding='utf-8'))['documents']}
+    for name in REQUIRED:
+        assert manifest['games/expo/docs/' + name]['class'] == 'canonical', name
+        assert BANNER not in read(name), name
+    for name in NON_CANONICAL:
+        text = read(name)
+        assert text.startswith(BANNER), name                          # said before anything else
+        head = text.split('\n\n')[0]
+        assert '**they win and this file is wrong**' in head and 'RECONCILIATION' in head, name
+        entry = manifest['games/expo/docs/' + name]
+        assert entry['class'] != 'canonical' and 'NON-CANONICAL' in entry['notes'], name
+        assert not text.startswith('# EXPO'), name
+
+
+def test_the_non_canonical_drafts_are_not_a_source_of_cited_tests_or_tables():
+    # Nothing checks the drafts against the code, and nothing in them may look checked.
+    for name in NON_CANONICAL:
+        text = read(name)
+        assert not re.findall(r'`(test_[a-z0-9_]+)`', text), name
+        assert '<!--' not in text, name
 
 
 def test_the_mission_table_matches_the_content():

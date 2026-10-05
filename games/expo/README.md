@@ -24,6 +24,7 @@ specification, deferred) and an issue.
 | Which sources were used, what came from the reference implementation, what is unresolved? | [VTT_REFERENCE](docs/VTT_REFERENCE.md) (pins, reuse and rewrite, conflict register C01 to C20, task catalog) |
 | Is the code right? Where is it wrong? What does the owner still have to decide? | [RECONCILIATION](docs/RECONCILIATION.md) |
 | Which tests prove each rule, and what should be built next? | [IMPLEMENTATION_PLAN](docs/IMPLEMENTATION_PLAN.md) |
+| What was the product intent for presentation? (**non-canonical** drafts: reference only, the documents above and the code win) | [STATE_DRIVEN_GAMEPLAY_BEHAVIOR_SPEC](docs/STATE_DRIVEN_GAMEPLAY_BEHAVIOR_SPEC.md), [MISSION_GAMEPLAY_UI_UX_SPEC](docs/MISSION_GAMEPLAY_UI_UX_SPEC.md) |
 
 ## Status on 2026-10-04
 
@@ -76,16 +77,28 @@ on distress and shared assignments. Who the host is comes from the Party at ever
 Begin, the crew gets a few seconds to ask for distress; nobody confirms anything to start. Under
 a Party from before the claim the crew votes instead, transitionally: logged, and shown.
 
+**Events, causality and the resolving phase (AVR-246).** The engine keeps a bounded, numbered
+log of what happened as meaning (a card, a resolved trick, a communication, an objective's
+progress and outcome, a modifier, the mission's result, a returning player), says what a failed
+attempt is attributed to (objective, triggering and affected seat, cards, trick), gives each task
+a state (PENDING, ACTIVE, COMPLETED, FAILED, IMPOSSIBLE), and holds the table for 0.8 s between
+tricks until the server settles it. A timed mission gains no time from that hold: its clock runs
+through it and its deadline never moves (owner decision, 2026-10-05); a deadline that passes
+during a hold ends the attempt when the hold ends, before anyone is given a turn. No other rule
+changed and no legal card is ever warned about. Each
+viewer is sent only the latest resolved trick's events and what followed. **The client does not
+use any of it yet**: [GAME_STATE](docs/GAME_STATE.md#semantic-events-failure-causality-and-the-resolving-phase).
+
 **Still open.** Recovery from an away seat (AVR-240; the Party Host can always end EXPO):
 see the AVR-275 report in RECONCILIATION. Party-round setup: AVR-245.
-Presentation contract: AVR-246. Wasteland presentation: AVR-267, on top of this board.
+Wasteland presentation, including anything drawn from the events: AVR-267, on top of this board.
 
 **Blocked on source material.** Missions 3, 4, 12, 14, 15, 19, 20, 26 and tasks
 `moreRedThanGreen`, `moreYellowThanBlue`, `4with8`, `6with6`: AVR-244. With two
 players, distress, volunteer missions and shared-sonar or terrain missions are refused.
 
-**Not done.** No deployment, no appliance key, no real-phone acceptance. No TV view, bots or
-presentation events.
+**Not done.** No deployment, no appliance key, no real-phone acceptance. No TV view or bots; no
+presentation of the events.
 
 ## Code map
 
@@ -93,9 +106,9 @@ presentation events.
 |---|---|
 | `rules.py` | the 40 cards, legal cards, trick winner, truthful declarations |
 | `content.py`, `content/tasks.json` | mission and task definitions, blocked content, content hash |
-| `tasks.py` | task status from resolved tricks |
-| `engine.py` | authoritative state, command validation, transitions, per-viewer views, snapshots |
-| `game.py` | platform adapter: seats, lobby settings, timer tick, presence, optional snapshot file, Party outcome, who moves the table on (Party Host or crew) |
+| `tasks.py` | task status from resolved tricks, and the kind of a failure |
+| `engine.py` | authoritative state, command validation, transitions, per-viewer views, snapshots, the event log, failure causality, the resolving mark |
+| `game.py` | platform adapter: seats, lobby settings, timer tick, presence, optional snapshot file, Party outcome, who moves the table on (Party Host or crew), how long a resolved trick is held |
 | `storage.py` | atomic single-file snapshot store |
 | `web/` | client: one-viewport board (stage, sheets, hand, dock, result takeover); draws the view it is sent and sends intentions |
 
@@ -140,6 +153,7 @@ node tests/playtest_expo_party.mjs        # starts its own server and plays the 
 | `tests/test_expo_contract.py` | rules that had no direct test before the reconciliation, and the pinned defects |
 | `tests/test_expo_repair.py` | a forced task combination is repaired from the recycled used pile when the deck has no replacement; unchanged draws where it has; mission 32's named tasks left alone |
 | `tests/test_expo_docs.py` | the mission table, task catalog, conflict codes and cited tests in `docs/` equal the code |
+| `tests/test_expo_events.py` | semantic events (order, sequence, determinism, bound), what each viewer is sent and never sent, failure causality and objective states, no signal before a legal losing card, the resolving phase in the engine and the adapter, snapshots with and without the log |
 | `tests/test_expo_authority.py` | Party Host and captain as separate authorities: host-only Begin, Retry and Next and nothing else, prerequisites the host cannot skip, the crew's moment to ask for distress, a watching host, succession, a former host's kept tickets, a Party that does not answer, reconnect, an away seat, a Party without the host claim |
 | `tests/playtest_expo.mjs` | browser playtest of a standalone table, run by hand: the rules flow plus the one-viewport contract on five phone sizes and the result takeover |
 | `tests/playtest_expo_party.mjs` | browser playtest of a Party round against a simulated Party, run by hand: host and non-host controls and refusals, authority labels, captain who is not host, the distress moment, succession with kept tickets, reloads during a decision, a partly played trick and a result, focus and touch targets, Party-owned end, no route to the LAN Games hub; `EXPO_PARTY=old` runs the transitional fallback |

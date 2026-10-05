@@ -1,11 +1,15 @@
-"""Authoritative, deterministic engine. Commands are transactional and UI-independent."""
+"""Authoritative, deterministic engine. Commands are transactional and UI-independent.
+
+Besides the table state the engine keeps a bounded log of semantic events (AVR-246): what
+happened, in order, as meaning. It never says how to show, sound or time anything, and nothing
+in the engine reads the log to decide a rule."""
 from copy import deepcopy
 import json
 import random
 
 from .content import CONTENT_HASH, TASKS, mission
-from .rules import DECK, assertions, legal_cards, rank, suit, winner
-from .tasks import evaluate
+from .rules import DECK, assertions, legal_cards, matches, rank, suit, winner
+from .tasks import UNREACHABLE, VIOLATED, judge
 
 VERSION = 1
 # Routine steps of a table's life, as opposed to decisions the rules give the crew (AVR-252).
@@ -13,6 +17,18 @@ LIFECYCLE = ('begin', 'retry', 'next')
 # What a request id is made of (AVR-273). The client sends a UUID. None of these characters is
 # escaped in the snapshot file, so the request memory of a full attempt has a known size.
 REQUEST_CHARS = frozenset('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-')
+
+# Semantic events (AVR-246). The newest EVENT_LIMIT are kept, across attempts. A whole deal
+# measured 94 to 100 events with one task at two to five players and up to 113 with a mission's
+# drawn tasks, so the attempt in play is always whole and the two tricks a viewer may be sent
+# are always among them (GAME_STATE, "Retention").
+EVENT_TYPES = ('TURN_STARTED', 'CARD_PLAYED', 'TRICK_RESOLVED', 'COMMUNICATION_SENT',
+               'OBJECTIVE_PROGRESS', 'OBJECTIVE_COMPLETED', 'OBJECTIVE_FAILED',
+               'MISSION_MODIFIER_ACTIVATED', 'MISSION_SUCCESS', 'MISSION_FAILURE',
+               'PLAYER_RECONNECTED')
+EVENT_LIMIT = 240
+# Said to a seat that acts between a completed trick and the server's settle().
+RESOLVING = 'The trick is being resolved.'
 
 
 class Invalid(ValueError):
@@ -44,8 +60,153 @@ class Engine:
                   'seats': seats, 'attempt': 0, 'revision': 0, 'mission': None,
                   'timed': timed, 'distress': False, 'attempts': 0,
                   'log': [], 'counted': False, 'deck': [], 'used': [], 'dedup': {},
-                  'away': [], 'result': None, 'proposal': None}
+                  'away': [], 'result': None, 'proposal': None,
+                  'events': [], 'event_seq': 0, 'resolving': None, 'cause': None, 'failures': {}}
         self.prepare(mission_id)
+
+    # ---- semantic events and failure causality (AVR-246) ----
+
+    def _emit(self, name, /, trick=None, private=None, **data):
+        """Record that something happened. `trick` is the trick the event belongs to (0 before
+        play; by default the one in progress). `private` is `{seat, fields}`: fields only that
+        seat's own view may carry (a currents declaration)."""
+        s = self.s
+        s['event_seq'] += 1
+        event = {'seq': s['event_seq'], 'type': name, 'attempt': s['attempt'],
+                 'mission': s['mission']['id'],
+                 'trick': len(s['history']) + 1 if trick is None else trick, **data}
+        if private:
+            event['private'] = private
+        s['events'].append(event)
+        del s['events'][:-EVENT_LIMIT]
+
+    def _modifiers(self):
+        # What this attempt changes from the base rules, as the mission and its draw define it.
+        s, m = self.s, self.s['mission']
+        if s['communication'] != 'normal':
+            self._emit('MISSION_MODIFIER_ACTIVATED', trick=0, modifier='communication',
+                       value=s['communication'], drawn=m['communication'] == 'terrain')
+        if m['allocation'] != 'normal':
+            self._emit('MISSION_MODIFIER_ACTIVATED', trick=0, modifier='allocation', value=m['allocation'])
+        if m['objective']:
+            self._emit('MISSION_MODIFIER_ACTIVATED', trick=0, modifier='objective', value=m['objective'])
+        if s['distress']:
+            self._emit('MISSION_MODIFIER_ACTIVATED', trick=0, modifier='distress', value='active')
+
+    def _context(self):
+        s, m = self.s, self.s['mission']
+        return {'id': m['id'], 'attempt': s['attempt'], 'objective': m['objective'],
+                'allocation': m['allocation'], 'communication': s['communication'],
+                'timed': bool(m['seconds']), 'distress': s['distress']}
+
+    def _cause(self, kind, objective=None, failure=None, affected=None, action=None, record=None,
+               trigger=None, cards=None):
+        """Who and what a failure is attributed to, from public facts only: the cards played, who
+        won, who owns the task. `failure` is the evaluator's kind (games/expo/tasks.py).
+
+        The triggering seat is named only where the engine can say so honestly:
+          * a failure established when a trick resolved (`record`): the seat that won the trick,
+            because every evaluator is a function of who won which cards;
+          * a failure established by one card before its trick ended: the seat that played it;
+          * a failure during task selection: the seat whose answer ended the attempt (`trigger`).
+        A condition that was merely not met when the deal ended, and a deadline, name nobody.
+        `action` is always the committed command that the failure followed."""
+        s = self.s
+        card = None
+        if failure in (VIOLATED, UNREACHABLE) and trigger is None:
+            if record:
+                trigger = record['winner']
+                card = next(p['card'] for p in record['plays'] if p['seat'] == trigger)
+            elif action and action.get('card'):
+                trigger, card = action['seat'], action['card']
+        cards = list(cards or [])
+        if card and card not in cards:
+            cards.append(card)
+        return {'kind': kind, 'objective': objective, 'failure': failure,
+                'state': 'IMPOSSIBLE' if failure == UNREACHABLE else 'FAILED',
+                'affected_seat': affected, 'trigger_seat': trigger,
+                'trigger_controller': self.controller(trigger) if trigger else None,
+                'trigger_card': card, 'action': deepcopy(action), 'cards': cards,
+                'trick': (record['index'] if record else
+                          len(s['history']) + 1 if s['phase'] in ('before_trick', 'in_trick') else 0),
+                'mission': self._context()}
+
+    @staticmethod
+    def _relevant(definition, record):
+        # The cards of the deciding trick that the task is about: the ones it names, or the ones
+        # its selector counts.
+        if not record:
+            return []
+        named = set()
+
+        def walk(value):
+            if isinstance(value, dict):
+                for v in value.values():
+                    walk(v)
+            elif isinstance(value, list):
+                for v in value:
+                    walk(v)
+            elif isinstance(value, str) and value in DECK:
+                named.add(value)
+        params = definition['params']
+        walk(params)
+        selector = params.get('selector') if not named else None
+        return [p['card'] for p in record['plays']
+                if p['card'] in named or (selector and matches(p['card'], selector))]
+
+    def _fail(self, reason, cause, owner=None):
+        # An objective is lost and the attempt with it: the objective's event, then the mission's.
+        if cause['kind'] in ('task', 'mission_objective'):
+            self._emit('OBJECTIVE_FAILED', trick=cause['trick'], objective=cause['objective'],
+                       scope=cause['kind'], owner=owner, failure=cause['failure'], state=cause['state'],
+                       trigger_seat=cause['trigger_seat'], affected_seat=cause['affected_seat'],
+                       cards=list(cause['cards']))
+        self._finish('failed', reason, cause)
+
+    def settle(self, now=None):
+        """The server's word that a resolved trick has been taken in: the table leaves
+        `resolving` and the winner's turn begins. Not a player's action: no seat can send it, it
+        does not wait for anyone who is away, and it is never refused. Who calls it, and when,
+        is the adapter's business; the engine holds no clock for it. False if there was nothing
+        to settle.
+
+        A real-time mission's clock runs through the hold and its deadline never moves (owner
+        decision 2026-10-05). `now` is the caller's clock at the settle, as for observe_time: if
+        the deadline has passed by then, the trick is settled, its events and results stand, and
+        the attempt ends by time here, before any turn is opened. A caller with no clock leaves
+        `now` out; the deadline is then judged at the next observe_time."""
+        s = self.s
+        if not s['resolving']:
+            return False
+        s['resolving'] = None
+        if s['expiry'] is not None and type(now) in (int, float) and now >= s['expiry']:
+            return self.expire()
+        self._emit('TURN_STARTED', seat=s['turn'], controller=self.controller(s['turn']), lead=True)
+        s['revision'] += 1
+        return True
+
+    def presence(self, seat, away):
+        """A seated human's last connection closed, or the first one came back. The adapter
+        tells the engine; nothing here knows about sockets. False if nothing changed."""
+        s = self.s
+        if seat not in s['humans'] or (seat in s['away']) == bool(away):
+            return False
+        if away:
+            s['away'].append(seat)
+        else:
+            s['away'].remove(seat)
+            # The trick it belongs to: 0 before play; the trick in progress or about to be led;
+            # after a result, the last trick that was played or begun.
+            played = len(s['history'])
+            if s['phase'] in ('before_trick', 'in_trick'):
+                number = played + 1
+            elif s['result']:
+                number = played + 1 if s['trick'] else played
+            else:
+                number = 0
+            self._emit('PLAYER_RECONNECTED', trick=number, seat=seat)
+        s['revision'] += 1
+        return True
 
     def playable(self, seat):
         if seat == 'tonoja':
@@ -243,7 +404,9 @@ class Engine:
                  volunteers=[], answers=[], history=[], trick=[], leader=s['captain'],
                  turn=s['captain'], exposures=[], spent=[], shared=len(s['seats']) - 2,
                  communication=comm, terrain=terrain, pass_choices={}, result=None,
-                 proposal=None, expiry=None, counted=False, before_first_only=False, dedup={})
+                 proposal=None, expiry=None, counted=False, before_first_only=False, dedup={},
+                 resolving=None, cause=None, failures={})
+        self._modifiers()
         self.check()
 
     def selector(self):
@@ -269,7 +432,7 @@ class Engine:
         slots = len(s['allocation_ring']) - s['pick_index'] - 1
         return s['initial_count'] < len(s['allocation_ring']) and len(s['pool']) <= slots
 
-    def _selection_blocked(self):
+    def _selection_blocked(self, action=None):
         # C20 (AVR-239): the next selector can take none of the remaining tasks and may
         # not pass. Only the captain can be in this position, and only because the crew
         # left a captain comparison task for the captain: an avoidable mistake, so the
@@ -280,8 +443,10 @@ class Engine:
             return
         s['attempts'] += 1
         s['counted'] = True
-        self._finish('failed', 'The captain was left with only captain comparison tasks, which the captain '
-                               'may not take. Give those tasks to other crew members on the next attempt.')
+        self._fail('The captain was left with only captain comparison tasks, which the captain '
+                   'may not take. Give those tasks to other crew members on the next attempt.',
+                   self._cause('allocation', failure='captain_left_with_comparison_tasks', affected=seat,
+                               action=action, trigger=action['seat'] if action else None))
 
     def _begin(self, now):
         s = self.s
@@ -290,14 +455,27 @@ class Engine:
             s['attempts'] += 1
             s['counted'] = True
         s['expiry'] = now + s['mission']['seconds'] if s['mission']['seconds'] else None
+        if s['mission']['seconds']:
+            self._emit('MISSION_MODIFIER_ACTIVATED', trick=0, modifier='timer', value=s['mission']['seconds'])
+        self._emit('TURN_STARTED', seat=s['turn'], controller=self.controller(s['turn']), lead=True)
 
-    def _finish(self, status, reason):
+    def _finish(self, status, reason, cause=None):
         s = self.s
         if s['result']:
             return
         s['result'] = {'status': status, 'reason': reason}
         s['used'].extend(k for k in s['selected'] if k not in s['used'])
         s['phase'], s['expiry'], s['proposal'] = 'mission_result', None, None
+        # A result is its own boundary: nothing is left to resolve. `cause` stands beside the
+        # result, never inside it, and only a failure has one.
+        s['resolving'] = None
+        s['cause'] = cause if status == 'failed' else None
+        if status == 'success':
+            self._emit('MISSION_SUCCESS', trick=len(s['history']), reason=reason,
+                       attempts=s['attempts'] + int(s['distress']), distress=s['distress'])
+        elif status == 'failed':
+            self._emit('MISSION_FAILURE', trick=cause['trick'] if cause else len(s['history']) + 1,
+                       reason=reason, cause=deepcopy(cause))
         if status == 'success':
             s['log'].append({'mission': s['mission']['id'], 'attempts': s['attempts'] + int(s['distress']),
                              'distress': s['distress'], 'attempt': s['attempt']})
@@ -307,23 +485,44 @@ class Engine:
         # timed table and cannot say how much time has passed (E-D7, AVR-242).
         if self.s['expiry'] is None:
             return False
-        self._finish('failed', reason)
+        self._finish('failed', reason, self._cause('deadline', failure='deadline'))
         self.s['revision'] += 1
         return True
 
     def observe_time(self, now):
         # `now` and `expiry` are seconds on whatever clock the caller keeps; the engine has none.
+        # While a trick is resolving the clock still runs and the deadline stands where it was
+        # (owner decision 2026-10-05), but the committed trick is settled first: a deadline that
+        # passes during the hold is judged by settle(now), before any turn opens.
+        if self.s['resolving']:
+            return False
         if self.s['expiry'] is not None and now >= self.s['expiry']:
             return self.expire()
         return False
 
-    def _outcome(self):
+    def _outcome(self, action=None, record=None):
+        """Judge the tasks and the mission objective after a committed play. `action` is that
+        play; `record` is the trick it completed, if it completed one. What is decided, and
+        when, is exactly what it was before the events existed: they only report it."""
         s = self.s
+        number = record['index'] if record else len(s['history']) + 1
         for k, owner in s['assignments'].items():
             if s['progress'][k] == 'pending':
-                s['progress'][k] = evaluate(TASKS[k], owner, s, s['predictions'].get(k))
+                s['progress'][k], kind = judge(TASKS[k], owner, s, s['predictions'].get(k))
+                if s['progress'][k] == 'satisfied':
+                    self._emit('OBJECTIVE_COMPLETED', trick=number, objective=k, scope='task', owner=owner)
+                elif s['progress'][k] == 'failed':
+                    s['failures'][k] = kind
+                elif record and record['winner'] == owner:
+                    # The task is still open and what it is judged on has changed. Whether that
+                    # helps or hurts is not said: the engine reports, it does not advise.
+                    self._emit('OBJECTIVE_PROGRESS', trick=number, objective=k, scope='task', owner=owner,
+                               change='owner_won_trick',
+                               owner_tricks=sum(h['winner'] == owner for h in s['history']))
             if s['progress'][k] == 'failed':
-                self._finish('failed', TASKS[k]['text'])
+                self._fail(TASKS[k]['text'], self._cause(
+                    'task', k, s['failures'].get(k), owner, action, record,
+                    cards=self._relevant(TASKS[k], record)), owner)
                 return
         objective = s['mission']['objective']
         if objective in ('balance1', 'balance9'):
@@ -331,28 +530,41 @@ class Engine:
             counts = [sum(suit(p['card']) != 'submarine' and rank(p['card']) == r
                           for h in s['history'] if h['winner'] == seat for p in h['plays']) for seat in s['seats']]
             if max(counts) - min(counts) >= 2:
-                self._finish('failed', f'A crew member has captured two more {r}s than another.')
+                self._fail(f'A crew member has captured two more {r}s than another.', self._cause(
+                    'mission_objective', objective, VIOLATED, None, action, record,
+                    cards=[p['card'] for p in (record['plays'] if record else [])
+                           if suit(p['card']) != 'submarine' and rank(p['card']) == r]))
         elif objective == 'first_winner' and s['history']:
             first = s['history'][0]['winner']
             counts = {seat: sum(h['winner'] == seat for h in s['history']) for seat in s['seats']}
             if any(counts[first] <= count for seat, count in counts.items() if seat != first):
-                self._finish('failed', 'The first trick winner must always have strictly more tricks.')
+                self._fail('The first trick winner must always have strictly more tricks.', self._cause(
+                    'mission_objective', objective, VIOLATED, first, action, record))
         elif objective == 'final_yellow5':
             plays = [p for h in s['history'] for p in h['plays']] + s['trick']
             if any(p['card'] == 'yellow:5' for p in plays):
                 correct = (len(s['history']) == s['planned'] and
                            s['history'][-1]['plays'][-1]['card'] == 'yellow:5')
                 if not correct:
-                    self._finish('failed', 'Yellow 5 must be the last card in the final trick.')
+                    # The card that decides it is yellow 5 itself, whoever wins the trick.
+                    played = next(p for p in plays if p['card'] == 'yellow:5')
+                    self._fail('Yellow 5 must be the last card in the final trick.', self._cause(
+                        'mission_objective', objective, VIOLATED, None, action, record,
+                        trigger=played['seat'], cards=['yellow:5']))
             elif len(s['history']) == s['planned']:
-                self._finish('failed', 'Yellow 5 was left unplayed instead of ending the final trick.')
+                self._fail('Yellow 5 was left unplayed instead of ending the final trick.', self._cause(
+                    'mission_objective', objective, 'unmet_at_end', None, action, record))
         if s['result']:
             return
         end = len(s['history']) == s['planned']
         if all(v == 'satisfied' for v in s['progress'].values()) and (not objective or end):
+            if objective:
+                self._emit('OBJECTIVE_COMPLETED', trick=number, objective=objective,
+                           scope='mission_objective', owner=None)
             self._finish('success', 'All mission objectives completed.')
         elif end:
-            self._finish('failed', 'The final trick ended before all objectives were completed.')
+            self._fail('The final trick ended before all objectives were completed.',
+                       self._cause('final_trick', None, 'unmet_at_end', None, action, record))
 
     def _play(self, actor, msg):
         s = self.s
@@ -369,25 +581,39 @@ class Engine:
         for e in s['exposures']:
             if e['seat'] == seat and e['card'] == card:
                 e['active'] = False
+        number, record = len(s['history']) + 1, None
         s['trick'].append({'seat': seat, 'card': card})
         s['phase'] = 'in_trick'
+        self._emit('CARD_PLAYED', trick=number, seat=seat, controller=actor, card=card,
+                   position=len(s['trick']), lead_suit=suit(s['trick'][0]['card']))
         if len(s['trick']) == len(s['seats']):
             w = winner(s['trick'])
-            s['history'].append({'index': len(s['history']) + 1, 'leader': s['leader'],
-                                 'winner': w, 'plays': s['trick']})
+            record = {'index': number, 'leader': s['leader'], 'winner': w, 'plays': s['trick']}
+            s['history'].append(record)
             s['trick'] = []
             for c in s['columns']:
                 if c['top'] is None and c['covered'] is not None:
                     c['top'], c['covered'] = c['covered'], None
             s['leader'] = s['turn'] = w
             s['phase'] = 'before_trick'
+            self._emit('TRICK_RESOLVED', trick=number, winner=w, leader=record['leader'],
+                       winning_card=next(p['card'] for p in record['plays'] if p['seat'] == w),
+                       lead_suit=suit(record['plays'][0]['card']), plays=deepcopy(record['plays']))
         else:
             s['turn'] = s['seats'][(s['seats'].index(seat) + 1) % len(s['seats'])]
-        self._outcome()
+        self._outcome({'t': 'play_card', 'seat': seat, 'controller': actor, 'card': card}, record)
+        if s['result'] is None:
+            if record:
+                # The trick is decided and play goes on: the table stands still until the server
+                # settles it (settle()). A trick that ends the mission has the result instead.
+                s['resolving'] = {'trick': number}
+            else:
+                self._emit('TURN_STARTED', trick=number, seat=s['turn'],
+                           controller=self.controller(s['turn']), lead=False)
 
     def communication_options(self, actor):
         s = self.s
-        if (actor not in s['humans'] or s['away'] or s['phase'] != 'before_trick'
+        if (actor not in s['humans'] or s['away'] or s['phase'] != 'before_trick' or s['resolving']
                 or s['communication'] == 'none'
                 or (s['mission']['id'] == 23 and not s['history'])
                 or (s.get('before_first_only') and s['history'])
@@ -461,6 +687,7 @@ class Engine:
             self._begin(now)
         elif kind == 'distress':
             s['distress'], s['phase'], s['direction'] = True, 'passing', payload['direction']
+            self._emit('MISSION_MODIFIER_ACTIVATED', trick=0, modifier='distress', value=payload['direction'])
         elif kind == 'assign':
             owner = payload['owner']
             keys = [payload['task']] if s['mission']['allocation'] == 'free' else list(s['pool'])
@@ -468,6 +695,9 @@ class Engine:
                 self._assign(k, owner)
             if s['mission']['allocation'] == 'captain_one':
                 s['before_first_only'] = owner != s['captain']
+                if s['before_first_only']:
+                    self._emit('MISSION_MODIFIER_ACTIVATED', trick=0, modifier='sonar',
+                               value='before_first_trick_only')
             if not s['pool']:
                 self._allocation_done()
         elif kind in ('retry', 'next'):
@@ -505,14 +735,15 @@ class Engine:
             if not s['pool']:
                 self._allocation_done()
             else:
-                self._selection_blocked()
+                self._selection_blocked({'t': t, 'seat': seat, 'controller': actor, 'task': msg['task']})
         elif t == 'pass_task':
             require(s['phase'] == 'allocation' and s['mission']['allocation'] in ('normal', 'skip_captain'),
                     'phase', 'Passing is not available here.')
             require(actor == self.controller(self.selector()), 'turn', 'It is another crew member’s turn.')
             require(self._may_pass_task(), 'pass', 'The remaining tasks must be assigned this round.')
+            seat = self.selector()
             s['pick_index'] += 1
-            self._selection_blocked()
+            self._selection_blocked({'t': t, 'seat': seat, 'controller': actor})
         elif t == 'volunteer':
             require(s['phase'] == 'allocation' and s['mission']['allocation'] == 'volunteer',
                     'phase', 'There is no volunteer question now.')
@@ -528,7 +759,10 @@ class Engine:
                 if any(not self.eligible(k, seat) for k in s['pool']):
                     s['attempts'] += 1
                     s['counted'] = True
-                    self._finish('failed', 'The chosen volunteer cannot own a captain comparison task. Choose another volunteer on the next attempt.')
+                    self._fail('The chosen volunteer cannot own a captain comparison task. Choose another volunteer on the next attempt.',
+                               self._cause('allocation', failure='ineligible_volunteer', affected=seat,
+                                           action={'t': t, 'seat': seat, 'controller': actor, 'yes': True},
+                                           trigger=seat))
                     return
                 for k in list(s['pool']):
                     self._assign(k, seat)
@@ -566,6 +800,12 @@ class Engine:
             else:
                 s['spent'].append(actor)
             s['exposures'].append({'seat': actor, 'card': card, 'assertion': assertion, 'active': True})
+            # In currents the declaration is its author's alone, in the event as in the view.
+            hidden = s['communication'] == 'currents'
+            self._emit('COMMUNICATION_SENT', seat=actor, card=card, mode=s['communication'],
+                       token='shared' if s['communication'] == 'rapture' else 'personal',
+                       private={'seat': actor, 'fields': {'assertion': assertion}} if hidden else None,
+                       **({} if hidden else {'assertion': assertion}))
         elif t == 'play_card':
             self._play(actor, msg)
         else:
@@ -603,6 +843,7 @@ class Engine:
         require(msg['attempt'] == s['attempt'] and msg['revision'] == s['revision'],
                 'stale', 'That moment has passed. Use the latest table state.')
         require(s['phase'] != 'closed', 'phase', 'This table is closed.')
+        require(not s['resolving'], 'resolving', RESOLVING)
         require(s['proposal'] is None, 'vote', 'The crew is deciding something. Wait for their answer.')
         old, rng_state = deepcopy(s), self.rng.getstate()
         try:
@@ -649,6 +890,8 @@ class Engine:
                 'stale', 'That moment has passed. Use the latest table state.')
         require(len(s['dedup']) < 10000, 'requests', 'This attempt has reached its request limit.')
         require(s['phase'] != 'closed', 'phase', 'This table is closed.')
+        # Between a completed trick and the server's settle() no seat acts (AVR-246).
+        require(not s['resolving'], 'resolving', RESOLVING)
         require(s['proposal'] is None or t == 'confirm', 'vote', 'Confirm or decline the crew decision first.')
         old, rng_state = deepcopy(s), self.rng.getstate()
         try:
@@ -710,6 +953,23 @@ class Engine:
                 'snapshot', 'Task definition check failed.')
         require(set(s['assignments']) | set(s['pool']) == set(s['selected']) and
                 not set(s['assignments']) & set(s['pool']), 'snapshot', 'Task ownership check failed.')
+        # The event log is bounded and ordered; a table is `resolving` only between two tricks of
+        # an attempt still in play, for the trick that has just been resolved.
+        events = s['events']
+        require(type(events) is list and len(events) <= EVENT_LIMIT and type(s['event_seq']) is int
+                and all(isinstance(x, dict) and type(x.get('seq')) is int and isinstance(x.get('type'), str)
+                        and type(x.get('attempt')) is int and type(x.get('trick')) is int for x in events)
+                and all(a['seq'] < b['seq'] for a, b in zip(events, events[1:]))
+                and (not events or 0 < events[0]['seq'] and events[-1]['seq'] <= s['event_seq']),
+                'snapshot', 'Event log check failed.')
+        require(s['resolving'] is None or (
+                    isinstance(s['resolving'], dict) and set(s['resolving']) == {'trick'}
+                    and s['resolving']['trick'] == len(s['history']) and s['history']
+                    and s['phase'] == 'before_trick' and s['result'] is None and not s['trick']),
+                'snapshot', 'Resolving check failed.')
+        require(isinstance(s['failures'], dict) and set(s['failures']) <= set(s['assignments'])
+                and (s['cause'] is None or isinstance(s['cause'], dict)),
+                'snapshot', 'Causality check failed.')
 
     def snapshot(self):
         return {'state': deepcopy(self.s), 'rng': self.rng.getstate()}
@@ -720,11 +980,53 @@ class Engine:
         s = deepcopy(snapshot['state'])
         require(s.get('version') == VERSION and s.get('content') == CONTENT_HASH,
                 'snapshot', 'Snapshot rules or content version is incompatible.')
+        # Additive keys (AVR-246): a snapshot written before the events existed has none of them
+        # and is read as a table with an empty log and nothing to resolve. Format 1 still.
+        for key, empty in (('events', []), ('event_seq', 0), ('resolving', None), ('cause', None),
+                           ('failures', {})):
+            s.setdefault(key, empty)
         obj = cls.__new__(cls)
         obj.s, obj.rng = s, random.Random()
         obj.rng.setstate(_tuple(snapshot['rng']))
         obj.check()
         return obj
+
+    def events(self, actor=None):
+        """The events a viewer may be sent, oldest first, as copies: nothing a caller does to
+        them reaches the table.
+
+        Which: those of the attempt in play that belong to the most recently resolved trick or
+        to anything after it (before a trick is resolved, the whole attempt so far). Only the
+        most recently won trick may be looked at again (R04); the log the engine keeps is longer
+        and stays on the server. What: every field was public when the event happened, except
+        the fields marked private, which go to their own seat only."""
+        s = self.s
+        floor, out = len(s['history']), []
+        for event in s['events']:
+            if event['attempt'] != s['attempt'] or event['trick'] < floor:
+                continue
+            item = deepcopy({k: v for k, v in event.items() if k != 'private'})
+            private = event.get('private')
+            if private and actor in s['humans'] and private['seat'] == actor:
+                item.update(deepcopy(private['fields']))
+            out.append(item)
+        return out
+
+    def objective_state(self, task):
+        """PENDING (not in play yet), ACTIVE (in play, undecided), COMPLETED, FAILED or
+        IMPOSSIBLE. IMPOSSIBLE is a failure the evaluator found as `unreachable`: what the task
+        needs can no longer happen. The engine detects that for the cases the evaluators always
+        detected and no others, and it ends the attempt exactly when it did before."""
+        s = self.s
+        status = s['progress'].get(task)
+        if status == 'satisfied':
+            return 'COMPLETED'
+        if status == 'failed':
+            return 'IMPOSSIBLE' if s['failures'].get(task) == UNREACHABLE else 'FAILED'
+        played = bool(s['history'] or s['trick'])
+        if status == 'pending' and (s['phase'] in ('before_trick', 'in_trick') or (s['result'] and played)):
+            return 'ACTIVE'
+        return 'PENDING'
 
     def view(self, actor=None):
         s = self.s
@@ -739,6 +1041,7 @@ class Engine:
             item = {'id': k, 'text': d.get('text_by_crew', {}).get(str(len(s['seats'])), d['text']),
                     'difficulty': d['difficulty'][str(len(s['seats']))],
                     'owner': s['assignments'].get(k), 'status': s['progress'].get(k, 'unassigned'),
+                    'state': self.objective_state(k),
                     'eligible_owners': [q for q in s['seats'] if self.eligible(k, q)],
                     'prediction_required': bool(d['params'].get('predict')),
                     'prediction_committed': k in s['predictions']}
@@ -753,6 +1056,8 @@ class Engine:
             play_reason = 'Waiting for the crew to reconnect.'
         elif s['phase'] not in ('before_trick', 'in_trick'):
             play_reason = 'Finish mission preparation before playing.'
+        elif s['resolving']:
+            play_reason = RESOLVING
         elif self.controller(s['turn']) != actor:
             play_reason = 'It is another crew member’s turn.'
         allowed = legal_cards(self.playable(s['turn']), s['trick']) if participant and not play_reason else []
@@ -770,6 +1075,11 @@ class Engine:
                 'distress': s['distress'], 'attempts': s['attempts'], 'result': deepcopy(s['result']),
                 'expiry': s['expiry'], 'away': list(s['away']), 'log': deepcopy(s['log']),
                 'proposal': deepcopy(s['proposal']),
+                # AVR-246. `resolving`: the trick just resolved, while no seat may act. `cause`:
+                # what a failed attempt is attributed to. `events`: see events(); `event_seq` is
+                # the newest sequence number at this table, sent or not.
+                'resolving': deepcopy(s['resolving']), 'cause': deepcopy(s['cause']),
+                'events': self.events(actor), 'event_seq': s['event_seq'],
                 'me': {'seat': actor, 'hand': self.playable(actor), 'legal_cards': allowed,
                        'play_reason': play_reason, 'communication_options': self.communication_options(actor),
                        'may_pass_task': (s['phase'] == 'allocation' and s['mission']['allocation'] in ('normal', 'skip_captain')

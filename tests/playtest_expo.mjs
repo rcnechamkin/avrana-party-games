@@ -23,11 +23,12 @@ async function state(pg){return pg.evaluate(()=>ST);}
 async function waitRevision(pg,old){await pg.waitForFunction(r=>ST?.game?.revision>r,{},old);}
 // Every page has drawn the newest revision any page has seen, and nobody is shown as away.
 // The script reads whose turn it is from one page and acts on another, so it must never act on
-// a page that is a revision behind or still shows a reloading player as away (AVR-254).
+// a page that is a revision behind or still shows a reloading player as away (AVR-254), nor
+// while a completed trick is still resolving: nobody can play until the server settles it (AVR-246).
 async function settle(){
   let rev=-1;
   for(const p of pages)rev=Math.max(rev,(await state(p)).game?.revision??-1);
-  for(const p of pages)await p.waitForFunction(r=>ST?.game&&ST.game.revision>=r&&!ST.game.away.length,{},rev);
+  for(const p of pages)await p.waitForFunction(r=>ST?.game&&ST.game.revision>=r&&!ST.game.away.length&&!ST.game.resolving,{},rev);
   return state(pages[0]);
 }
 // Matrix T43: a control the page shows as unavailable is refused by the server when the very

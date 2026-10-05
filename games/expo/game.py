@@ -32,6 +32,17 @@ assert set(HOST_ONLY) == set(LIFECYCLE)
 DISTRESS_GRACE = 4.0
 GRACE = 'The crew has a moment to ask for distress first. Begin in a few seconds.'
 
+# A completed trick is held for this long before the next one opens (AVR-246): the table is
+# `resolving`, no seat acts, and every phone has the same moment to show who won. The engine
+# only knows that it is resolving; the adapter decides how long and calls Engine.settle().
+# A presentation boundary, not a rule: it is never saved, and a restored table settles at once.
+# A timed mission gains no time from it (owner decision 2026-10-05): its clock runs through the
+# hold and its deadline does not move. A deadline that passes during the hold is judged when the
+# hold ends (Engine.settle), before anyone may act.
+# 0.8 s is the owner's value (2026-10-05), provisional pending real-phone playtesting.
+RESOLVE_HOLD = 0.8
+HOLD_SLACK = 0.02                 # a timer that wakes this much early has still waited
+
 # A Party that does not say who its host is leaves Begin, Retry and Next to the crew. That is a
 # deploy-order allowance for a Party older than its host claim (avrana-party ADR 0006, amendment
 # 2026-10-04), not a mode: it is logged and shown to the players.
@@ -76,6 +87,7 @@ class ExpoSession(GameSession):
         super().__init__(rng)
         self.engine = None
         self._grace = None                # (attempt, monotonic moment the host's Begin opens)
+        self._hold = None                 # ((attempt, trick), monotonic moment the trick settles)
         self.recovery_error = None
         path = snapshot_path or (os.environ.get('EXPO_SNAPSHOT_PATH') if rng is None else None)
         self.store = SnapshotStore(path) if path else None
@@ -119,7 +131,7 @@ class ExpoSession(GameSession):
         return super().start(token)
 
     def game_start(self):
-        self._grace = None
+        self._grace = self._hold = None
         humans = [self.players[t].pid for t in self.participants]
         try:
             self.engine = Engine(humans, self.rng, self.settings['mission'], self.settings['timed'],
@@ -148,7 +160,33 @@ class ExpoSession(GameSession):
         s = self.engine.s
         if self._distress_open() and (self._grace is None or self._grace[0] != s['attempt']):
             self._grace = (s['attempt'], _mono() + DISTRESS_GRACE)
-        self._bump(self._wall_moment(self.engine.s['expiry']))
+        if s['resolving']:
+            key = (s['attempt'], s['resolving']['trick'])
+            if self._hold is None or self._hold[0] != key:
+                self._hold = (key, _mono() + RESOLVE_HOLD)
+        else:
+            self._hold = None
+        # One timer serves both. While a trick is resolving the timer waits for the end of the
+        # hold: the committed trick settles first, and a mission deadline that has passed by then
+        # is judged in that same step (Engine.settle), so nothing is lost by not arming it.
+        self._bump(self._wall_moment(self._hold[1] if self._hold else s['expiry']))
+
+    def _settle_due(self):
+        """End a resolving trick whose hold is over. Two things call this, so that a lost timer
+        cannot leave a table resolving: the timer itself (game_tick) and any command that
+        arrives afterwards (_commit). A restore does not wait at all (restore)."""
+        if not (self.engine and self.engine.s['resolving']):
+            return False
+        now = _mono()
+        if self._hold is not None:
+            if self._hold[1] - now > HOLD_SLACK:
+                return False
+            # A timer may wake a little early (HOLD_SLACK). The deadline is still judged at the
+            # hold's own end, so one that falls anywhere inside the hold ends the attempt and
+            # no turn is opened for the few milliseconds between the two.
+            now = max(now, self._hold[1])
+        # A timed attempt whose deadline has passed ends here and no turn opens (Engine.settle).
+        return self.engine.settle(now)
 
     def _distress_open(self):
         # The moment the rules let a crew member ask for distress (Engine._proposal).
@@ -246,6 +284,7 @@ class ExpoSession(GameSession):
                 refused.extend((text, code))
                 return []
             return [self.fx('invalid', to=token, code=code, msg=text)]
+        self._settle_due()
         before = self.engine.snapshot()
         try:
             change()
@@ -272,11 +311,13 @@ class ExpoSession(GameSession):
     def game_tick(self):
         if self.engine:
             self.engine.observe_time(_mono())
+            self._settle_due()
             self._sync()
             try:
                 self._save()
             except OSError:
-                return [self.fx('toast', msg='The expired table could not be saved. Its deadline will be checked again on restoration.')]
+                # The timer fired for a deadline or for the end of a resolving trick.
+                return [self.fx('toast', msg='The table could not be saved just now. A restored table is checked again: its deadline, and a trick that was being resolved.')]
         else:
             self._bump(None)
         return []
@@ -286,6 +327,8 @@ class ExpoSession(GameSession):
             return None
         viewer = self.players.get(viewer_token)
         view = self.engine.view(viewer.pid if viewer and viewer_token in self.participants else None)
+        # The deadline is fixed for the attempt: a resolving hold does not move it (owner
+        # decision 2026-10-05), so every view is sent the same moment from Begin to the result.
         view['expiry'] = self._wall_moment(view['expiry'])
         # 'host': the Party Host begins, retries and moves on; 'crew': the seated crew agrees.
         view['lifecycle'] = self.lifecycle_authority()
@@ -293,6 +336,9 @@ class ExpoSession(GameSession):
         view['begin_at'] = self._wall_moment(self.begin_opens())
         # True only under a Party that does not name its host yet (HOST_CLAIM_TRANSITION).
         view['lifecycle_transitional'] = self.host_claim_missing()
+        # While a trick is resolving: the wall-clock moment the next one opens (AVR-246).
+        if view['resolving'] is not None:
+            view['resolving']['until'] = self._wall_moment(self._hold[1]) if self._hold else None
         return view
 
     def state_for(self, viewer_token=None, spectator=False):
@@ -305,14 +351,7 @@ class ExpoSession(GameSession):
 
     def _presence(self, token, away):
         if self.engine and token in self.participants:
-            pid = self.players[token].pid
-            missing = self.engine.s['away']
-            if away and pid not in missing:
-                missing.append(pid)
-                self.engine.s['revision'] += 1
-            elif not away and pid in missing:
-                missing.remove(pid)
-                self.engine.s['revision'] += 1
+            self.engine.presence(self.players[token].pid, away)
             # Connection presence is ephemeral; restoration always marks every
             # human away. Card actions persist the authoritative table.
         return []
@@ -376,11 +415,16 @@ class ExpoSession(GameSession):
             raise ValueError('Invalid saved seat identity mapping')
         engine.s['away'] = list(engine.s['humans'])
         engine.s['revision'] += 1
+        # A trick that was resolving when the snapshot was written has nobody watching it now:
+        # it settles at once. A timed attempt is judged first, so that one whose deadline has
+        # passed, or whose clock cannot be trusted, ends without a turn being opened.
         if self._clock_continuous(saved.get('clock'), engine.s['expiry'], engine.s['mission']['seconds']):
+            engine.settle(_mono())
             engine.observe_time(_mono())
             ended = False
         else:
             ended = engine.expire(UNTRUSTED_CLOCK)
+            engine.settle()
         self.engine, self.rng, self.players = engine, engine.rng, players
         self.participants, self._pid_counter = saved['participants'], saved['pid_counter']
         self.settings = saved['settings']

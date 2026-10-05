@@ -109,7 +109,7 @@ const waitRevision = (pg, old) => pg.waitForFunction(r => ST?.game?.revision > r
 async function settle() {
   let rev = -1;
   for (const m of party.members) rev = Math.max(rev, (await state(m.page)).game?.revision ?? -1);
-  for (const m of party.members) await m.page.waitForFunction(r => ST?.game && ST.game.revision >= r && !ST.game.away.length, {}, rev);
+  for (const m of party.members) await m.page.waitForFunction(r => ST?.game && ST.game.revision >= r && !ST.game.away.length && !ST.game.resolving, {}, rev);
   return state(party.members[0].page);
 }
 const seated = () => party.members.filter(m => m.role === "player");
