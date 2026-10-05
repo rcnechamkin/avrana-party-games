@@ -119,7 +119,8 @@ input,select{min-height:44px;width:100%;background:var(--surface);border:1px sol
 .hand-head:has(.hand-switch:not([hidden])){min-height:44px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .hand-head h2{flex:none;font-size:14px}
-.hand-reason{flex:1;min-width:0;text-align:right;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* The reason is the server's sentence and must be read whole (AVR-263): two lines, never cut. */
+.hand-reason{flex:1;min-width:0;text-align:right;font-size:11px;line-height:1.15;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .hand-switch{display:flex;gap:4px}
 .switch{min-height:44px;min-width:64px;padding:2px 10px;border:1px solid var(--edge);border-radius:999px;background:none;color:var(--muted);font:600 11px var(--font);cursor:pointer}
 .switch.on{border-color:var(--sea);color:var(--sea)}
@@ -216,15 +217,20 @@ input[type=checkbox]{width:22px;min-height:22px;accent-color:var(--sea)}
   .mission-head h1{font-size:21px}
   .seat-role{display:none}
   .card .suit{display:none}
+  /* A shown sonar card sits beside the name, not on a line of its own: on a short screen
+     that line came out of the stage, which then lost the room the trick needs. */
+  .seat{grid-template-columns:minmax(0,1fr) auto;column-gap:4px}
+  .seat-role,.seat-count{grid-column:1/-1}
+  .seat-sonar{grid-column:2;grid-row:1;align-self:center}
 }
 @media(max-height:610px){
   :root{--gap:4px;--hand-card:44px}
   .objective+.objective{display:none}
-  .status-strip{min-height:26px;padding:4px 10px}
+  .status-strip{min-height:24px;padding:3px 10px}
   .stage-caption span{display:none}
-  .dock-zone{padding:4px 8px 6px}
+  .dock-zone{padding:3px 8px 5px}
   .mission-head h1{font-size:19px}
-  .hand-panel{padding:4px 8px 6px}
+  .hand-panel{padding:3px 8px 5px}
 }
 @media(min-height:820px){
   :root{--hand-card:66px;--gap:8px}

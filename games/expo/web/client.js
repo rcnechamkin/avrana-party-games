@@ -479,6 +479,7 @@ function allocationNode(g) {
   head.append(el("h2", g.mission.fixed ? "Assign the fixed tasks" : `Assign the tasks · difficulty ${g.mission.target}`), el("span", `${g.tasks.length - open.length} of ${g.tasks.length} taken`, "muted"));
   box.append(head);
   const list = el("div", undefined, "pick-list");
+  const said = new Set();       // why the selecting seat cannot take a task: said once, not per task
   for (const task of open) {
     const item = el("article", undefined, "pick");
     item.append(el("div", task.text, "pick-text"));
@@ -486,7 +487,7 @@ function allocationNode(g) {
       const mineToTake = g.controller === g.me.seat, refused = g.me.task_reasons[task.id] || "";
       item.append(button(g.selector === "tonoja" && mineToTake ? "Tonoja takes it" : "Take this task", () => send("choose_task",{task:task.id}), "task:"+task.id,
         Boolean(refused), refused));
-      if (mineToTake && refused) item.append(why(refused));
+      if (mineToTake && refused) said.add(refused);
     } else if (live && mode === "free") {
       const sel = ownerSelect("owner:"+task.id, task.eligible_owners);
       const row = el("div", undefined, "choice-row");
@@ -496,6 +497,7 @@ function allocationNode(g) {
     list.append(item);
   }
   box.append(list);
+  for (const reason of said) box.append(why(reason));
   if (!live) return box;
   const actions = el("div", undefined, "choice-row");
   if (["normal","skip_captain"].includes(mode)) {
@@ -517,9 +519,9 @@ function allocationNode(g) {
   }
   if (mode === "volunteer") {
     if (g.controller === g.me.seat) {
-      actions.append(button("Yes · take the tasks", () => send("volunteer",{yes:true}), "volunteer-yes", false, "", "btn-primary"),
+      actions.append(button("Yes · take the tasks", () => send("volunteer",{yes:true}), "volunteer-yes", Boolean(g.me.volunteer_reasons.yes), g.me.volunteer_reasons.yes || "", "btn-primary"),
         button("No", () => send("volunteer",{yes:false}), "volunteer-no", Boolean(g.me.volunteer_reasons.no), g.me.volunteer_reasons.no || ""));
-      if (g.me.volunteer_reasons.no) box.append(why(g.me.volunteer_reasons.no));
+      for (const reason of new Set([g.me.volunteer_reasons.yes, g.me.volunteer_reasons.no].filter(Boolean))) box.append(why(reason));
     } else box.append(why(`${name(g.controller)} is asked to volunteer.`));
   }
   if (actions.children.length) box.append(actions);

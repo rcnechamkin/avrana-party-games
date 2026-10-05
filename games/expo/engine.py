@@ -732,7 +732,7 @@ class Engine:
         # play_card, for any card; then card by card.
         play = gate or first((s['phase'] not in ('before_trick', 'in_trick'), 'This is not a card-play phase.'),
                              (self.controller(s['turn']) != actor, 'It is another crew member’s turn.'))
-        hand, tops = self.playable(actor), self.playable('tonoja') if 'tonoja' in s['seats'] else []
+        hand, tops = self.playable(actor), (self.playable('tonoja') if 'tonoja' in s['seats'] else [])
         turn = [] if play else self.playable(s['turn'])
         legal = legal_cards(turn, s['trick'])
         cards = {c: play or first((c not in turn, 'That card is not in the playable hand.'),

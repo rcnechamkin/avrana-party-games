@@ -975,7 +975,7 @@ def test_the_reasons_the_view_gives_for_an_unplayable_card_are_the_servers_rejec
     assert e.view(e.s['turn'])['me']['play_reason'] == str(refused.value) == 'Waiting for the crew to reconnect.'
 
 
-def test_defect_the_reason_shown_before_play_begins_is_the_servers_rejection():
+def test_the_reason_shown_before_play_begins_is_the_servers_rejection():
     e = allocated(Engine(['p0', 'p1', 'p2'], random.Random(4)))
     assert e.s['phase'] == 'assistance'
     captain = e.s['captain']

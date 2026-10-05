@@ -108,7 +108,8 @@ These belong to the platform; EXPO only constrains them.
 - **Knowable before**: yes. Outcome no: a hard or even hopeless choice is legal (R08).
 - **Client**: "Take this task" on each open task, disabled with `me.task_reasons[task]`: the
   `turn` sentence for a viewer who does not control the selecting seat, the `owner` sentence for
-  the captain on a captain comparison task.
+  the captain on a captain comparison task. For the selecting seat the sentence is also written
+  once under the tasks.
 - **Not warned**: the client does not tell the crew that a pick will leave the captain without a
   legal task. The information is public (the tasks and the order are visible), and the mistake is
   the crew's to avoid (R08). A draw that makes it unavoidable never reaches selection: it is
@@ -122,7 +123,9 @@ These belong to the platform; EXPO only constrains them.
 - **Illegal**: `phase` "Passing is not available here."; `turn`; `pass` "The remaining tasks must
   be assigned this round."
 - **Mutation**: cursor advances.
-- **Knowable before**: yes (`me.pass_task_reason`; `me.may_pass_task` is the same fact as a flag).
+- **Knowable before**: yes (`me.pass_task_reason`). `me.may_pass_task` is still sent and is not
+  the same fact: it is the rule alone and stays true while a seat is away or a crew decision is
+  pending, when the server refuses the pass. The client no longer reads it.
 - **Client**: "Pass selection", shown to the viewer who controls the selecting seat and disabled
   with `me.pass_task_reason`, which is also written beside it.
 
@@ -136,11 +139,12 @@ These belong to the platform; EXPO only constrains them.
 - **Mutation**: the answer is recorded. On the first yes that seat receives every task and the
   phase advances. If that seat may not own one of the tasks (the captain and a captain-comparison
   task), the attempt ends at once as a counted failure with a visible reason (P15).
-- **Knowable before**: the forced yes is (`me.volunteer_reasons.no`; `me.may_decline_volunteer` is
-  the same fact as a flag). The eligibility failure is knowable from public tasks but is not shown
-  as a warning.
-- **Client**: "Yes · take the tasks" and "No" for the asked seat; "No" disabled when forced, with
-  `me.volunteer_reasons.no` beside it.
+- **Knowable before**: the forced yes is (`me.volunteer_reasons.no`). `me.may_decline_volunteer`
+  is still sent and is not the same fact: it is the rule alone, whoever is asked and whether or
+  not a seat is away or a crew decision is pending. The client no longer reads it. The
+  eligibility failure is knowable from public tasks but is not shown as a warning.
+- **Client**: "Yes · take the tasks" and "No" for the asked seat, each disabled with its entry in
+  `me.volunteer_reasons` ("No" when forced), and the sentence is written beside them.
 
 ### Crew decision `assign {owner, task}`
 
