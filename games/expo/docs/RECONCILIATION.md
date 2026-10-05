@@ -26,10 +26,10 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 - The card rules, deal, captain, trick resolution, communication truth and timing, selection and
   pass rule, task evaluators, mission targets and modifiers of the 24 enabled missions match R
   and L.
-- Twelve defects were recorded (E-D1 to E-D7 by the reconciliation, E-D8 by AVR-247, E-D9 and E-D10 by probing during its review, E-D11 by the review of AVR-264, E-D12 by the review of AVR-268). Nine are fixed: E-D12, request ids that made a snapshot too large to read back (AVR-273), E-D11, a request id that stopped a stored table (AVR-268), E-D10, a task dealt twice after mission 32 (AVR-265), E-D9, the table freeze from one malformed crew decision (AVR-264), E-D1, the selection stall
+- Twelve defects were recorded (E-D1 to E-D7 by the reconciliation, E-D8 by AVR-247, E-D9 and E-D10 by probing during its review, E-D11 by the review of AVR-264, E-D12 by the review of AVR-268). Ten are fixed: E-D8, the reasons shown on unavailable controls (AVR-263), E-D12, request ids that made a snapshot too large to read back (AVR-273), E-D11, a request id that stopped a stored table (AVR-268), E-D10, a task dealt twice after mission 32 (AVR-265), E-D9, the table freeze from one malformed crew decision (AVR-264), E-D1, the selection stall
   (AVR-239), E-D3 and E-D4, late completion of the window tasks and currents visibility
   (AVR-241), and E-D5 and E-D7, the content hash scope and the timed clock (AVR-242). E-D6 was
-  settled by amending the contract (AVR-242). Of the two that remain, one affects play and needs
+  settled by amending the contract (AVR-242). The one that remains affects play and needs
   an owner decision on the remedy: a table cannot be ended while someone is away (AVR-240).
 - Twenty-three digital policies are in force. The owner decided the open ones on 2026-10-04
   (AVR-243, questions Q1 to Q8 below). Four decisions change behaviour. All four are implemented:
@@ -62,7 +62,7 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 | E-M14 | Pass only when fewer tasks than seats at the start, and all tasks placed in one circuit (R p9) | `pass_task` | `test_pass_capacity_and_captain_comparison`, `test_difficulty_generation_and_no_pass_in_second_circuit` | MATCH |
 | E-M15 | Captain may not take a captain-comparison task (R p18), in every allocation mode | `eligible`, `_assign`, `_proposal` | `test_pass_capacity_and_captain_comparison`, `test_collective_and_free_allocation_refuse_a_captain_comparison_task_for_the_captain` | MATCH |
 | E-M16 | Mission succeeds when all tasks are complete, fails as soon as one cannot be (R p10 to p11) | `_outcome` | `test_full_seeded_games_only_use_legal_actions`, `test_every_enabled_task_has_deterministic_success_fixture` | MATCH. Early success when the last open task completes: `test_closing_the_window_on_the_last_open_task_wins_the_mission_at_once` |
-| E-M17 | Impossible forced pair is repaired by an equal-difficulty replacement; not when one seat could hold both (R p14) | `_repair_tasks` | `test_explicit_feasibility_and_used_deck_replenishment` | MATCH |
+| E-M17 | Impossible forced pair is repaired by an equal-difficulty replacement; not when one seat could hold both (R p14) | `_repair_tasks` | `test_explicit_feasibility_and_used_deck_replenishment`, `test_the_recorded_tables_reach_the_mission_that_was_refused` | MATCH |
 | E-M18 | Named submarine alignments are redealt free (R p14, p17; V footnotes) | `_deal_exception`, `prepare` | `test_named_submarine_alignments_are_deal_exceptions`, `test_a_deal_exception_is_redealt_before_the_attempt_is_counted` | MATCH |
 | E-M19 | Retry redeals; tasks kept or redrawn (R p11) | `retry` decision, `prepare(keep)` | `test_explicit_feasibility_and_used_deck_replenishment`, `test_distress_surcharge_is_logged_once_and_a_new_mission_clears_it` | MATCH |
 | E-M20 | Distress: before any communication; everyone passes one non-submarine the same way; stays active; one extra recorded attempt (R p14 to p15) | `distress` decision, `pass_card`, `_finish` log | `test_distress_sealed_exchange_and_persistence`, `test_distress_surcharge_is_logged_once_and_a_new_mission_clears_it` | MATCH |
@@ -113,7 +113,7 @@ updated.
 | E-D5 | **Fixed 2026-10-04.** Was: the content hash covered `tasks.json` only, so a changed mission table did not invalidate a snapshot unless it was the mission in flight. Now: the hash covers the task catalog and every mission definition, untimed and timed, a blocked mission by its reason. The hash value changed once with this fix, so a snapshot written before it is refused with the usual recovery message | state contract | `test_the_content_hash_is_the_hash_of_the_tasks_and_of_every_mission_definition`, `test_any_change_to_the_content_changes_the_hash`, `test_a_changed_modifier_timer_or_fixed_task_list_changes_the_hash`, `test_a_snapshot_taken_before_a_mission_table_change_is_refused_after_it`, `test_an_unchanged_mission_table_still_restores` | AVR-242 |
 | E-D6 | **Settled 2026-10-04 by amending the contract; no code change.** Only accepted requests are remembered, and a rejected request id used again is a new request. The earlier draft asked for both to be kept. Keeping rejections adds nothing to idempotency (every state change raises the revision), would forbid resending a request refused only because the disk failed, and would let one seated player fill the capped request memory alone and lock the table. Reasons in [GAME_STATE](GAME_STATE.md#commands-ordering-and-repeats) | state contract (amended) | `test_a_rejected_request_is_not_remembered_and_an_accepted_one_is`, `test_a_flood_of_rejected_requests_is_not_remembered_and_cannot_use_up_the_request_limit`, `test_the_same_rejected_request_sent_again_gets_the_same_answer`, `test_a_rejected_request_id_used_again_is_a_new_request_and_is_remembered_once_accepted`, `test_a_request_refused_only_because_the_disk_failed_succeeds_when_sent_again_unchanged` | AVR-242 |
 | E-D7 | **Fixed 2026-10-04.** Was: the deadline was a wall-clock moment, so a backward clock step granted time, on restore and (found while fixing it) on a live table with no restart at all. Now: the deadline runs on the monotonic clock; a restored timed attempt continues only on the same boot (by the kernel's boot identity) with both clocks agreeing about how long the server was down, and otherwise ends as a counted failure with its own reason, written to the snapshot. A reboot therefore always ends a running timed attempt | state contract; the appliance has no real-time clock | `test_a_timed_mission_runs_on_the_monotonic_clock_and_browsers_get_a_wall_clock_moment`, `test_a_wall_clock_step_during_a_live_timed_mission_neither_grants_nor_takes_time`, `test_a_restart_on_the_same_boot_continues_the_deadline_and_charges_the_downtime`, `test_a_timed_table_restored_after_its_deadline_has_already_failed`, `test_a_timed_table_restored_under_a_clock_that_cannot_be_trusted_ends_and_never_gains_time`, `test_a_timed_snapshot_without_a_clock_record_ends_the_attempt`, `test_a_host_that_never_could_name_its_boot_ends_the_attempt_on_every_restart`, `test_a_saved_deadline_later_than_a_full_timer_is_not_resumed`, `test_an_end_that_could_not_be_written_is_judged_again_and_a_reboot_still_ends_it`, `test_a_snapshot_with_a_deadline_beside_a_result_is_refused_not_raised`, `test_a_snapshot_with_a_deadline_on_an_untimed_mission_is_refused`, `test_clocks_that_agree_within_two_seconds_on_the_same_boot_are_trusted`, `test_a_failed_write_after_a_wall_clock_step_leaves_the_shared_timer_on_the_true_deadline`, `test_a_table_with_no_running_deadline_restores_whatever_the_clocks_say`, `test_on_the_real_clocks_the_shared_timer_and_the_browsers_get_the_same_150_seconds`, `test_the_engine_expires_only_a_running_deadline` | AVR-242 |
-| E-D8 | The reason shown on an unavailable control is not the server's rejection in six places. Two state something untrue: a color card in the distress exchange after the player's own choice is sealed reads "Submarines cannot be passed", and a card that follows suit reads "You must follow the opening suit." while a crew decision is pending (the captain's off-suit Tonoja card reads "Only the captain plays for Tonoja."). Four are a second wording of the same fact: a card before the crew begins, "Take this task" for another seat and for the captain on a comparison task, "Offer all tasks" for a non-captain. The server refuses every one of these requests and nothing changes | action contract ("the client can disable it with the right reason") | `test_defect_the_reason_shown_before_play_begins_is_the_servers_rejection`; the playtest asserts the refusals | AVR-263 |
+| E-D8 | **Fixed 2026-10-05.** Was: the reason shown on an unavailable control was not the server's rejection in six places. Two stated something untrue: a color card in the distress exchange after the player's own choice was sealed read "Submarines cannot be passed", and a card that follows suit read "You must follow the opening suit." while a crew decision was pending (the captain's off-suit Tonoja card read "Only the captain plays for Tonoja."). Four were a second wording of the same fact: a card before the crew begins, "Take this task" for another seat and for the captain on a comparison task, "Offer all tasks" for a non-captain. Now: the view gives the reason for each card, each open task, the pass, the volunteer answers and the offer of all tasks (`me.play_reason`, `me.card_reasons`, `me.task_reasons`, `me.pass_task_reason`, `me.volunteer_reasons`, `me.offer_reason`, `me.offer_owner_reasons`) in the words the server rejects that request with, and the client shows only those; such a control is unavailable exactly when the view gives a reason for it. The owner chose the server's wording for rows 1 to 4 of the issue on 2026-10-05, and later that day for every unavailable action: the same now holds for Begin, Retry and Next, the Party Host's included (`lifecycle_reasons`), and for "Lock prediction" (`me.predict_reasons`) | action contract ("the client can disable it with the right reason") | `test_the_reason_shown_before_play_begins_is_the_servers_rejection` (the pinned test, renamed now that it passes); `test_every_reason_shown_on_an_unavailable_control_is_the_servers_rejection`; `test_at_any_state_a_reason_is_the_rejection_and_no_reason_means_accepted`; `test_a_closed_table_says_so_on_every_card_and_refuses_every_command_with_it`; `test_a_decision_pending_during_the_distress_exchange_is_the_reason_on_every_hand_card`; `test_after_the_result_every_card_gives_the_servers_rejection_of_a_play`; `test_the_offer_of_all_tasks_gives_the_servers_rejection_in_missions_six_ten_and_thirteen`; `test_pass_selection_and_the_volunteer_answers_give_the_servers_rejection`; `test_at_any_table_the_reason_for_begin_retry_and_next_is_what_the_table_answers`; `test_the_reason_for_the_hosts_begin_follows_the_order_the_table_refuses_in`; `test_the_reasons_for_a_prediction_are_the_servers_rejections`; the playtests compare the shown reason with the refusal | AVR-263 |
 | E-D9 | **Fixed 2026-10-04.** Was: a crew decision was checked for its keys but not for the type of every value. In missions 6, 10 and 13 the `task` of an `assign` decision was never read, so any JSON value was stored in the pending decision and sent to every viewer; a value nested about 500 lists deep (one socket message) then made every view, snapshot and command raise, and one seated player could freeze the table. Now: every field of a crew decision must be a plain value of its own type and, where all tasks go together, `task` must be `all`; anything else is rejected before it is stored or remembered | action contract (a rejected request changes nothing) | `test_an_assign_field_of_the_wrong_type_is_refused_in_every_allocation_mode`, `test_every_other_decision_field_of_the_wrong_type_is_refused`, `test_where_all_tasks_go_together_the_task_field_is_the_word_all`, `test_the_request_that_froze_the_table_is_refused_and_the_table_plays_on` | AVR-264 |
 | E-D10 | **Fixed 2026-10-04.** Was: mission 32 took its four named tasks without removing them from the task deck; after it ended they were in the used pile too, and once the deck was refilled from the used pile a later mission could deal the same task twice. Assigning the second copy overwrote the first copy's owner, so one task disappeared and the mission was easier than its difficulty. Now: a fixed mission takes its tasks out of the deck and the used pile, and the engine's invariant refuses any state with a task id twice in a pile or in two piles | no source involved: a task card cannot be in two piles | `test_no_task_is_dealt_twice_in_the_missions_after_mission_thirty_two`, `test_no_task_is_dealt_twice_for_any_crew_size`, `test_retries_before_and_after_mission_thirty_two_keep_every_task_in_one_place`, `test_mission_thirty_two_takes_its_four_tasks_out_of_the_deck_and_the_used_pile`, `test_a_table_that_opens_on_mission_thirty_two_deals_its_four_tasks`, `test_the_reported_table_reaches_mission_forty_seven_with_distinct_tasks`, `test_a_snapshot_with_a_task_in_two_places_is_refused` | AVR-265 |
 | E-D11 | **Fixed 2026-10-04.** Was: a request id was checked only for its length; one that cannot be written as UTF-8 (a lone surrogate) on an otherwise legal command was accepted and remembered, the snapshot write then raised, and every later command on a table with a snapshot file raised too. Now: a request id is 1 to 80 printable ASCII characters, and a snapshot that cannot be written as text is a failed write: the command is rolled back and answered `storage` | action contract (a rejected request changes nothing); state contract (a failed write rolls back) | `test_a_request_id_that_is_not_plain_printable_text_is_refused`, `test_a_plain_request_id_is_still_accepted`, `test_an_unstorable_request_id_leaves_a_stored_table_saving_and_answering`, `test_a_snapshot_that_cannot_be_written_as_text_is_a_storage_failure_not_a_crash`, `test_the_store_reports_any_snapshot_it_cannot_write_as_a_failed_write` | AVR-268 |
@@ -147,7 +147,7 @@ a source's wording makes the choice non-obvious and the owner has not confirmed 
 | P13 | A real-time deadline keeps running while a player is away | fairness; no source | `test_a_timed_mission_expires_while_a_player_is_away` | uncontested |
 | P14 | An unknown credential during a table watches the public view; watchers are bounded; Party spectators get the public view | platform convention | `test_five_human_table_accepts_public_watcher_without_seating`, `test_nobody_else_sees_or_takes_an_empty_seat`, `test_a_spectator_ticket_watches_the_table_without_a_hand` | uncontested |
 | P15 | A volunteer who may not own one of the tasks ends the attempt as a counted failure | R p13: avoidable | `test_timed_start_barrier_and_volunteer_eligibility_failure` | uncontested; the same rule now covers the captain (Q9) |
-| P16 | The equal-difficulty replacement is drawn at random from the deck and the replaced task returns to it | R p14 says "a different task" | `test_explicit_feasibility_and_used_deck_replenishment` | uncontested |
+| P16 | The equal-difficulty replacement is drawn at random from the deck and the replaced task returns to it. When the deck holds no such task and the used pile does, the used pile is shuffled back into the deck first, as the draw does (P04), and the replacement is drawn from there. A mission's own named tasks (mission 32) are never replaced | R p14 says "a different task"; R p8 for reshuffling used tasks. The source game's task-deck behaviour, not an Avrana rule | `test_explicit_feasibility_and_used_deck_replenishment`, `test_the_used_pile_is_shuffled_into_the_deck_and_the_replacement_drawn_from_it`, `test_a_comparison_task_forced_on_the_captain_is_replaced_from_the_recycled_used_pile`, `test_the_named_tasks_of_mission_thirty_two_are_never_looked_at_for_repair` | decided by the owner 2026-10-05 (AVR-270) |
 | P17 | Deal exceptions are checked against every hand, the dummy's included, before selection | R p14: "no matter who takes the task" | `test_named_submarine_alignments_are_deal_exceptions` | uncontested |
 | P18 | Commands carry attempt, revision and a request id; identical repeats are no-ops; stale commands are refused | digital necessity | `test_rejected_actions_are_transactional_and_duplicates_idempotent`, `test_hostile_payloads_do_not_mutate` | uncontested |
 | P19 | Durable restoration is opt-in, atomic, and fails closed; Party rounds do not use it | platform has no store | `test_atomic_store_session_restart_and_fail_closed`, `test_storage_failure_rejects_action_without_losing_table`, `test_closed_snapshot_restores_shared_lobby_reset_and_rejects_corrupt_phase`, `test_a_party_round_never_inherits_or_writes_a_standalone_snapshot`, `test_a_snapshot_from_other_content_or_rules_is_refused` | uncontested |
@@ -447,6 +447,20 @@ reveal order decisive? Now: mission disabled.
 is such a lead illegal (the engine would have to refuse it, and needs a rule for a leader holding
 only those suits) or legal and mission-losing? R p19's never-lead tasks are the second kind. Now:
 mission disabled.
+
+### Decision of 2026-10-05 (AVR-270)
+
+**Where does the same-difficulty replacement come from when the task deck has none?** The owner,
+on the issue, 2026-10-05:
+
+> Approved: when EXPO must replace an impossible/conflicting task with another task of the same
+> difficulty and the remaining task deck cannot supply one, recycle/shuffle the used task pile and
+> continue the same-difficulty replacement from there. This is intended to follow The Crew:
+> Mission Deep Sea's task-deck behavior, not invent a new Avrana rule. Mission-specific fixed
+> tasks remain fixed and are not subject to this generic replacement path.
+
+Built as policy P16. It follows the source game's handling of its task deck; it is not an Avrana
+rule. The named tasks of mission 32 are exempt.
 
 ## Implementation report
 
@@ -1097,6 +1111,229 @@ Still open:
 | Party `tools/contract_check.py --games` against this branch | compatible |
 | A real phone | not run |
 
+### AVR-263, 2026-10-04 and 2026-10-05
+
+E-D8 is fixed. The owner decided on 2026-10-05 that the server's rejection wording is the single
+source for rows 1 to 4 of the issue and that the client keeps no second sentence for the same
+refusal; rows 5 and 6 needed no decision.
+
+**Final owner decision, 2026-10-05 (evening).** "The server is the source of truth for why an
+action is unavailable. Therefore: Accept the remaining sentence replacements where they make the
+UI accurately describe authoritative server state. This includes rows 5–6. Do not preserve old
+wording merely because it already exists. The Party Host's Begin reason must also use
+authoritative/server-derived wording rather than an independently invented client explanation.
+Keep wording concise and comprehensible to a player. Update tests and documentation
+accordingly." With it the ten replacements listed below as beyond the six places are accepted,
+and the two things first left unchanged (the Party Host's Begin, "Lock prediction") are done.
+
+Changed: `games/expo/engine.py` (`Engine.reasons`, eight fields of `me` in the view;
+`Engine.lifecycle_reasons`, with `_lifecycle_refusals`, `_step_open`, `_gate` and `STEP_NEEDS`
+as the one copy of each check; no rule, no rejection code, no sentence and no order of checks
+changed), `games/expo/game.py` (`lifecycle_reasons` in the view, `_host_refusal`, the timer for
+the end of the crew's moment), `games/expo/web/client.js`, `tests/test_expo_coverage.py`,
+`tests/test_expo_authority.py`, `tests/playtest_expo.mjs`, `tests/playtest_expo_party.mjs`, and
+these documents.
+
+- **Engine.** `Engine.reasons(seat)` gives, for each control a crew member sees, the sentence
+  `apply` rejects that request with. Each control is an ordered list of refusals, in the order
+  `apply` checks them, and the first that holds is the reason; the refusals every command meets
+  first (a seat away, a closed table, a pending crew decision) are one list, so a refusal added
+  to `apply` is one line added there. The view carries `play_reason`, `card_reasons`,
+  `task_reasons`, `pass_task_reason`, `volunteer_reasons`, `offer_reason` and
+  `offer_owner_reasons` ([ACTIONS](ACTIONS.md#conventions)).
+- **Mission 6.** `offer_reason` was worked out for missions 10 and 13 only; in mission 6 it was
+  empty while a pending decision or an away seat made the server refuse. It is now given
+  wherever all tasks go to one seat.
+- **An owner the offer may not name.** In missions 6, 10 and 13 an offer naming the captain while
+  a captain comparison task is among the tasks was enabled and then refused.
+  `offer_owner_reasons` gives the server's sentence for each such seat and the client does not
+  let it be chosen. No rule changed: the server refused this offer before and refuses it now.
+- **Client.** On the one-viewport client of AVR-275 every card, "Take this task", "Pass
+  selection", both volunteer answers and "Offer all tasks" are disabled exactly when the view
+  gives a reason, and show that sentence. What to do next ("Choose one color card", "Follow blue
+  if you can", "Lead any card", "Choose a card first.") and who the table is waiting for are
+  still the client's words: they are not refusals. Every sentence taken out is listed under
+  "Client sentences replaced" below.
+- **One viewport.** The line beside the hand was one line cut short with an ellipsis; at 360
+  pixels with Tonoja's hand switch showing, "It is another crew member's turn." was cut on
+  `main` too. It now wraps to two lines and is never cut. Found while checking this: on a short
+  screen a shown sonar card added a line to the crew strip, and with a two-line status and the
+  fullest hand the stage fell under the 84 pixels the trick needs (73 at 360 x 600, 81 at
+  390 x 664; 83.5 at 360 x 600 even without a sonar card). `main`'s client measures the same in
+  the same state: the playtest met it only when the deal put another seat on turn. Up to 700
+  pixels of height the sonar card now sits beside the name, and up to 610 the status strip, the
+  hand panel and the dock give up a pixel of padding above and below (worst case now 89.5). The
+  playtest draws that state for every seat on turn at every phone size, so it no longer depends
+  on the deal, and checks that the line beside the hand is whole. No assertion was weakened.
+- **Begin, Retry and Next** (final decision). The Party Host's "Begin mission" was disabled with
+  sentences the client worded itself. The view now carries `lifecycle_reasons` `{begin, retry,
+  next}`: for each step the sentence the server refuses it with at that moment, or null. It is
+  public (the Party Host may hold no seat, and a viewer without a seat gets no `me`): it reads
+  who is away, whether a decision is pending, the phase, the result, a resolving trick and the
+  crew's moment, all of which every viewer is already shown, and no hand; the privacy differential and the table
+  walk compare it across viewers. Where the steps are the Party Host's it is the refusal of the
+  host message, in the order the server checks: the crew's moment (`game.GRACE`, Begin only),
+  then an away seat, a closed table, a resolving trick, a pending crew decision, what the step
+  itself needs. Where
+  the crew proposes them (a standalone table, a Party from before the host claim) it is
+  `apply`'s refusal of that proposal, so a pending decision reads "Confirm or decline the crew
+  decision first." there and "The crew is deciding something. Wait for their answer." for the
+  host: each is what that sender is told.
+- **One copy of each check.** `Engine.lifecycle` now refuses from an ordered list
+  (`_lifecycle_refusals`) and `lifecycle_reasons` reads the same list; what a step needs
+  (`STEP_NEEDS`, `_step_open`) is one check for the host's commit, a seat's proposal and the
+  reason; the adapter's own refusals of a host step ("This table is not a Party round.", "No
+  active mission.", the crew's moment) are `ExpoSession._host_refusal`, which `host_action`
+  raises and the reason shows; the crew path uses the gate every other reason uses
+  (`Engine._gate`). The refusal AVR-246 added while a trick is resolving came in with the
+  merge as one line in `_lifecycle_refusals` and one in `_gate`, between the closed table and
+  the pending decision; its sentence, "The trick is being resolved.", is then the reason on
+  every card for the 0.8 s of the hold
+  (`test_while_a_trick_is_being_resolved_that_is_the_reason_on_every_control_and_step`,
+  `test_a_resolving_trick_is_the_reason_at_the_table_until_its_timer_settles_it`).
+- **The crew's moment ends on the server.** The page used to open Begin when its own clock
+  passed `begin_at`. With the reason coming from the view that would leave a stale sentence on
+  a phone, so the table's one timer (a resolving trick's hold or the mission's deadline, neither
+  of which runs before play) is set for the end of the moment and its tick pushes a state without the reason. `begin_at` now
+  only counts the wait down on the button.
+- **"Lock prediction"** was disabled without a reason while a seat was away.
+  `me.predict_reasons` gives the server's sentence for each prediction that is awaited, by the
+  same mechanism as the other controls (while a crew decision is pending the decision takes the
+  stage and the control is not drawn).
+- **Client.** The host's and the crew's Begin, and Retry and Next on the result, are disabled
+  exactly when `lifecycle_reasons` gives a sentence, with that sentence on the button and in
+  words (Begin: in the stage, first in the panel or under a pending decision, because the dock
+  has no room for a line; Retry and Next: under the buttons). A seat that may move the table on
+  after a result while a seat is away now sees the buttons, closed, with the server's sentence,
+  where it saw only who the table was waiting for. A watcher at a table the crew moves on is
+  shown "The crew agrees to begin" and no button (it was a disabled button with no reason).
+- **Not done.** "End table" at a standalone table is still closed by a condition the client
+  works out (a pending decision, a seat away), with no sentence, and the sonar sheet says in the
+  client's words when sonar is available. They are outside this decision's list; the gate
+  (`Engine._gate`) would serve the first. The distress buttons and "Propose owner" are hidden,
+  not closed, when they cannot be used.
+
+#### Server sentences a player may find unclear
+
+The decision asks for wording that is concise and comprehensible to a player. Every sentence the
+page can now show was read in the place it is shown. None is misleading there, so none was
+changed; these are the ones a player may not understand at once, for the owner to judge:
+
+| Sentence | Where it is shown | Why it may be unclear |
+|---|---|---|
+| "That card is not in the playable hand." | the captain's own cards on Tonoja's turn; Tonoja's cards on the captain's own turn | does not say which hand is the one to play from |
+| "This is not a card-play phase." | beside the hand before Begin and after a result | "phase" is the engine's word; does not say what the table is waiting for |
+| "Your pass is already locked or unavailable." | every hand card once the viewer's distress choice is sealed | "or unavailable" covers a case the player is not in |
+| "Every task needs an eligible owner." | beside a seat the offer may not name (the captain, with a captain comparison task among the tasks) | does not say that this seat is the one that may not take them |
+| "The remaining crew must take the tasks." | the volunteer "No" when the last crew members asked cannot decline | does not say "you cannot decline" |
+| "Choose one of your color cards." | a submarine during the distress exchange | does not say that submarines cannot be passed |
+| "The captain cannot take a captain comparison task." | "Take this task" for the captain | "captain comparison task" is not a term the page explains |
+
+Two sentences are in the view and never reach the page, because the client shows no control
+there: "Only the task owner can predict." and "Your prediction must be in range and cannot be
+changed." (the second is one sentence for two refusals). The three sentences for what a step
+needs ("Finish task allocation and predictions first." and the two after a result) reach the
+page only if a control is drawn in a phase it does not belong to, which the client does not do.
+
+#### Client sentences replaced
+
+Rows 1 to 6 of the issue named six places. Bringing the client to "no second sentence for the
+same refusal" touched more than those six. **The second table goes beyond the six listed places.
+The owner accepted it on 2026-10-05 (the final decision quoted above)**; nothing in it was
+reworded on the server.
+
+Within the six listed places:
+
+| Where | The client said | It now shows, from the view |
+|---|---|---|
+| A hand card before play begins (row 1; `play_reason` from the engine) | "Finish mission preparation before playing." | "This is not a card-play phase." |
+| "Take this task", another seat selecting (row 2) | "Another crew member must select this task." | "It is another crew member's task selection." |
+| "Take this task", the captain on a captain comparison task (row 3) | "Another crew member must select this task." on the button; "The captain cannot take a captain comparison task." beside it, as the client's own copy | "The captain cannot take a captain comparison task." in both places |
+| "Offer all tasks", not the captain (row 4) | "The captain decides who takes the tasks." | "The captain must offer these tasks." |
+| A hand card in the distress exchange (row 5) | "Submarines cannot be passed" on every card | "Choose one of your color cards." on a submarine; "Your pass is already locked or unavailable." on every card once the viewer's choice is sealed |
+| Tonoja's face-up cards (row 6) | "Only the captain plays for Tonoja.", unless play was unavailable to the viewer | the card's own reason: "You must follow the opening suit.", "That card is not in the playable hand.", or the viewer's reason for not playing at all |
+| A hand card while a crew decision is pending (row 6) | "You must follow the opening suit." | "Confirm or decline the crew decision first." |
+
+Beyond the six listed places (accepted by the owner, 2026-10-05):
+
+| Where | The client said | It now shows, from the view |
+|---|---|---|
+| Beside "Offer all tasks", not the captain | "The captain, <name>, decides who takes the tasks." | "The captain must offer these tasks." |
+| "Pass selection" when the tasks must be taken | "The remaining tasks must be assigned this round." on the button, as the client's own copy; "You cannot pass: the remaining tasks must be assigned this round." beside it | "The remaining tasks must be assigned this round." in both places |
+| The volunteer "No" when forced | "The remaining crew must take the tasks." on the button, as the client's own copy; "You cannot decline: the remaining crew must take the tasks." beside it | "The remaining crew must take the tasks." in both places |
+| The instruction in the distress exchange | "Choose a color card from your hand, then pass it. Submarines cannot be passed." | "Choose a color card from your hand, then pass it." The second sentence is dropped; a submarine carries the server's reason |
+| The line beside the hand, after a result | "The mission is over." | "This is not a card-play phase." ("This table is closed." once the table is ended) |
+| The line beside the hand, own distress choice sealed | "Your pass is sealed" | "Your pass is already locked or unavailable." |
+| The line beside the hand, a crew member who is not the captain looking at Tonoja's cards | "Only the captain plays for Tonoja." | that crew member's own reason for not playing, for example "It is another crew member's turn." |
+| The line beside the hand, the captain looking at Tonoja's cards on the captain's own turn | "It is not Tonoja's turn." | "That card is not in the playable hand." |
+| The line beside the hand and each card, the captain looking at the captain's own hand on Tonoja's turn | "Play from Tonoja's cards." | "That card is not in the playable hand." |
+| A card of the viewer's own hand that does not follow suit | "You must follow the opening suit.", as the client's own copy | the same sentence, from the view |
+
+Begin, Retry, Next and "Lock prediction" (the final decision, 2026-10-05):
+
+| Where | The client said | It now shows, from the view |
+|---|---|---|
+| The Party Host's Begin during the crew's moment | "The crew has a moment to ask for distress first.", on the button only | "The crew has a moment to ask for distress first. Begin in a few seconds." on the button and in the stage |
+| The Party Host's Begin, a seat away | "Waiting for the crew to reconnect.", as the client's own copy, on the button only | the same sentence, from the view, on the button and in the stage |
+| The Party Host's Begin, a crew decision pending | "The crew is deciding something.", on the button only | "The crew is deciding something. Wait for their answer." on the button and under the decision |
+| The crew's Begin (a standalone table, a Party from before the host claim), a decision pending or a seat away | nothing: a disabled button | "Confirm or decline the crew decision first." or "Waiting for the crew to reconnect." on the button and in the stage |
+| Retry and Next on the result, a seat away, for whoever may move the table on | "Waiting for <names> to reconnect." in place of the buttons | the buttons, closed, with "Waiting for the crew to reconnect." under them (everyone else still reads who the table is waiting for) |
+| "Lock prediction", a seat away | nothing: a disabled button | "Waiting for the crew to reconnect." on the button and beside it |
+
+New on the page, with no earlier client sentence: an owner the offer may not name is disabled in
+the owner list with "<name>: Every task needs an eligible owner." beside it, and the volunteer
+"Yes" is disabled with the view's reason like the other controls (a seat that is not being asked
+does not see the buttons).
+
+Tests: `test_at_any_state_a_reason_is_the_rejection_and_no_reason_means_accepted` walks 54 seeded
+tables (missions 1, 6, 10, 13, 16, 17 and 25, two to five players) through 28 states each, with
+seats dropping, decisions left pending, results and closed tables, and in every state sends the
+request behind every card, task, pass, answer, offer and prediction for every crew member: a
+reason is the rejection word for word, no reason means accepted. In the same states it sends
+Begin, both retries and Next both ways (the lifecycle authority's commit, and a proposal from
+each seat) and compares them with `Engine.lifecycle_reasons`. Every sixth state it also changes
+everything the viewer may not see and requires the same view and the same lifecycle reasons.
+`test_the_wandering_tables_met_every_reason_and_some_hundreds_of_states` requires that the walk
+met all eighteen sentences of the controls and all seven of the steps.
+`test_at_any_table_the_reason_for_begin_retry_and_next_is_what_the_table_answers` is the same
+property through the adapter: 48 seeded tables (a Party round with a host, a Party round without
+the host claim, a standalone table; two to five players) through 30 states each with the clock
+moving, the host taking steps that are open, and a result forced part way. In every state, twice
+(before and after the clock moves), the view's `lifecycle_reasons` is the same for every seat, a
+watcher, a stranger and a Party spectator; each step is sent by whoever moves that table on
+(`host_action`, or each seat's proposal) and the answer is the reason, word for word, or the step
+is taken where there is none; `begin_at` is given exactly while the crew's moment is the reason.
+`test_the_wandering_tables_met_every_reason_for_begin_retry_and_next` requires each kind of
+table to have met every sentence it can give.
+`test_the_reason_for_the_hosts_begin_follows_the_order_the_table_refuses_in` names the order
+(the crew's moment, then away, then a pending decision),
+`test_a_seat_that_proposes_begin_retry_or_next_gets_the_reason_shown_at_a_crew_table` the crew
+path, `test_when_the_crews_moment_ends_the_table_wakes_and_every_phone_gets_begin_open` the
+timer, `test_every_phone_is_given_the_servers_reason_for_begin_and_told_when_it_no_longer_holds`
+the same over the real room with a host who only watches, and
+`test_the_reasons_for_a_prediction_are_the_servers_rejections` the prediction.
+Five further tests name the states the earlier test never reached: a
+closed table, a decision pending during the distress exchange, the result (failed and
+successful, then with a retry or next pending, then with a seat away), the offer in missions 6,
+10 and 13, and the pass and volunteer answers. Checked that they can fail: with the mission 6
+gate taken out again, with the owner reasons emptied and with the closed-table refusal put
+ahead of the away refusal, the new tests fail.
+
+The same was checked for the steps and the prediction, one change at a time, each put back: the
+away refusal taken out of the reason alone (60 tests fail); the reason made to put the engine's
+refusals before the crew's moment, and `host_action` made to (11 each: the table walk and the
+order test); no timer for the end of the moment (the two timer tests); the crew-table reason
+without what the step needs, with the host's sentence for a pending decision, or the view given
+the other authority's reasons (95, 96 and 50); a prediction reason without the owner or without
+the away seat (the walk and the prediction test). Because the host's refusal and its reason are
+one list, a change to that list moves both and the walk cannot see it: the away refusal taken
+out of the list, and the pending decision put before it, are caught only by the tests that name
+the sentence (`test_the_table_does_not_move_on_while_a_crew_member_is_away`,
+`test_the_reason_for_the_hosts_begin_follows_the_order_the_table_refuses_in`).
+
+Not covered: the browser playtests were not run in this session (the orchestrator runs them),
+real phones, the appliance, a Party-launched round.
+
 ### AVR-246, 2026-10-04
 
 Entry E-X1: the engine now reports what happened and why an attempt failed, and holds the table
@@ -1165,20 +1402,65 @@ calls a named card won by another player "failed"; the engine calls that `IMPOSS
 draft's own state model defines it. The drafts' objective constructors, legality response shape
 and performance tiers were not implemented and are not planned by this entry.
 
-**For the owner.**
+**DECIDED by the owner, 2026-10-05 (evening, recorded on AVR-246).** The four questions this
+entry put to the owner are closed. The decision, verbatim:
 
-1. May a client be sent the whole attempt's events once the mission has a result (a debrief or a
-   replay)? Now: no, the latest trick only.
-2. `RESOLVE_HOLD` is 0.8 s, from the draft's "under one second". It is one constant in
-   `games/expo/game.py`; changing it changes no rule. Its length is still the owner's to
-   confirm. What a timed mission's clock does during it is **decided** (2026-10-05, below): it
-   runs, so in timed mission 16 the holds take up to about ten of the crew's 150 seconds.
-3. The triggering seat is the trick's winner. That is an attribution of the deciding card, not
-   of fault; a presentation that blames a player on it should know that.
-4. The drafts as committed: the example players' first names were replaced by the repository's
-   stand-in names (Alice, Bob, Carol), 30 and 7 occurrences, and a banner was added. The title
-   "The Team II" was left as written; it is the reference tabletop's name, which
-   [VTT_REFERENCE](VTT_REFERENCE.md) already uses, not the publisher's.
+> 1. Do not expose a complete historical debrief/event stream yet. Use the latest trick's events
+> where needed for presentation and spectating. Defer a complete historical event/debrief system
+> until it is explicitly designed. 2. Keep the resolve hold at 0.8 seconds for now. This is
+> intentionally provisional pending real-phone playtesting. 3. Trick-caused outcomes/failures are
+> attributed to the player who won the triggering trick. The engine is authoritative for this
+> attribution. 4. Accept the replacement example names. The previously made timer decision
+> remains in force.
+
+What each means here, and what the code does (none of the four changed any behaviour):
+
+1. A viewer is sent the events of the latest resolved trick and what followed, of the attempt in
+   play, also after the mission has a result (`Engine.events`;
+   `test_a_viewer_is_sent_the_latest_resolved_trick_and_what_followed_and_no_earlier_trick`,
+   `test_after_a_result_a_viewer_is_still_sent_only_the_latest_trick`). The longer log stays on
+   the server. A complete debrief or event history is deferred until it is designed; it is not
+   a pending question of this entry.
+2. `RESOLVE_HOLD` is 0.8 s, one constant in `games/expo/game.py`
+   (`test_the_resolve_hold_is_the_owners_provisional_value`). It is provisional by intent,
+   pending playtests on real phones, and changing it changes no rule. What a timed mission's
+   clock does during it was decided earlier the same day (below) and remains in force: it runs.
+3. A failure established when a trick resolved is attributed to the seat that won that trick,
+   and the engine's `cause` is the authority for it: a client presents it and does not derive
+   its own. It is an attribution of the deciding trick, not a judgement of fault. Two cases
+   are outside "the player who won the triggering trick" as built, and are kept as they were
+   (see "Residual question" below).
+4. The drafts as committed keep the replacement example names (Alice, Bob, Carol; 30 and 7
+   occurrences) and their non-canonical banners. The title "The Team II" was left as written; it
+   is the reference tabletop's name, which [VTT_REFERENCE](VTT_REFERENCE.md) already uses, not
+   the publisher's.
+
+**Residual question (attribution, the one point the decision does not settle).** Two failures
+are decided by a single card and not by who won a trick, and the engine names the seat that
+played that card:
+
+- *The trick is not complete, so nobody has won it.* A task that forbids a lead (for example
+  `noLeadRedGreen`) fails when its owner leads a forbidden card: p0, who owns it, leads pink 3;
+  the attempt ends on that card with one card on the table, no trick in the history and no
+  `TRICK_RESOLVED`; `trigger_seat` is p0
+  (`test_a_card_that_fails_a_task_before_its_trick_ends_names_the_seat_that_played_it`). The same
+  holds in mission 27 when yellow 5 is played before the last card of a trick. There is no
+  winner to name, and none is invented.
+- *The trick is complete, and the trigger is still the seat that played the card.* Mission 27
+  only: yellow 5 played as the last card of a trick that is not the final trick. p0 leads
+  yellow 1, p1 plays yellow 9, p2 plays yellow 5: the trick is resolved and p1 wins it, the
+  mission fails because yellow 5 was played out of place, and `trigger_seat` is p2, who played
+  it, not p1 (`test_yellow_five_out_of_place_names_the_seat_that_played_it_even_when_the_trick_is_complete`).
+  The failure is the same one as in the case above and would have happened whoever won; naming
+  the winner here would attribute it differently depending only on whether yellow 5 happened to
+  be the last card of its trick. Read literally, the decision would name p1. This was not
+  changed: it is a question for the owner, not a repair.
+
+Every other failure established at a resolved trick names that trick's winner. In a scan of
+random playouts of missions 1 to 32 at three, four and five players (run by hand for this
+entry; the script is not in the repository) 919 such failures named the winner, 15 were the
+mission 27 case above, 107 were single-card failures in an incomplete trick, and 81 conditions
+unmet at the end of the deal named nobody.
 
 **Owner decision, 2026-10-05 (recorded on AVR-246).** "Timed missions do **not** gain time
 during the 0.8 s resolving hold. The mission clock continues to run on monotonic elapsed time
@@ -1204,9 +1486,9 @@ What changed for it, in `games/expo/engine.py` and `games/expo/game.py`:
   before settling when it cannot, so neither path opens a turn on a table that has run out.
 - Untimed tables: no value differs. `settle` reads `now` only when there is a deadline.
 
-Not changed, and still the owner's: whether a client may be sent the whole attempt's events
-after a result (1), the length of the hold (2), the attribution of the triggering seat (3), the
-drafts' example names (4).
+Not changed by the timer decision: what a viewer is sent after a result, the length of the
+hold, the attribution of the triggering seat, the drafts' example names. All four were decided
+the same evening (above).
 
 A consequence to know: the hold is not cut short by the deadline. A timeout that falls inside
 a hold is recorded when the hold ends, up to 0.8 s after the deadline (the decision's "finish
@@ -1247,6 +1529,82 @@ timer path itself is tested through real sockets
 | `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check | OK |
 | `pytest -q` (whole repository), the cross-repository tests, the two browser playtests, a real phone | not run for this change |
 | after the owner decision of 2026-10-05, on `main` at 9f9aa41 merged in: `pytest tests/test_expo.py tests/test_expo_*.py` | 1168 passed, 2 skipped, 2 expected failures; `tests/test_expo_events.py` 100 passed (with the early-timer repair and its two tests); the four checks of the row above OK; browser playtests and the whole repository not run |
+
+### AVR-270, 2026-10-05
+
+- **Cause.** `Engine._repair_tasks` exchanges a task that makes an unavoidable combination for
+  another of the same difficulty, and looked for it in the task deck only. Late in a long table
+  the deck is small and held none, so `prepare` refused with `feasibility`. The last confirmation
+  of a `next` decision (or a `retry` with new tasks) was rolled back, every time it was tried.
+- **Decision.** The owner decided it on 2026-10-05 (above, "Decision of 2026-10-05"): recycle the
+  used pile and go on with the same-difficulty replacement, as the source game's task deck is
+  handled; a mission's own named tasks are exempt.
+- **Fix (P16).** The deck is looked at first, exactly as before. Only when it holds no such task,
+  and the used pile does, the used pile is put back into the deck, the used pile is emptied and
+  the deck is shuffled with the table's own random generator: the three steps the draw takes when
+  it cannot reach the difficulty (P04). The replacement is then drawn at random from the deck and
+  the conflicting task goes to the end of the deck, as before. The used pile is recycled only
+  when the deck holds no task of that difficulty that may be the replacement. `feasibility`
+  remains when neither pile holds one, and in the case under "Open" below. A refused `next` or
+  `retry` is rolled back whole, so the piles and the random state are as they were before it.
+  Which tasks conflict is unchanged. A mission with named tasks (32) is not examined at all.
+- **An earlier version of this branch** took the replacement out of the used pile and left the
+  rest of the pile where it was. That is not what the draw does and not what was decided, and it
+  was never merged.
+- **Unchanged where the deck has a replacement.** `tests/test_expo_repair.py` carries the repair
+  as it was (`DeckOnly`) and plays every table on both. Run by hand against the engine file of
+  `main` at `9f9aa41` as well: 600 seeded tables (150 seeds at 2, 3, 4 and 5 humans, 40 missions
+  each), 24,000 `next` decisions; 23,997 gave the same table, random state included; `main`
+  refused the other three, which are the recorded tables.
+- **Tests** (`tests/test_expo_repair.py`, 155 cases):
+  `test_the_recorded_tables_reach_the_mission_that_was_refused` (3),
+  `test_a_table_repaired_from_the_used_pile_is_stored_restored_and_played_on_the_same` (3),
+  `test_the_same_seed_recycles_the_used_pile_the_same_way` (3),
+  `test_a_long_table_is_never_refused_keeps_every_task_in_one_place_and_draws_as_before` (25 seeds
+  at 2, 3, 4 and 5 humans, 40 missions each; after every step every enabled task is in exactly
+  one of the deck, the used pile and the mission, `Engine.check` passes, and the table equals the
+  old repair's; none of these 100 tables needs the used pile, the recorded three do),
+  `test_a_long_table_with_retries_keeps_every_task_in_one_place_and_draws_as_before` (5 seeds at
+  2, 3, 4 and 5 humans, 60 steps each of `next`, `retry` with the same tasks and `retry` with new
+  ones, checked the same way),
+  `test_the_used_pile_is_shuffled_into_the_deck_and_the_replacement_drawn_from_it`,
+  `test_recycling_the_used_pile_is_decided_by_the_seed_alone`,
+  `test_a_replacement_in_the_deck_is_taken_as_before_and_the_used_pile_is_untouched`,
+  `test_no_replacement_in_either_pile_is_still_refused_and_nothing_is_shuffled`,
+  `test_a_comparison_task_forced_on_the_captain_is_replaced_from_the_recycled_used_pile` (three
+  draw orders, by `next` and by `retry` with new tasks, as the crew's decision and as the Party
+  Host's `lifecycle` command),
+  `test_known_limit_a_deck_whose_only_replacements_conflict_again_is_refused_without_recycling`
+  (pins the open case below; the refusal leaves state and random state as they were),
+  `test_a_comparison_task_is_never_the_replacement_for_one_forced_on_the_captain`,
+  `test_the_named_tasks_of_mission_thirty_two_are_never_looked_at_for_repair` (2 to 5 humans),
+  `test_named_tasks_are_not_exchanged_even_if_they_would_make_a_forced_combination`,
+  `test_mission_thirty_two_keeps_its_tasks_out_of_a_recycled_pile` (3).
+
+The tests of the first 128 were seen to fail: with the engine of `main` 26 of the 28 that are not
+the long walk fail; without the exemption for named tasks 5 do; without the shuffle 1 does. The
+known-limit test and the walk with retries pass on `main`'s repair too, by design: they pin what
+did not change.
+
+**Open, for the owner.** The recycle fires only when the deck holds no candidate of the
+difficulty. A deck can hold candidates that all conflict again. Example at three seats: the draw
+is `firstThreeTrick` and `firstTrick` (and a third task), the deck's only other task of difficulty
+1 is `firstTwoTrick`, and the used pile holds ordinary tasks of difficulty 1. `firstTrick` is
+exchanged for `firstTwoTrick`, which conflicts with `firstThreeTrick` as well and is exchanged
+back, a hundred times, and the setup is refused with `feasibility` ("Task combination needs a
+fresh task deck."), every time it is tried. `main` refuses it too; it did not occur in the
+24,000 seeded `next` decisions above or the 1,200 steps of the walk with retries. Question: should the used pile also be recycled when the
+deck's candidates are exhausted, not only when it has none? Not built: it is wider than the
+decision of 2026-10-05.
+
+On Windows 11, with `main` at `9f9aa41` merged in, `pytest -q tests/test_expo_*.py
+tests/test_expo.py`: 1,221 passed, 2 skipped, 2 expected failures. `tests/test_no_private_data.py`,
+`ops/export_avrana_catalog.py --check provider/catalog.json`, `ops/check_docs.py` and
+`ops/check_static.sh`: clean.
+
+Not covered: the whole repository suite, the browser playtests, a live socket, a Party round,
+real phones, the appliance, the timed variant, tables longer than 60 steps, the Party Host's
+command over a live socket (the tests call `Engine.lifecycle`).
 
 ### AVR-267, 2026-10-05
 
@@ -1568,9 +1926,9 @@ important). Client, tests and documents only.
 6. "The mission clock is at zero" replaces the turn sentence after the deadline, until the
    server sends the result.
 7. A deadline's failure arriving in one batch with a trick suppresses that trick's beats.
-8. New in round 3: a decision's answers are in the dock, apart from the question; someone
-   waiting on a decision sees who is missing and not the count; the Party Host tag is H with
-   three seats; "For Tonoja (game role)".
+8. New in round 3: someone waiting on a decision sees who is missing and not the count; the
+   Party Host tag is H with three seats; "For Tonoja (game role)". (The answers in the dock are
+   no longer a question: see the owner's decision below.)
 
 Run serially at `364b59b` (the code and tests of round 3), headless desktop Chrome at phone
 viewport sizes on Windows 11, by the author, with `EXPO_MISSION=1`:
@@ -1589,3 +1947,36 @@ viewport sizes on Windows 11, by the author, with `EXPO_MISSION=1`:
 Still not complete: the direction is provisional by the owner's note, a real-phone review is the
 gate, and final human-made or licensed art and audio, Safari, a screen reader and accessibility
 validation are outstanding.
+
+**Closing integration, 2026-10-05.**
+
+- **Owner decision on the dock**, verbatim: "When a decision requires an answer, Agree / Decline
+  temporarily replace Radio / Play in the action dock. Once the decision resolves, the normal
+  Radio / Play controls return. This is intentional responsive behavior, not a temporary hack."
+  The complete list of who has not answered stays in the decision. Nothing about the dock is
+  left open for the owner.
+- **`main` merged** (7320c87: AVR-246 final, AVR-270, the seeded helper, AVR-263). The engine,
+  the adapter, the Python tests and the documents keep both sides; `trick_leading` is in every
+  view and its five tests stand. This board's client keeps its structure and takes AVR-263's
+  behaviour whole: every control is disabled exactly when the view gives a reason and shows the
+  server's sentence, the page words no refusal of its own, and Begin is not opened by the page's
+  clock. The table of controls and reasons, and what was and was not taken from `main`'s
+  stylesheet, are in [PRESENTATION](PRESENTATION.md#merging-with-avr-263-and-avr-245). Both
+  playtests keep `main`'s assertions and this branch's.
+- **The board's fallback focus target** (`#mission-title`) could not take focus; it has
+  `tabindex="-1"` and the standalone playtest asserts it.
+- **AVR-245 is not merged**; what it must meet here is in the same section of PRESENTATION.
+
+| Check, on the merged tree, by the author | Result |
+|---|---|
+| `node tests/expo_director_test.mjs` | 21 passed |
+| `pytest tests/test_expo_*.py tests/test_expo.py` | 1482 passed, 2 skipped, 1 expected failure |
+| `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check | OK |
+| `tests/playtest_expo.mjs`, 2 and 3 humans, default fidelity, a fresh server each | PASS each |
+| `tests/playtest_expo_party.mjs`, 3 seated | PASS |
+| 5 humans, medium, low, director off, reduced motion, the Party variants | left to the orchestrator's matrix |
+| A real phone, Safari, a screen reader, accessibility validation | not run |
+
+Still not complete: the direction is provisional, a real-phone review is the gate, and final
+human-made or licensed art and audio, Safari, a screen reader and accessibility validation are
+outstanding.

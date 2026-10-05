@@ -195,6 +195,7 @@ try {
   if (OLD_PARTY) {
     // A Party from before the host claim: the crew decides, for now, and everyone is told so.
     assert.equal(first.lifecycle, "crew"); assert.equal(first.lifecycle_transitional, true);
+    assert.equal(first.lifecycle_reasons.begin, "Finish task allocation and predictions first.", "the crew's Begin has the server's reason");
     for (const m of party.members) {
       await labels(m, first);
       assert.match(await m.page.evaluate(() => document.getElementById("dock-host").innerText), /^Crew \(decides for now\)/);
@@ -247,17 +248,27 @@ try {
     assert.ok(ready.begin_at, "the server says when Begin opens");
     const left = () => host.page.evaluate(() => ST.game.begin_at ? ST.game.begin_at - conn.now() / 1000 : 0);
     if (await left() > 2) {
-      const b = await has(host.page, "begin");
+      const b = await has(host.page, "begin"), reason = (await state(host.page)).game.lifecycle_reasons.begin;
       assert.equal(b.disabled, true); assert.match(b.text, /^Begin in \d$/);
+      // Why it is closed is the server's sentence, from the view, in words on the page (AVR-263).
+      assert.equal(reason, "The crew has a moment to ask for distress first. Begin in a few seconds.");
+      assert.equal(b.title, reason, "the closed Begin gives the view's reason");
+      assert.equal((await has(host.page, "begin-why"))?.text, reason, "and says it in words, in the stage");
       assert.match(await host.page.evaluate(() => document.getElementById("status").textContent), /The crew may ask for distress · you can begin in \d/);
       const crew = seated().find(m => m !== host);
       assert.match(await crew.page.evaluate(() => document.getElementById("status").textContent), new RegExp(`Want distress\\? Ask now · ${host.name} can begin in \\d`));
       for (const k of ["distress-left","distress-right"]) assert.equal((await has(crew.page, k)).disabled, false, "any seated crew member may ask");
       assert.equal(await has(crew.page, "agree"), null, "nobody is asked to confirm or say ready");
+      assert.equal(await has(crew.page, "begin-why"), null, "the reason is shown to whoever has the control");
       if (await left() > 1) { assert.equal(await refused(host.page, SEND_HOST({kind:"begin"})), "The crew has a moment to ask for distress first. Begin in a few seconds."); graceSeen = true; }
     }
     await host.page.waitForFunction(() => { const b = [...document.querySelectorAll("[data-key]")].find(x => x.dataset.key === "begin"); return b && !b.disabled && b.textContent === "Begin mission"; }, {timeout:9000});
     assert.equal(await host.page.evaluate(() => graceLeft(ST.game)), 0);
+    // The server took its reason back by itself: a state pushed when the moment ended, with no
+    // message from any phone (the page opens Begin only when the view gives no reason).
+    const opened = (await state(host.page)).game;
+    assert.equal(opened.lifecycle_reasons.begin, null); assert.equal(opened.begin_at, null);
+    assert.equal(await has(host.page, "begin-why"), null);
   }
 
   // ---- Begin: the host's, once the crew has had its say ----
@@ -293,8 +304,16 @@ try {
       assert.match(await answering.page.evaluate(() => document.getElementById("status").textContent), /^Your answer is needed: Activate distress/);
       await oneViewport(answering.page, "a pending decision after a reload"); await criticalTextWhole(answering.page, "a pending decision after a reload"); await touchTargets(answering.page, "a pending decision");
     }
-    if (seated().includes(host)) assert.equal((await has(host.page, "begin")).disabled, true, "Begin waits for the crew's answer");
-    assert.equal(await refused(host.page, SEND_HOST({kind:"begin"})), "The crew is deciding something. Wait for their answer.");
+    {
+      // Begin waits for the crew's answer, and the reason on it is the view's: the sentence the
+      // server refuses the host's Begin with at this moment, on the button and in words (AVR-263).
+      const waiting = (await state(host.page)).game.lifecycle_reasons.begin, b = await has(host.page, "begin");
+      assert.equal(waiting, "The crew is deciding something. Wait for their answer.");
+      assert.equal(b.disabled, true, "Begin waits for the crew's answer"); assert.equal(b.title, waiting);
+      assert.equal((await has(host.page, "begin-why"))?.text, waiting, "the reason is words on the page");
+      assert.equal(await refused(host.page, SEND_HOST({kind:"begin"})), waiting);
+      for (const m of party.members) assert.deepEqual((await state(m.page)).game.lifecycle_reasons, (await state(host.page)).game.lifecycle_reasons, "the same for every viewer");
+    }
     await host.page.screenshot({path:path.join(OUT, "decision-pending.png")});
     const decliner = seated().find(m => m !== asker), r2 = (await state(decliner.page)).game.revision;
     await clickKey(decliner.page, "decline"); for (const m of party.members) await waitRevision(m.page, r2);
@@ -385,7 +404,12 @@ try {
   for (const m of party.members) {
     const seen = await resultOwnsTheScreen(m.page, `${m.name}: the result`);
     const keys = seen.keys.map(k => k.key);
-    if (m === host) { for (const k of NEXT) assert.ok(keys.includes(k), `the host is offered ${k}`); assert.ok(keys.includes("end-expo")); }
+    if (m === host) {
+      for (const k of NEXT) assert.ok(keys.includes(k), `the host is offered ${k}`); assert.ok(keys.includes("end-expo"));
+      // open, because the view gives no reason for the step (AVR-263)
+      assert.equal(ended.game.lifecycle_reasons[ended.game.result.status === "failed" ? "retry" : "next"], null);
+      for (const k of NEXT) assert.equal(seen.keys.find(x => x.key === k).disabled, false, `${k} is open`);
+    }
     else {
       assert.deepEqual(keys.filter(k => [...NEXT, "retry-same", "retry-new", "next", "end-expo", "end-table"].includes(k)), [], `${m.name} is offered no lifecycle control`);
       assert.match(seen.text, new RegExp(`Waiting for ${host.name} \\(Party Host\\) to choose what’s next`));

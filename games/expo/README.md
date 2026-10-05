@@ -45,7 +45,6 @@ missions.
 | | Defect | Issue |
 |---|---|---|
 | E-D2 | A table cannot be ended while a seated player is away; a standalone table can be stranded until the server restarts | AVR-240 |
-| E-D8 | Six unavailable-control reasons differ from the server's rejection; the server refuses each request | AVR-263 |
 
 Fixed: E-D1, the task-selection stall when the captain was the only seat left for a
 captain-comparison task (AVR-239, 2026-10-04). E-D3 and E-D4, late completion of the "win none of
@@ -60,7 +59,11 @@ in a mission played after mission 32: a task card is now in one place at a time 
 table: a request id is plain printable text, and a snapshot that cannot be written is a failed
 write like any other (AVR-268, 2026-10-04). E-D12, request ids that made a snapshot file too
 large to read after a restart: a request id is letters, digits and `-`, and a file over the size
-limit is never written (AVR-273, 2026-10-04).
+limit is never written (AVR-273, 2026-10-04). E-D8, reasons on unavailable controls that were not
+the server's rejection: the view now carries the server's own sentence for each such control and
+the client shows only that (AVR-263, 2026-10-05). By the owner's final decision of that day the
+same holds for Begin, Retry and Next, the Party Host's included (`lifecycle_reasons`, the same
+for every viewer), and for "Lock prediction" (`me.predict_reasons`).
 
 **Owner decisions, built.** The owner answered the open policy questions on 2026-10-04 under a
 "fidelity first" principle (AVR-243). The four answers that change behaviour are built: a single
@@ -101,6 +104,8 @@ whose objective it was. **Every visual is a neutral placeholder in a named slot 
 slot is empty: no final artwork or sound exists, and no real phone has shown any of it.** The
 seat winning an unfinished trick is the server's own public field (`trick_leading`, given by the
 function that resolves a trick) and the page shows it as a word; the client computes no rule.
+While a decision needs this player's answer, Agree and Decline take the place of Radio and Play
+in the dock, and those return when it is answered (owner decision, 2026-10-05).
 **The direction is provisional by the owner's note of 2026-10-05 and is not complete: final
 human-made or licensed art and audio, real phones, Safari, a screen reader and accessibility
 validation are all outstanding, and a real-phone review is the gate.**
@@ -172,6 +177,7 @@ $env:EXPO_FX='low'     # also medium, off; or $env:EXPO_MOTION='reduced': the sa
 | `tests/test_expo.py` | rules, every enabled task (one success and one failure fixture), privacy, snapshots, adapter lifecycle |
 | `tests/test_expo_party.py` | Party roster seating, ticket reconnect, spectators, outcome vocabulary |
 | `tests/test_expo_contract.py` | rules that had no direct test before the reconciliation, and the pinned defects |
+| `tests/test_expo_repair.py` | a forced task combination is repaired from the recycled used pile when the deck has no replacement; unchanged draws where it has; mission 32's named tasks left alone |
 | `tests/test_expo_docs.py` | the mission table, task catalog, conflict codes and cited tests in `docs/` equal the code |
 | `tests/test_expo_events.py` | semantic events (order, sequence, determinism, bound), what each viewer is sent and never sent, failure causality and objective states, no signal before a legal losing card, the resolving phase in the engine and the adapter, snapshots with and without the log |
 | `tests/test_expo_authority.py` | Party Host and captain as separate authorities: host-only Begin, Retry and Next and nothing else, prerequisites the host cannot skip, the crew's moment to ask for distress, a watching host, succession, a former host's kept tickets, a Party that does not answer, reconnect, an away seat, a Party without the host claim |

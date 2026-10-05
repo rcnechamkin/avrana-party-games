@@ -197,7 +197,7 @@ export async function withLongText(pg, check) {
 export async function criticalTextWhole(pg, label) {
   const cut = await pg.evaluate(() => {
     const out = [], app = document.getElementById("app").getBoundingClientRect();
-    const sel = ["#status", "#status-now", "#hand-reason", '[data-key="agree"]', '[data-key="decline"]', ".dock-label", ".decision .choice-row", ".decision > p", ".decision .why", ".radio-ask", ".radio-console .why"];
+    const sel = ["#status", "#status-now", "#hand-reason", '[data-key="begin-why"]', '[data-key="agree"]', '[data-key="decline"]', ".dock-label", ".decision .choice-row", ".decision > p", ".decision .why", ".radio-ask", ".radio-console .why"];
     for (const s of sel) for (const n of document.querySelectorAll(s)) {
       if (!n.textContent.trim() || n.offsetParent === null || n.closest("[hidden]")) continue;
       const b = n.getBoundingClientRect(), why = [];
@@ -229,7 +229,8 @@ export async function longestStatusesFit(pg, label, shots = null) {
     const g = st.game, me = g.me && g.me.seat, others = g.seats.filter(s => s !== "tonoja" && s !== me);
     const idle = {proposal: null, away: [], result: null, resolving: null};
     const ask = (payload, more = {}) => ({...idle, proposal: {payload, votes: [], recipient: null, ...more}});
-    const stuck = reason => g.me ? {me: {...g.me, legal_cards: [], play_reason: reason}} : {};
+    // The line beside the hand is the reason every card showing shares (AVR-263): the server's sentence.
+    const stuck = reason => g.me ? {me: {...g.me, legal_cards: [], play_reason: reason, card_reasons: Object.fromEntries([...g.me.hand, ...g.tonoja.filter(Boolean)].map(c => [c, reason]))}} : {};
     const crew = g.seats.filter(s => s !== "tonoja").length > 2, open = crew ? {kind: "distress", direction: "right"} : {kind: "begin"};
     const preparing = {...idle, stage: "assistance", trick: [], last_trick: null, ...stuck("Finish mission preparation before playing.")};
     const late = {...idle, stage: "before_trick", trick: [], expiry: 1, resolving: g.last_trick ? {trick: g.last_trick.index, until: 2} : null, ...stuck("The trick is being resolved.")};

@@ -131,9 +131,16 @@ class Table:
 
 
 async def table(host=ALICE, claims=True, players=PLAYERS, mission=1, seed=1, watchers=()):
+    """A launched Party round, dealt from `seed`: the same seed is the same deal, tasks and
+    captain every time, so a test meets the table it was written for."""
     b = GameBinding("expo", ExpoSession(rng=random.Random(seed)), party=proto.GameSide(KEY, "expo"))
     entries = [(p, n, "player") for p, n in players] + [(p, n, "spectator") for p, n in watchers]
     await b.party_launch(proto.launch_message(KEY, "expo", SID, roster(*entries)))
+    # A launch replaces the room with a new session of its own (GameBinding._fresh_room), which
+    # draws from an unseeded generator: the one given above is gone with the session it was
+    # given to. The deal is drawn from the session's generator when the round starts, so that
+    # is where the seed goes.
+    b.session.rng = random.Random(seed)
     b.session.settings["mission"] = mission
     socks = {}
     early = Table(b, socks, host if claims else None)       # the Party answers from the first hello
@@ -145,6 +152,12 @@ async def table(host=ALICE, claims=True, players=PLAYERS, mission=1, seed=1, wat
     async with b.lock:                                     # the 3-2-1, without the wait
         await b.push_all(b.session.tick(b.session.gen))
     assert b.session.engine is not None and b.session.party_round
+    # The seed took: this is the table that seed deals, card for card and task for task.
+    dealt, same = b.session.engine.s, Engine([early.pid(p) for p, _ in players], random.Random(seed), mission).s
+    for key in ("seats", "hands", "columns", "captain", "selected", "pool", "deck", "mission"):
+        assert dealt[key] == same[key], f"seed {seed} did not decide the deal ({key})"
+    assert b.session.engine.rng.getstate() == Engine(
+        [early.pid(p) for p, _ in players], random.Random(seed), mission).rng.getstate()
     return early
 
 
@@ -236,6 +249,9 @@ def test_a_host_who_is_not_the_captain_gets_none_of_the_captains_mechanics():
         # Mission 10: the captain alone decides who takes the tasks (AVR-251).
         t = await table(mission=10)
         captain = t.engine.s["captain"]
+        # The deal this test needs, which seed 1 gives: tasks the captain may keep. About one
+        # mission 10 deal in sixteen draws a captain comparison task, which the captain may not own.
+        assert all(t.engine.eligible(k, captain) for k in t.engine.s["pool"])
         host = other_than(t, captain)
         t.party_host = host
         owner = t.pid(host)
@@ -358,6 +374,43 @@ def test_the_crew_gets_a_moment_to_ask_for_distress_before_the_host_can_begin():
         assert await t.host(ALICE, "begin") == []
         assert t.engine.s["phase"] == "before_trick" and t.engine.s["proposal"] is None
         assert t.socks[BOB][0].last_state()["game"]["begin_at"] is None
+        await t.close()
+    run(scenario())
+
+
+def test_every_phone_is_given_the_servers_reason_for_begin_and_told_when_it_no_longer_holds(monkeypatch):
+    """AVR-263, owner decision 2026-10-05: why the host's Begin is closed is the server's own
+    sentence, in the view of every phone (the host here only watches and has no seat). When the
+    crew's moment ends the server says so itself: a state arrives with no reason, and nobody
+    sent anything."""
+    monkeypatch.setattr(expo_game, "DISTRESS_GRACE", 1.0)
+
+    async def scenario():
+        t = await table(host=DANA, watchers=((DANA, "Dana"),))
+        await t.prepare(grace=True)
+        phones = [t.socks[p][0] for p in (ALICE, BOB, CAROL, DANA)]
+        views = [ws.last_state()["game"] for ws in phones]
+        assert views[3]["me"] is None and views[0]["me"] is not None
+        for view in views:
+            assert view["lifecycle"] == "host" and view["begin_at"] is not None
+            assert view["lifecycle_reasons"] == {"begin": GRACE, "retry": "Retry is available after a failed mission.",
+                                                 "next": "Complete this mission first."}
+        revision = t.engine.s["revision"]
+        for _ in range(200):                                # the table's own timer, on the real clock
+            if all(ws.last_state()["game"]["lifecycle_reasons"]["begin"] is None for ws in phones):
+                break
+            await asyncio.sleep(0.02)
+        for ws in phones:
+            view = ws.last_state()["game"]
+            assert view["lifecycle_reasons"]["begin"] is None and view["begin_at"] is None
+        assert t.engine.s["revision"] == revision and t.engine.s["phase"] == "assistance"   # nothing was played
+        assert await t.host(DANA, "begin", role="spectator") == []
+        assert t.engine.s["phase"] == "before_trick"
+        # in play, Begin is refused for what it needs, and every phone already says so
+        for ws in phones:
+            assert ws.last_state()["game"]["lifecycle_reasons"]["begin"] == "Finish task allocation and predictions first."
+        said = await t.host(DANA, "begin", role="spectator")
+        assert [m["msg"] for m in said] == ["Finish task allocation and predictions first."]
         await t.close()
     run(scenario())
 

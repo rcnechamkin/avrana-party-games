@@ -27,7 +27,7 @@ REQUIRED = ('RULES_SPEC.md', 'GAME_STATE.md', 'ACTIONS.md', 'MISSION_MODEL.md', 
             'IMPLEMENTATION_PLAN.md', 'RECONCILIATION.md', 'PRESENTATION.md')
 TEST_FILES = ('test_expo.py', 'test_expo_party.py', 'test_expo_contract.py', 'test_expo_coverage.py',
               'test_expo_persistence.py', 'test_expo_input.py', 'test_expo_deck.py',
-              'test_expo_authority.py', 'test_expo_events.py')
+              'test_expo_authority.py', 'test_expo_repair.py', 'test_expo_events.py')
 # Draft product and design specifications kept for their intent (AVR-246, owner decision Q12).
 # They define nothing: each opens with a banner that says so and names what wins.
 NON_CANONICAL = ('STATE_DRIVEN_GAMEPLAY_BEHAVIOR_SPEC.md', 'MISSION_GAMEPLAY_UI_UX_SPEC.md')

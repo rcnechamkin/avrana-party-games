@@ -40,7 +40,7 @@ Table lifetime:
 | `distress` | distress is active for the current mission |
 | `attempts`, `counted` | attempts counted for the current mission; whether the current one is already counted |
 | `log` | one entry per completed mission: mission, recorded attempts (with the distress surcharge), distress flag |
-| `deck`, `used` | the private task deck order and the used pile. A task id is in one place at a time: the deck, the used pile or the mission in play (`selected`); no pile holds an id twice, the `pool` neither, and every id in them is an enabled task. The tasks of a mission that has ended are in the used pile and stay in `selected` until the next mission is prepared. A fixed mission (32) takes its named tasks out of both piles. A snapshot that breaks this is refused |
+| `deck`, `used` | the private task deck order and the used pile. A task id is in one place at a time: the deck, the used pile or the mission in play (`selected`); no pile holds an id twice, the `pool` neither, and every id in them is an enabled task. The tasks of a mission that has ended are in the used pile and stay in `selected` until the next mission is prepared. A fixed mission (32) takes its named tasks out of both piles. The used pile is shuffled back into the deck when the draw cannot reach the difficulty (P04) or a repair finds no replacement in the deck (P16); it is then empty. A snapshot that breaks this is refused |
 | `away` | seated players without a connection |
 | `dedup` | accepted request ids of the current attempt with their fingerprints. An id is 1 to 80 letters, digits and `-`, so a full memory (10,000 requests) has a known size in the snapshot file |
 | `proposal` | the pending crew decision and who has confirmed it; a captain's offer in missions 10 and 13 also names its `recipient`, the only seat that may answer |
@@ -138,7 +138,7 @@ it. See [The resolving phase](#the-resolving-phase).
 | Public | Private to its owner | Never sent |
 |---|---|---|
 | mission definition, seats, captain, leader, turn | own hand | other hands |
-| trick in progress and `trick_leading`, the seat winning it; the most recent resolved trick only | own legal cards and the reason play is unavailable | Tonoja's covered cards |
+| trick in progress and `trick_leading`, the seat winning it; the most recent resolved trick only | own legal cards and, for each of the viewer's own controls that is unavailable, the server's reason ([ACTIONS](ACTIONS.md#conventions): `play_reason`, `card_reasons`, `task_reasons`, `pass_task_reason`, `volunteer_reasons`, `offer_reason`, `offer_owner_reasons`, `predict_reasons`) | Tonoja's covered cards |
 | per-seat hand counts and trick counts | own communication options | resolved tricks before the latest |
 | tasks: text, difficulty, owner, status, eligible owners | own secret prediction, until the mission result | task deck order, used pile |
 | predictions that are public; whether one is committed | whether own distress choice is locked | sealed distress choices |
@@ -149,6 +149,7 @@ it. See [The resolving phase](#the-resolving-phase).
 | the pending crew decision and who confirmed | | |
 | `lifecycle`: who moves the table on, `host` or `crew` (added by the adapter) | | who the Party Host is: the game is never told |
 | `begin_at`: the wall-clock moment the host's Begin opens, or null (adapter) | | |
+| `lifecycle_reasons` `{begin, retry, next}`: for each step the sentence the server refuses it with now, or null (adapter and engine; [ACTIONS](ACTIONS.md#conventions)). The same for every viewer: it reads who is away, whether a decision is pending, the phase, the result, a resolving trick and the crew's moment, and no hand | | |
 | `lifecycle_transitional`: true only under a Party that does not name its host yet (adapter) | | |
 | `events`, `event_seq`: the events of the latest resolved trick and after (AVR-246) | own declaration in a currents `COMMUNICATION_SENT` | events of earlier tricks and earlier attempts; the rest of the log |
 | `resolving`: the trick being resolved, with `until` (adapter); `cause` of a failed attempt | | |
@@ -387,7 +388,10 @@ newest sequence number at the table whether sent or not):
 - of those, only the events of the most recently resolved trick and everything after it; before
   the first trick is resolved, the whole attempt so far. This is R04: only the most recently won
   trick may be looked at again. Events of earlier tricks stay on the server, also after the
-  mission result;
+  mission result. DECIDED (owner, 2026-10-05): "Do not expose a complete historical
+  debrief/event stream yet. Use the latest trick's events where needed for presentation and
+  spectating. Defer a complete historical event/debrief system until it is explicitly
+  designed.";
 - every field of an event was public when it happened. One field is not public and is stored
   apart: in `currents` the `assertion` of `COMMUNICATION_SENT` is kept under `private` and is
   added only to its author's own events, exactly as the view treats the declaration. A watcher, a
@@ -430,7 +434,10 @@ the task.
 | `trick` | the trick in which it was established; 0 during task selection |
 | `mission` | `{id, attempt, objective, allocation, communication, timed, distress}` |
 
-**Who triggered it.** The engine names a seat only where that is a fact and not an opinion:
+**Who triggered it.** DECIDED (owner, 2026-10-05): "Trick-caused outcomes/failures are
+attributed to the player who won the triggering trick. The engine is authoritative for this
+attribution." A client presents the `cause` it is sent and derives none of its own. The engine
+names a seat only where that is a fact and not an opinion:
 
 - a failure established when a trick resolved: the seat that **won the trick**, with its winning
   card. Every task evaluator is a function of who won which cards, so the winner's card is what
@@ -439,8 +446,14 @@ the task.
   may not be the affected seat
   (`test_a_legal_card_that_loses_the_mission_is_accepted_and_names_who_triggered_it_and_who_lost`,
   `test_a_seat_that_breaks_its_own_task_is_both_trigger_and_affected_and_the_state_is_failed`);
-- a failure established by one card before its trick ended (a forbidden lead, yellow 5 played out
-  of place): the seat that played that card;
+- a failure established by one card and not by who won a trick: the seat that played that card.
+  There are two: a forbidden lead, which ends the attempt before the trick is complete (nobody
+  has won it), and mission 27's yellow 5 played out of place, which names the seat that played
+  yellow 5 whether the trick was still open or that card completed it (in the second case the
+  trick has a winner, who is not named:
+  `test_yellow_five_out_of_place_names_the_seat_that_played_it_even_when_the_trick_is_complete`).
+  The owner's decision speaks of the trick's winner; these two are kept as built and are the
+  one residual question ([RECONCILIATION](RECONCILIATION.md#avr-246-2026-10-04));
 - a failure during task selection: the seat whose choice or answer ended the attempt;
 - a condition merely not met when the deal ended, and a deadline: nobody.
 
@@ -465,8 +478,9 @@ of each failure is kept in state key `failures`.
   the attempt, so it is only ever a label on a failure in a mission result; no view of a table
   still in play contains it.
 - A viewer is sent only the latest resolved trick's events, also after the result. A client
-  therefore cannot yet build a debrief or a recap of the attempt from what it is sent (owner
-  question 1 in [RECONCILIATION](RECONCILIATION.md#avr-246-2026-10-04)).
+  therefore cannot build a debrief or a recap of the attempt from what it is sent. That is
+  decided (owner, 2026-10-05): a complete historical event or debrief system is deferred until
+  it is explicitly designed ([RECONCILIATION](RECONCILIATION.md#avr-246-2026-10-04)).
 - An open (not currents) `COMMUNICATION_SENT` keeps its `assertion` for as long as the event is
   in the window, so a viewer who arrives late can still read a declaration whose card has since
   been played and has left the view's `exposures`. It was public when it was made.
@@ -489,7 +503,9 @@ decided and in the state (winner, task statuses, the next leader); what waits is
   `TURN_STARTED` and raises `revision`. On a timed table whose deadline has passed it ends the
   attempt by time instead and emits no `TURN_STARTED` (below).
 - The engine holds no clock for it. **The adapter decides when**: it holds the trick for
-  `game.RESOLVE_HOLD` (0.8 s) on the monotonic clock, arms the session's one timer for that
+  `game.RESOLVE_HOLD` (0.8 s; DECIDED by the owner, 2026-10-05: "Keep the resolve hold at 0.8
+  seconds for now. This is intentionally provisional pending real-phone playtesting.") on the
+  monotonic clock, arms the session's one timer for that
   moment (a mission deadline is judged at that moment too), and settles when the timer fires,
   passing its monotonic clock as `now`. The view the adapter sends adds `resolving.until`, the
   wall-clock moment the hold ends, for a client that wants to time its presentation to it. The
@@ -602,7 +618,14 @@ When Party launches EXPO (`core/party_session.py`, Party ADR 0006 and 0010):
 - **The crew's moment before Begin.** Where distress is available the host's Begin opens
   `DISTRESS_GRACE` seconds after the tasks are settled (`begin_at`), once per attempt. The
   moment is the adapter's (`ExpoSession._grace`, monotonic clock), not engine state: it is not
-  saved, and a restored table gives the crew the moment again.
+  saved, and a restored table gives the crew the moment again. While it is open
+  `lifecycle_reasons.begin` is its sentence, and the table's one timer (otherwise a resolving
+  trick's hold or the mission's deadline, neither of which runs before play) is set for its end: the tick pushes a state in which
+  the reason is gone, so no page opens Begin from its own clock (AVR-263).
+- **Why a step is unavailable** is the server's to say: `lifecycle_reasons` gives every viewer
+  the sentence Begin, Retry and Next are each refused with at that moment, from the same ordered
+  checks that refuse them (`Engine._lifecycle_refusals`, `ExpoSession._host_refusal`; for a table
+  the crew moves on, `Engine.apply`'s refusal of the proposal).
 - **An away seat** still stops Begin, Retry and Next (AVR-240 owns recovery). It never strands
   the Party: the host's end is the Party's and does not pass through the table.
 - No seat ends a Party round from inside the game. The host ends it from the Party, whose signed

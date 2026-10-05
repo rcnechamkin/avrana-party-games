@@ -64,7 +64,10 @@ instruction. Three things make that true at every size, 360x600 included:
   mission's title, trick counter and clock, which stay. Those lines come back with the next
   shorter sentence. The mission stage's size does not change.
 
-**A decision's answers are in the dock.** In the trick's place a decision is its sentences: the
+**A decision's answers are in the dock** (owner decision, 2026-10-05: "When a decision requires
+an answer, Agree / Decline temporarily replace Radio / Play in the action dock. Once the decision
+resolves, the normal Radio / Play controls return. This is intentional responsive behavior, not a
+temporary hack."). In the trick's place a decision is its sentences: the
 question, then for someone who must answer the count and "Your answer is below, beside your
 hand.", and for someone waiting the full list of who has not answered. Its heading is for a
 screen reader only. The two answers (Agree or Accept, and Decline) take the place of Radio and
@@ -267,22 +270,42 @@ this change are in [the report](RECONCILIATION.md#avr-267-2026-10-05).
 
 ## Merging with AVR-263 and AVR-245
 
-Neither is merged here. When one meets this branch, reapply exactly this:
+**AVR-263 is merged** (`main` at 7320c87, 2026-10-05). On this client every control is disabled
+exactly when the view gives a reason, and shows that sentence as its title and in words:
 
-- **AVR-263** (PR #50, `fix/avr-263-expo-control-reasons`) changes the client's reason plumbing,
-  the short-screen rules of `expo.css` and the playtest.
-  1. `#hand-reason` must keep wrapping (no `white-space:nowrap`, no ellipsis) and every reason it
-     adds must pass `criticalTextWhole`.
-  2. In the `max-height:700px` and `max-height:610px` blocks keep: the status strip's place and
-     its three-line clamp, the `.app.status-long` rules, the mission stage's height, the
-     two-row hand's card height. Then run `longestStatusesFit`.
-  3. A reason sentence that names several people uses `whoOf`, not `names`.
-  4. Its playtest changes must keep the calls to `criticalTextWhole`, `longestStatusesFit` and
-     the `trick_leading` assertions of `trickShows`.
-- **AVR-245** adds a setup phase whose `drawSetup` writes `#status.textContent`. It must call
-  `say(text)` instead. If it does not, nothing breaks: `say` rebuilds the line's two parts when
-  they are gone. Its new status sentences belong in `longestStatusesFit`, `draw()` must still end
-  with `fitStatus()`, and a setup phase is a preparation phase for `ExpoDirector.briefable`.
+| Control | The view's reason | Where the words are |
+|---|---|---|
+| a card in the hand, or Tonoja's | `me.card_reasons[card]` | the line beside the hand (`#hand-reason`) when every card showing shares it; the card's title |
+| Take this task | `me.task_reasons[task]` | once under the task list |
+| Pass selection | `me.pass_task_reason` | under the task list |
+| the volunteer's Yes and No | `me.volunteer_reasons` | under the task list |
+| Offer all tasks, and each owner in its list | `me.offer_reason`, `me.offer_owner_reasons` | under the task list; a refused owner cannot be chosen |
+| Lock prediction | `me.predict_reasons[task]` | once under the predictions |
+| Begin (the Party Host's, or the crew's) | `lifecycle_reasons.begin` | `data-key="begin-why"`, first in the preparation panel or last in a pending decision, inside the trick's place, which keeps its size |
+| Retry, Next | `lifecycle_reasons.retry`, `.next` | under the buttons on the result |
+
+The page words no refusal of its own and does not open Begin from its own clock (`begin_at` only
+counts the wait down). With the radio open the hand is a picker: the cards the server lists are
+lit, the rest are not offered, and the line beside the hand says what to do; nothing is refused
+there, so no reason is shown. Kept from this branch through the merge: `#hand-reason` wraps and
+is never clamped; the short-screen status place, the `.app.status-long` rules and the mission
+stage's height; `criticalTextWhole`, `longestStatusesFit` and the `trick_leading` assertions.
+Not taken from `main`'s stylesheet: the rule that moves a shown sonar card beside the name (this
+board's crew tile has a radio line of its own at every size) and the shorter status strip at
+610 px (the strip is between the top-bar buttons there). `main`'s forced worst-state check (two
+humans and Tonoja, 360x600, a card shown, another seat on turn, the stage at 84 px or more)
+passes on this board.
+
+**AVR-245 is not merged.** When it meets this branch:
+
+- its `drawSetup` writes `#status.textContent`; it must call `say(text)`. If it does not, nothing
+  breaks (`say` rebuilds the line's two parts), but the sentence then skips `fitStatus`;
+- its new status sentences belong in `longestStatusesFit`, and `draw()` must still end with
+  `fitStatus()`;
+- the setup view must carry `trick_leading` like every other view (`trickShows` requires the
+  field), and a setup phase is a preparation phase for `ExpoDirector.briefable`;
+- its `question()` and `seatWords()` must be reconciled with this client's `question()` (the
+  status line uses the question without its sentence of consequence) and `whoOf()`.
 
 ## Not built
 
