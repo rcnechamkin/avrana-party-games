@@ -35,6 +35,19 @@ Restart=on-failure
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
+# The listener is an upstream of nginx and nothing else (avrana-party ADR 0016 section 4,
+# AVR-272). Loopback is also server.py's default; it is stated here so that the unit, not a code
+# default, decides it. A drop-in that sets LANGAMES_HOST again would override this line.
+Environment=LANGAMES_HOST=127.0.0.1
+# The same rule enforced by the kernel for this unit's cgroup (owner decision 2026-10-04,
+# AVR-272): only loopback traffic in or out, so a listener on another address, however it came
+# about, is still unreachable from the LAN. Unix sockets are not affected. NEVER RUN: a new
+# mechanism on a unit that has not run on any host. Where the kernel lacks cgroup-BPF support
+# systemd ignores it with a warning in the journal, and `systemctl show -p IPAddressDeny` still
+# prints the configured value: on the appliance read the journal of the unit's start, do not
+# take the property as proof.
+IPAddressDeny=any
+IPAddressAllow=localhost
 # data/ (avatars, chat media, venue.json) is the only thing the server writes. It lives in this
 # service's own state directory and is bound over the release's empty data/, so the code tree
 # stays read-only without a change to the server.

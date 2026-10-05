@@ -41,9 +41,9 @@ CAROL = "participant-" + "c" * 32
 # party-session.v0.json at f25d256. Update both hashes only together with a re-vendor, and the
 # digests in provider/avrana-contract.json with them (Party's tools/contract_check.py compares).
 VENDORED = {
-    "core/party_protocol.py": "41bb7a2dd875ec865437b5b063641762f693a05b60e7ca9e89e94fed422ac2f7",
+    "core/party_protocol.py": "6c4943f01b1f3349d473186aa3559d5472dce091dd8e2983a6fbda67be6c6a47",
     "tests/vectors/party-session.v0.json":
-        "b6c7f347aa39d8d54c7df2f37a9d5fd62a41f6312dbd1377be4fee208e579245",
+        "432551a552c727fc91b2ddcbc0f18c70ee1e6a8899dbb346cb7ffc3f0811bc5d",
 }
 
 
