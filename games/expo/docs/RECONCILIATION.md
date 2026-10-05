@@ -34,8 +34,9 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 - Twenty-three digital policies are in force. The owner decided the open ones on 2026-10-04
   (AVR-243, questions Q1 to Q8 below). Four decisions change behaviour. All four are implemented:
   single-card communication (AVR-248), the task `5with7` (AVR-249), one shared sonar token for
-  two players (AVR-250) and the captain's authority in missions 10 and 13 (AVR-251). One more
-  needs a further decision: AVR-252.
+  two players (AVR-250) and the captain's authority in missions 10 and 13 (AVR-251). A fifth,
+  routine progression, was decided on 2026-10-04 and is built for Party rounds: the Party Host
+  owns Begin, Retry and Next (AVR-252, with AVR-275).
 - Eight missions and four tasks stay blocked on source material (AVR-244).
 - The earlier specification was wrong or stale in eleven places (E-S1 to E-S11).
 
@@ -138,7 +139,7 @@ a source's wording makes the choice non-obvious and the owner has not confirmed 
 | P06 | An attempt is counted at the crew's begin; setup corrections are free; an avoidable selection failure is counted | R p13 gives the principle, not the bookkeeping | `test_a_deal_exception_is_redealt_before_the_attempt_is_counted`, `test_timed_start_barrier_and_volunteer_eligibility_failure` | uncontested |
 | P07 | Distress choices are sealed and exchanged at once | R says pass a card; simultaneity avoids leaking | `test_distress_sealed_exchange_and_persistence` | uncontested |
 | P08 | The dummy follows suit from its face-up cards only | R p22 says only face-up cards may be played | `test_tonoja_only_ever_offers_face_up_cards_and_follows_suit_from_them` | uncontested |
-| P09 | Begin, distress, collective assignment, retry, next and end need every seated human's confirmation | R says "decide together" | `test_distress_sealed_exchange_and_persistence`, `test_ending_the_table_is_abandoned`, `test_every_other_crew_decision_still_needs_every_seated_human` | decided 2026-10-04 (Q8): unanimity stays for strategic decisions; missions 10 and 13 follow the source instead (AVR-251, built 2026-10-04); routine progression should become less fragile (AVR-252) |
+| P09 | Begin, distress, collective assignment, retry, next and end need every seated human's confirmation | R says "decide together" | `test_distress_sealed_exchange_and_persistence`, `test_ending_the_table_is_abandoned`, `test_every_other_crew_decision_still_needs_every_seated_human` | decided 2026-10-04 (Q8): unanimity stays for strategic decisions; missions 10 and 13 follow the source instead (AVR-251, built 2026-10-04); in a Party round the Party Host commits Begin, Retry and Next and ends EXPO (AVR-252, built 2026-10-04 with AVR-275: `test_the_host_begins_at_once_and_nobody_votes`, `test_no_other_crew_member_can_move_the_table_on`); a standalone table keeps unanimity for them |
 | P10 | The real-time clock starts at the unanimous begin, after predictions and the distress decision | C13 | `test_timed_start_barrier_and_volunteer_eligibility_failure` | confirmed 2026-10-04 (Q2): Begin is the crew starting the timer |
 | P11 | The continuation stops at mission 50 (difficulty 35) | L sets no limit | `test_difficulty_generation_and_no_pass_in_second_circuit` | confirmed 2026-10-04 (Q7) as an Avrana product limit, not a source rule |
 | P12 | A seat is held for the whole table; every command pauses while a seated player is away; no autoplay, no bots | no source | `test_session_reconnect_all_away_and_again_cannot_erase`, `test_a_dropped_crew_member_returns_by_fresh_ticket_to_the_same_seat_and_hand` | Q10 (see E-D2) |
@@ -388,14 +389,17 @@ Classification of the crew decisions (all unanimous in the code except missions 
 | Mission 6: which seat takes every task | strategic, unanimous | L M6: decide together | none |
 | Free selection: each assignment | strategic, unanimous | R p21: discuss and allocate | none |
 | Missions 10 and 13 | source-specific | L: the captain decides, a willing recipient consents | AVR-251, done |
-| Begin in the timed mission | strategic, unanimous | it starts the clock (Q2) | none |
-| Begin in an untimed mission | progression | no source; it also declines distress for the attempt, so a less fragile rule must still let a player ask for distress first | AVR-252 |
-| Retry, with the same or new tasks | progression | R p11: you can choose | AVR-252 |
-| Next mission | progression | no source | AVR-252 |
-| End table | administrative | no source | AVR-240 |
+| Begin in the timed mission | lifecycle with a strategic prerequisite | owner, 2026-10-04: starting the clock does not create a crew vote | AVR-252, built for Party rounds |
+| Begin in an untimed mission | lifecycle with a distress prerequisite | owner, 2026-10-04: the host starts, and the crew must still be able to ask for distress first | AVR-252, built for Party rounds; the size of that opportunity is open (AVR-275 report) |
+| Retry, with the same or new tasks | lifecycle | R p11: you can choose; owner, 2026-10-04: the host chooses | AVR-252, built for Party rounds |
+| Next mission | lifecycle | owner, 2026-10-04: the host advances | AVR-252, built for Party rounds |
+| End table | administrative | owner, 2026-10-03: Party Host | built for Party rounds (the Party's own end); away handling AVR-240 |
 
-The rule that should replace unanimity for the progression rows is not chosen. No command is
-accepted while a seated player is away, so it cannot be settled apart from AVR-240.
+Decided by the owner on 2026-10-04 (AVR-252): in a Party round the Party Host commits the
+lifecycle rows and nobody votes; the host cannot skip a prerequisite the rules set; strategic
+rows are unchanged. A standalone table, and a Party that does not name its host, keep unanimity
+for them as a local fallback. No command is accepted while a seated player is away (AVR-240),
+the host's included; the Party's own end is the one thing that still works then.
 
 **Q9 (C20, AVR-239). The captain is the only seat left for a captain-comparison task.
 DECIDED by the owner, 2026-10-04, and implemented.**
@@ -887,6 +891,124 @@ before that merge and not repeated.
 
 Not covered: a live socket carrying the request (the tests call the adapter), real phones, the
 appliance, a Party-launched round, the playtest on Linux.
+
+Later the same day the branch was brought up to `main` with the one-viewport and Party Host
+work (AVR-275, AVR-252, AVR-266). The fix did not change. The new tests were run again without
+it: with the engine check taken out 16 of the 27 failed, with the store's handling taken out 6
+did. With both in place, `pytest tests/test_expo_*.py` gave 926 passed, 2 skipped, 2 expected
+failures (Windows 11). The whole repository and the playtests were not run again.
+
+### AVR-275, AVR-252 and AVR-266, 2026-10-04
+
+The phone client was rebuilt around one viewport, and a Party round got its two authorities.
+Changed: `games/expo/web/` (all three files), `games/expo/game.py`, `games/expo/engine.py`
+(one added command, no rule changed), `core/net.py`, `core/session.py`, `web/hubnet.js`,
+`core/party_protocol.py` and its vectors (re-vendored), the provider contract digests, two
+playtests, `tests/test_expo_authority.py` (new) and these documents. Needs avrana-party's host
+claim and host question (ADR 0006, amendment 2026-10-04) to be deployed for the host rules to
+apply; without them a Party round falls back to crew votes, transitionally and visibly, except
+that no seat ends it from inside.
+
+- **One viewport (AVR-275).** The page no longer scrolls. From top to bottom: the bar (table
+  menu, title, help), the status line, the mission and trick counter, two objective lines, the
+  crew strip, the stage, four tabs, the hand, the dock. Only the stage flexes. The stage shows
+  the trick during play, with a place for every seat and the trick that just ended until the
+  next card; before play it shows the one thing waiting (task selection, predictions, the
+  pre-mission panel, the distress exchange); a pending crew decision replaces it. Crew detail,
+  full tasks, sonar and the latest trick are sheets over the board. Short screens drop
+  decoration, not information, down to 360 x 600.
+- **The result takes over (AVR-275).** A mission result covers the board for every viewer:
+  outcome, the engine's reason, any task the engine marked failed with its owner, and the last
+  resolved trick. None of that is inferred by the page. The result can be put away to look at
+  the table and then holds the dock until shown again. The triggering play is not shown because
+  the engine does not report one yet (E-X1, AVR-246); a `cause` string is displayed when it does.
+- **Host and captain (AVR-252).** In [ACTIONS](ACTIONS.md#crew-decisions) and
+  [GAME_STATE](GAME_STATE.md#party-rounds). The engine gained `Engine.lifecycle`, which commits
+  Begin, Retry or Next for whoever the adapter authorized and reuses the proposal checks, so the
+  prerequisites are the same sentences as before. `Engine.apply` is unchanged.
+- **Pending decisions on a phone (AVR-266).** The decision is in the stage, inside the viewport
+  with the hand; the status line announces it; a disabled control's reason is text beside it.
+- **Home (AVR-275).** The masthead no longer links to `/` (the retired LAN Games hub), and the
+  title is no longer a link (it dropped `?avrana=1`, after which the page behaved as a
+  standalone LAN game). The table menu offers the Party Host "End EXPO for everyone" (the
+  Party's own end), tells everyone else who can, and outside a Party round links only to the
+  Party Home the integration script names. The service worker that still precaches the hub at
+  `/` is AVR-274 and was not touched: an integrated page already bypasses it.
+- **Card play changed shape.** A tap chooses a card and the dock's button plays it. This is a
+  presentation choice against mis-taps on 44 px cards, not a rule: no legal card is warned about.
+
+**Two merges, not one.** The work above merged as avrana-party-games#44 (at 1d2e602) before
+the owner's decisions below were built. Everything from here to the results table is the
+follow-up PR on top of `main`. Between the two merges `main` vendors a session protocol
+(avrana-party 0892729) that is on neither Party's `main` nor its final branch, so the paired
+contract check fails for `main` until avrana-party#75 and the follow-up are both merged.
+Nothing is deployed from that interval.
+
+Owner decisions of 2026-10-04 on what that left open, and what was built for each:
+
+- **The host claim is accepted; a former host must have nothing to spend.** Built: the game
+  server asks the Party at every host action whether that participant is its host now
+  (avrana-party ADR 0006, amendment 2026-10-04). Tickets kept from before a succession still
+  say `host: true` and are refused at once. Party Core stays the only place the host exists.
+- **Distress gets a protected opportunity, not a vote.** Built: the host's Begin is closed for
+  4 s after the tasks are settled where distress is available; a pending request keeps it
+  closed; nobody confirms anything to start ([ACTIONS](ACTIONS.md#crew-decisions)).
+- **An away seat keeps blocking Begin, Retry and Next** this sprint (AVR-240). Unchanged. The
+  Party Host can always end EXPO from the Party; tested with a seat away.
+
+Hardening pass, same day:
+
+- **Authority words.** "Party Host" is never shortened to "Host" on the page and never used for
+  what the crew or the Captain decides. The dock names its two zones "Party Host (table
+  control)" and "Captain" or "Crew member (your role in the game)"; the table menu lists Party
+  Host, Crew and Captain with what each decides. The host's badge needs a seat whose name is
+  the host's alone (the Party gives the page a name, not a seat).
+- **Host capability.** Begin, Retry and Next only; everything else through that message is
+  refused (`test_the_host_gets_begin_retry_and_next_and_nothing_else`).
+- **Reloads.** Tested in the browser during a pending decision, a partly played trick and a
+  result, for the host and for a crew member, and for both phones after a succession. The page
+  now reads the Party's view again on its own tick, because after a reload that view can arrive
+  after the table's state and not every path announces it.
+- **iOS viewport.** The body is pinned (`position:fixed; inset:0`, `overscroll-behavior:none`)
+  because iOS Safari scrolls a body that is only `overflow:hidden`; the app is `100dvh` with a
+  `100vh` fallback, capped by the body; left and right safe-area insets are honoured as well as
+  top and bottom; inner scrollers contain their overscroll; the board under a sheet or a result
+  is `inert`. Inspected and tested in desktop Chrome with touch emulation. **Not verified on an
+  iPhone.**
+- **Fullest board.** Asserted with 14-character names, a long sentence on eight tasks and a
+  14-card hand, at every phone size.
+- **Touch targets.** Every control is at least 44 px tall and 40 px wide at every tested size
+  (a hand of seven shares 360 px). Short screens take the room from the trick.
+- **Focus.** A sheet and the result hold the keyboard and screen reader (inert board, Tab
+  cycle); closing gives focus back to what opened it; putting the result away moves focus to
+  the one dock button that brings it back, which says what it leads to.
+- **No host claim.** Marked transitional in the view, the page and the server log.
+
+Still open:
+
+- **Recovery from an away seat** (AVR-240).
+- **Mission, timed mode and Tonoja's seat** cannot be chosen in a Party round (AVR-245). The
+  host's Next is the only way to another mission.
+- **Causality in the result** (AVR-246) and **the service worker** (AVR-274).
+- **Turning `HOST_CLAIM_TRANSITION` off.** Not part of the first deployment. Order agreed with
+  the owner: avrana-party#75 merges, then this repository's hardening PR; both are deployed
+  together; a real-phone test on the appliance confirms the Party Host claim works in
+  production; only then a small follow-up sets the flag False. Until then a rollback of either
+  service leaves tables playable.
+- **Not AVR-267.** No art, animation, audio or event-driven presentation was added.
+
+| Check | Result (Windows 11) |
+|---|---|
+| `pytest -q` (whole repository) | 2565 passed, 4 skipped, 2 xfailed |
+| `tests/test_expo_authority.py` | 42 passed |
+| `node tests/hubnet_party_ticket_test.mjs` | 46 of 46 |
+| `node tests/playtest_expo.mjs`, 2, 3, 4 and 5 humans | PASS each, five phone sizes from 360 x 600 to 412 x 915 |
+| `node tests/playtest_expo_party.mjs`, 2, 3, 4 and 5 seated | PASS each |
+| `node tests/playtest_expo_party.mjs`, 3 seated and a watching host | PASS |
+| `EXPO_PARTY=old node tests/playtest_expo_party.mjs` (no host claim) | PASS |
+| `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check | OK |
+| Party `tools/contract_check.py --games` against this branch | compatible |
+| A real phone | not run |
 
 ### AVR-270, 2026-10-04
 

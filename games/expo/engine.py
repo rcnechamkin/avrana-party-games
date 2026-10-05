@@ -8,6 +8,8 @@ from .rules import DECK, assertions, legal_cards, rank, suit, winner
 from .tasks import evaluate
 
 VERSION = 1
+# Routine steps of a table's life, as opposed to decisions the rules give the crew (AVR-252).
+LIFECYCLE = ('begin', 'retry', 'next')
 
 
 class Invalid(ValueError):
@@ -559,6 +561,51 @@ class Engine:
         else:
             raise Invalid('action', 'Unknown game action.')
 
+    @staticmethod
+    def _decision_shape(p):
+        keys = {'begin': {'kind'}, 'end': {'kind'}, 'retry': {'kind', 'keep'},
+                'next': {'kind', 'mission'}, 'distress': {'kind', 'direction'},
+                'assign': {'kind', 'owner', 'task'}}
+        # Every field is a plain value of its own type (AVR-264): what is accepted here is
+        # stored in the pending decision, copied and sent to every viewer.
+        types = {'kind': str, 'keep': bool, 'mission': int, 'direction': str, 'owner': str, 'task': str}
+        require(isinstance(p, dict) and isinstance(p.get('kind'), str) and p['kind'] in keys
+                and set(p) == keys[p['kind']] and all(type(p[k]) is types[k] for k in p),
+                'payload', 'Invalid crew decision.')
+
+    def lifecycle(self, msg, now=0):
+        """Begin, Retry or Next, committed at once on the word of the table's lifecycle authority
+        (AVR-252): no seat proposes it and nobody votes. Who that authority is, is the adapter's
+        business; in a Party round it is the Party Host, who may not hold a seat at all. The
+        engine keeps what the rules require first: the step's own phase (tasks allocated and
+        predictions made before Begin, a result before Retry or Next), a mission that exists, a
+        crew that is all here, and no crew decision left unanswered. A strategic decision
+        (distress, an assignment) is never committed this way."""
+        self.observe_time(now)
+        s = self.s
+        require(isinstance(msg, dict) and set(msg) == {'t', 'decision', 'attempt', 'revision'}
+                and msg['t'] == 'lifecycle' and type(msg['attempt']) is int
+                and type(msg['revision']) is int, 'payload', 'Invalid lifecycle action.')
+        payload = msg['decision']
+        self._decision_shape(payload)
+        require(payload['kind'] in LIFECYCLE, 'strategic', 'The crew decides that together.')
+        require(not s['away'], 'paused', 'Waiting for the crew to reconnect.')
+        require(msg['attempt'] == s['attempt'] and msg['revision'] == s['revision'],
+                'stale', 'That moment has passed. Use the latest table state.')
+        require(s['phase'] != 'closed', 'phase', 'This table is closed.')
+        require(s['proposal'] is None, 'vote', 'The crew is deciding something. Wait for their answer.')
+        old, rng_state = deepcopy(s), self.rng.getstate()
+        try:
+            self._proposal(None, payload, now)
+            self._commit_proposal(now)
+            self.check()
+            self.s['revision'] += 1
+        except Exception:
+            self.s = old
+            self.rng.setstate(rng_state)
+            raise
+        return True
+
     def apply(self, actor, msg, now=0):
         # Observation is a server event, independent of acceptance of a client command.
         self.observe_time(now)
@@ -582,16 +629,7 @@ class Engine:
                 and msg['request'].isascii() and msg['request'].isprintable(),
                 'payload', 'Invalid action scope.')
         if t == 'propose':
-            p = msg['proposal']
-            keys = {'begin': {'kind'}, 'end': {'kind'}, 'retry': {'kind', 'keep'},
-                    'next': {'kind', 'mission'}, 'distress': {'kind', 'direction'},
-                    'assign': {'kind', 'owner', 'task'}}
-            # Every field is a plain value of its own type (AVR-264): what is accepted here is
-            # stored in the pending decision, copied and sent to every viewer.
-            types = {'kind': str, 'keep': bool, 'mission': int, 'direction': str, 'owner': str, 'task': str}
-            require(isinstance(p.get('kind'), str) and p['kind'] in keys and set(p) == keys[p['kind']]
-                    and all(type(p[k]) is types[k] for k in p),
-                    'payload', 'Invalid crew decision.')
+            self._decision_shape(msg['proposal'])
         identity = actor + ':' + str(msg['attempt']) + ':' + msg['request']
         fingerprint = json.dumps(msg, sort_keys=True)
         if identity in s['dedup']:

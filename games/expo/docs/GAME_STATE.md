@@ -40,7 +40,7 @@ Table lifetime:
 | `distress` | distress is active for the current mission |
 | `attempts`, `counted` | attempts counted for the current mission; whether the current one is already counted |
 | `log` | one entry per completed mission: mission, recorded attempts (with the distress surcharge), distress flag |
-| `deck`, `used` | the private task deck order and the used pile. A task id is in one place at a time: the deck, the used pile or the mission in play (`selected`); no pile holds an id twice. The tasks of a mission that has ended are in the used pile and stay in `selected` until the next mission is prepared. A fixed mission (32) takes its named tasks out of both piles. A snapshot that breaks this is refused |
+| `deck`, `used` | the private task deck order and the used pile. A task id is in one place at a time: the deck, the used pile or the mission in play (`selected`); no pile holds an id twice, the `pool` neither, and every id in them is an enabled task. The tasks of a mission that has ended are in the used pile and stay in `selected` until the next mission is prepared. A fixed mission (32) takes its named tasks out of both piles. A snapshot that breaks this is refused |
 | `away` | seated players without a connection |
 | `dedup` | accepted request ids of the current attempt with their fingerprints |
 | `proposal` | the pending crew decision and who has confirmed it; a captain's offer in missions 10 and 13 also names its `recipient`, the only seat that may answer |
@@ -136,6 +136,9 @@ retry or go on. Only `closed` hands control back to the platform (`game_end`).
 | Tonoja's face-up cards | | |
 | distress flag, attempts, log, result, deadline, who is away | | |
 | the pending crew decision and who confirmed | | |
+| `lifecycle`: who moves the table on, `host` or `crew` (added by the adapter) | | who the Party Host is: the game is never told |
+| `begin_at`: the wall-clock moment the host's Begin opens, or null (adapter) | | |
+| `lifecycle_transitional`: true only under a Party that does not name its host yet (adapter) | | |
 
 Requirements met: no viewer receives another seat's legal cards; unseated viewers cannot act;
 identity is the authenticated connection, never a field in the message. In currents the
@@ -255,6 +258,26 @@ When Party launches EXPO (`core/party_session.py`, Party ADR 0006 and 0010):
   lobby and settings are skipped (E-P1, AVR-245).
 - Players are admitted by Party ticket; a browser token only watches.
 - Party spectators receive the public view.
-- When the table closes, the adapter reports `completed` if a mission result stood when the crew
-  ended the table, and `abandoned` if the table was ended mid-mission. It carries no score.
-- Results stay on screen until the Party Host moves the party on.
+- **Two authorities** (AVR-252, AVR-275). The Party Host owns the table's routine steps (Begin,
+  Retry, Next) and ends EXPO; the EXPO captain owns what the rules give the captain (the first
+  lead, Tonoja's cards, the offer in missions 10 and 13) and nothing else; the crew still decides
+  together what the rules say it decides together (distress, shared assignments). The host may be
+  the captain, another seat or a spectator.
+- **Who the host is** is never stored here. `GameSession.party_host` only records that this
+  Party says who its host is (a ticket carried the claim). Each host action brings a fresh
+  ticket, and the game server then asks the Party whether that participant is its host at that
+  moment ([ACTIONS](ACTIONS.md#crew-decisions)): a former host is refused at once. The view's
+  `lifecycle` is `host` then. At a standalone table it is `crew`. Under a Party that does not
+  say it is `crew` with `lifecycle_transitional`: an allowance for deploy order that is logged
+  and shown, not a way to run a Party round.
+- **The crew's moment before Begin.** Where distress is available the host's Begin opens
+  `DISTRESS_GRACE` seconds after the tasks are settled (`begin_at`), once per attempt. The
+  moment is the adapter's (`ExpoSession._grace`, monotonic clock), not engine state: it is not
+  saved, and a restored table gives the crew the moment again.
+- **An away seat** still stops Begin, Retry and Next (AVR-240 owns recovery). It never strands
+  the Party: the host's end is the Party's and does not pass through the table.
+- No seat ends a Party round from inside the game. The host ends it from the Party, whose signed
+  `end` releases the room; the Party records `ended_by_host`. A standalone table still closes by
+  the crew's `end`, reporting `completed` if a mission result stood and `abandoned` otherwise.
+- A mission result is not the end of the Party session: the table stays, the result takes over
+  every phone, and the host retries, moves on or ends EXPO.

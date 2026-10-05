@@ -740,6 +740,18 @@ const Hub = (() => {
       const room = document.getElementById("avrana-game-room");
       if (room) room.style.display = "";
     }
+    /* A Party Host action (AVR-252; avrana-party ADR 0006, amendment 2026-10-04): something only
+       the host may do in this game. The Party's word is a fresh single-use ticket, fetched now
+       (the same way as the connect's, through the bridge on the game origin), and the game
+       server reads the host from that one ticket: this page's own idea of who hosts decides
+       nothing. Resolves false when no ticket could be had or the socket is not open. */
+    conn.hostAction = async (action) => {
+      if (!integrated || opts.watch) return false;
+      const r = await partyTicket();
+      if (r.kind !== "ticket" || !conn.ws || conn.ws.readyState !== 1) return false;
+      conn.send({ t: "host", ticket: r.ticket, action });
+      return true;
+    };
     open();
     // A phone waking up or getting its network back should not wait out the
     // backoff: reconnect (or ask the party again) at once if the socket is

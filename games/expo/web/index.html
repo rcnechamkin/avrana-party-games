@@ -6,59 +6,86 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>EXPO</title>
   <link rel="stylesheet" href="/shared/shared.css">
-  <link rel="stylesheet" href="expo.css">
+  <link rel="stylesheet" href="expo.css?v=3">
 </head>
 <body>
-  <div class="ocean" aria-hidden="true"></div>
-  <main>
-    <header class="masthead">
-      <a data-avrana-return href="/" class="icon-btn" aria-label="All games">⌂</a>
-      <a class="brand" href="./"><span>AVRANA PARTY</span><strong>EXPO</strong></a>
-      <button id="help-toggle" class="icon-btn" aria-label="How to play" aria-expanded="false">?</button>
+  <!-- One viewport: the app never scrolls as a page (AVR-275). EXPO draws the Party Host's
+       controls itself (data-avrana-party-shell), so the Party adds no bar of its own. There is
+       no link to "/": the old LAN Games hub is not a place this game sends anyone. -->
+  <div id="app" class="app" data-avrana-viewport data-avrana-party-shell>
+    <header class="topbar">
+      <button id="menu-toggle" class="icon-btn" type="button" aria-label="Table menu" aria-haspopup="dialog">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5V20h-5.5v-5h-5v5H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="brand"><span>AVRANA PARTY</span><strong>EXPO</strong></div>
+      <button id="help-toggle" class="icon-btn" type="button" aria-label="How to play" aria-haspopup="dialog">?</button>
     </header>
-    <aside id="help" class="panel help" hidden>
-      <h2>One crew. One mission.</h2>
-      <p>Take tricks together to complete every assigned task. Keep your hand secret: don’t tell, show or hint which cards you hold.</p>
-      <p>Follow the opening suit when you can. When you cannot, play any card. Submarines beat every color; the highest submarine wins. The captain opens the first trick, and each winner opens the next.</p>
-      <p>After tasks are assigned, communicate a color card before a trick. Reveal your highest, lowest or only card of that color. You normally get one sonar token per attempt. Its meaning stays fixed as your hand changes.</p>
-      <p>With two players, the captain controls Tonoja’s visible cards and task choices without discussion. Covered cards turn over only after their covering card’s trick ends.</p>
-      <p>Task difficulty adds up to the mission’s challenge. Some tasks need the full deal; positive tasks may finish earlier. A legal play can still fail the mission. Only the latest trick may be inspected.</p>
-      <p>Some missions and tasks are unavailable while conflicting source rules are clarified. Available task descriptions follow the supplied rules and the pinned The Team II reference.</p>
-    </aside>
-    <div id="status" class="status" role="status" aria-live="polite">Connecting to the crew…</div>
-    <section id="lobby" class="lobby panel" hidden>
-      <div class="eyebrow">COOPERATIVE · 2–5 PLAYERS</div>
-      <h1>Into the deep.</h1>
-      <p class="intro">Every card matters. Every mission belongs to the whole crew.</p>
-      <label for="name">Your name</label><input data-avrana-profile-name id="name" maxlength="14" autocomplete="nickname">
-      <div data-avrana-global><div id="avatars" class="avatar-grid"></div>
-      <button id="photo" class="btn">Use a photo</button></div>
-      <label for="mission">Choose an expedition</label><select id="mission"></select>
-      <label class="check"><input id="timed" type="checkbox"> Play mission 16 against the clock</label>
-      <label for="tonoja-position">Tonoja’s seat in a two-player crew</label>
-      <select id="tonoja-position"><option value="2">After both players</option><option value="1">Between the players</option><option value="0">Before both players</option></select>
-      <div id="roster" class="roster"></div>
-      <div class="actions"><button id="ready" class="btn btn-primary">Ready up</button><button id="start" class="btn btn-go">Begin expedition</button></div>
-      <p id="lobby-reason" class="muted"></p>
-    </section>
-    <section id="game" hidden>
-      <div class="mission-heading"><div><div id="depth" class="eyebrow"></div><h1 id="mission-title"></h1></div><div id="timer" class="timer" hidden></div></div>
-      <div id="objective" class="objective"></div>
-      <div id="decision" class="panel decision" hidden></div>
-      <div class="game-grid">
-        <section class="panel table-panel"><div class="section-heading"><h2>The crew</h2><span id="trick-count" class="muted"></span></div><div id="seats" class="seats"></div><div id="trick" class="trick"></div><div id="exposures" class="exposures"></div><details id="last"><summary>Latest trick</summary><div id="last-content"></div></details></section>
-        <section class="panel"><div class="section-heading"><h2>Mission tasks</h2><span id="challenge" class="badge"></span></div><div id="tasks" class="tasks"></div><div id="phase-actions" class="actions"></div></section>
+    <div class="status-strip">
+      <span id="conn-dot" class="dot" aria-hidden="true"></span>
+      <span id="status" class="status" role="status" aria-live="polite">Connecting to the crew…</span>
+      <span id="conn" class="conn"></span>
+    </div>
+
+    <section id="lobby" class="lobby-scroll" hidden>
+      <div class="lobby panel">
+        <div class="eyebrow">COOPERATIVE · 2–5 PLAYERS</div>
+        <h1>Into the deep.</h1>
+        <p class="intro">Every card matters. Every mission belongs to the whole crew.</p>
+        <div id="lobby-form">
+          <label for="name">Your name</label><input data-avrana-profile-name id="name" maxlength="14" autocomplete="nickname">
+          <div data-avrana-global><div id="avatars" class="avatar-grid"></div>
+          <button id="photo" class="btn" type="button">Use a photo</button></div>
+          <label for="mission">Choose an expedition</label><select id="mission"></select>
+          <label class="check"><input id="timed" type="checkbox"> Play mission 16 against the clock</label>
+          <label for="tonoja-position">Tonoja’s seat in a two-player crew</label>
+          <select id="tonoja-position"><option value="2">After both players</option><option value="1">Between the players</option><option value="0">Before both players</option></select>
+        </div>
+        <div id="roster" class="roster"></div>
+        <div id="lobby-actions" class="actions"><button id="ready" class="btn btn-primary" type="button">Ready up</button><button id="start" class="btn btn-go" type="button">Begin expedition</button></div>
+        <p id="lobby-reason" class="muted"></p>
       </div>
-      <section id="hand-panel" class="panel hand-panel"><div class="section-heading"><h2>Your hand</h2><span id="hand-reason" class="muted"></span></div><div id="hand" class="hand"></div><div id="sonar" class="sonar"></div></section>
-      <section id="tonoja-panel" class="panel" hidden><h3>Tonoja · face-up cards</h3><div id="tonoja" class="hand"></div></section>
-      <section id="result" class="panel result" hidden></section>
-      <footer><span>Keep your hand secret.</span><button id="end" class="btn">End table</button></footer>
     </section>
-  </main>
+
+    <section id="game" class="board" hidden>
+      <div class="mission-head">
+        <h1 id="mission-title"></h1>
+        <span id="timer" class="pill timer" hidden></span>
+        <span id="trick-count" class="pill"></span>
+      </div>
+      <div id="objectives" class="objectives"></div>
+      <div id="seats" class="crew-strip"></div>
+      <div id="stage" class="stage"></div>
+      <nav class="tabs" aria-label="More about this mission">
+        <button type="button" class="tab" data-sheet="crew" aria-haspopup="dialog"><span class="tab-ic" aria-hidden="true">◍</span><span>Crew</span></button>
+        <button type="button" class="tab" data-sheet="tasks" aria-haspopup="dialog"><span class="tab-ic" aria-hidden="true">☰</span><span id="tab-tasks">Tasks</span></button>
+        <button type="button" class="tab" data-sheet="sonar" aria-haspopup="dialog"><span class="tab-ic" aria-hidden="true">◎</span><span id="tab-sonar">Sonar</span></button>
+        <button type="button" class="tab" data-sheet="history" aria-haspopup="dialog"><span class="tab-ic" aria-hidden="true">◷</span><span>History</span></button>
+      </nav>
+      <section id="hand-panel" class="hand-panel" aria-label="Your hand">
+        <div class="hand-head">
+          <h2 id="hand-title">Your hand</h2>
+          <div id="hand-switch" class="hand-switch" hidden></div>
+          <span id="hand-reason" class="hand-reason"></span>
+        </div>
+        <div id="hand" class="hand"></div>
+      </section>
+      <div id="dock" class="dock"></div>
+    </section>
+
+    <div id="sheet" class="sheet" hidden>
+      <button id="sheet-backdrop" class="sheet-backdrop" type="button" aria-label="Close" tabindex="-1"></button>
+      <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+        <div class="sheet-head"><h2 id="sheet-title"></h2><button id="sheet-close" class="icon-btn" type="button" aria-label="Close">×</button></div>
+        <div id="sheet-body" class="sheet-body"></div>
+      </div>
+    </div>
+
+    <div id="result" class="result" hidden role="alertdialog" aria-modal="true" aria-labelledby="result-title" aria-describedby="result-reason"></div>
+  </div>
   <div id="countdown-overlay" class="countdown-overlay" hidden><span id="cd">3</span></div>
   <canvas id="confetti"></canvas>
-  <script src="/shared/hubnet.js?v=avrana1"></script>
+  <script src="/shared/hubnet.js?v=avrana2"></script>
   <script src="/shared/brag.js"></script>
-  <script src="client.js"></script>
+  <script src="client.js?v=3"></script>
 </body>
 </html>

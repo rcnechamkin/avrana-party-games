@@ -51,6 +51,33 @@ def test_it_is_handed_exactly_the_keys_of_the_party_games_it_hosts():
     assert not re.search(r'(?im)^(Set|Import)Credential|^LoadCredentialEncrypted', UNIT + DROP_IN)
 
 
+def test_the_listener_is_loopback_and_no_drop_in_widens_it():
+    """AVR-272: port 8096 is reached through nginx only, never from the LAN."""
+    env = [v for v in directives(UNIT)['Environment'] if v.startswith('LANGAMES_HOST=')]
+    assert env == ['LANGAMES_HOST=127.0.0.1']
+    for path in sorted((ROOT / 'deploy').glob('*.conf')):
+        for value in directives(path.read_text(encoding='utf-8')).get('Environment', []):
+            assert 'LANGAMES_HOST' not in value, path.name
+
+
+def test_the_kernel_allows_this_unit_loopback_traffic_only():
+    """AVR-272, owner decision 2026-10-04. Text only: the unit has never run."""
+    d = directives(UNIT)
+    assert (d['IPAddressDeny'], d['IPAddressAllow']) == (['any'], ['localhost'])
+    for path in sorted((ROOT / 'deploy').glob('*.conf')):
+        assert not {'IPAddressAllow', 'IPAddressDeny'} & set(directives(path.read_text(encoding='utf-8'))), path.name
+    # The server's only outbound connection is to Party Core (core/party_session.py, which
+    # refuses an origin that is not loopback), so the filter takes nothing away from it. A new
+    # module that opens a connection shows up here and has to be judged against the filter.
+    outbound = r'urlopen|http\.client|create_connection|open_connection|^\s*(import|from)\s+(socket|requests|httpx|aiohttp|urllib3)\b'
+    sources = [ROOT / 'server.py', *sorted(p for d in ('core', 'games', 'provider') for p in (ROOT / d).rglob('*.py'))]
+    callers = [p.relative_to(ROOT).as_posix() for p in sources
+               if re.search(outbound, p.read_text(encoding='utf-8'), re.M)]
+    assert callers == ['core/party_session.py']
+    env = dict(v.split('=', 1) for v in directives(DROP_IN)['Environment'])
+    assert env.get(party_session.PARTY_URL_ENV, 'http://127.0.0.1:8191').startswith('http://127.0.0.1:')
+
+
 def test_the_header_says_what_was_not_confirmed():
     assert 'RECONSTRUCTED, NOT COPIED' in UNIT
     assert UNIT.count('# not confirmed from the records') == 3

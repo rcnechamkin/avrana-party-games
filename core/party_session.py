@@ -34,6 +34,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import ipaddress
+import http.client
 import json
 import logging
 import os
@@ -56,6 +57,8 @@ LOOPBACK = ("127.0.0.1", "::1")
 
 PARTY_URL_ENV = "AVRANA_PARTY_URL"      # the party service itself, e.g. http://127.0.0.1:8191
 ENDED_PATH = "/internal/party-session/v0/ended"
+HOST_PATH = "/internal/party-session/v0/host"
+HOST_TIMEOUT = 2.0      # s: a host action waits this long for the party's answer, then is refused
 POST_TIMEOUT = 3.0                      # s per attempt
 RETRY_DELAYS = (1.0, 2.0, 4.0)          # s; worst case ~19 s, inside the 30 s message lifetime
 _warned: set = set()                    # log-once keys
@@ -185,6 +188,23 @@ def post_ended(base_url, message, timeout=POST_TIMEOUT):
     except urllib.error.HTTPError as e:
         return e.code
     except (urllib.error.URLError, OSError, ValueError):
+        return None
+
+
+def ask_host(base_url, message, timeout=HOST_TIMEOUT):
+    """One POST of a `host` question (GameSide.ask_host). Returns the party's signed answer for
+    GameSide.host_is, or None when the party did not give one (down, refused, not this session).
+    None is never a yes. Blocking: call it off the event loop."""
+    if base_url is None:
+        return None
+    req = urllib.request.Request(base_url + HOST_PATH, method="POST",
+                                 data=json.dumps({"message": message}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            answer = json.loads(r.read() or b"{}").get("answer")
+            return answer if isinstance(answer, str) else None
+    except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError, AttributeError):
         return None
 
 
