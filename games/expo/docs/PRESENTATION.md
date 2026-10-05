@@ -296,16 +296,28 @@ board's crew tile has a radio line of its own at every size) and the shorter sta
 humans and Tonoja, 360x600, a card shown, another seat on turn, the stage at 84 px or more)
 passes on this board.
 
-**AVR-245 is not merged.** When it meets this branch:
+**AVR-245 is merged** (its branch at 74f04f1, 2026-10-05). Every integration this board was
+waiting for is done. A Party round's setup is drawn in the lobby's place, before anything is
+dealt; on this client:
 
-- its `drawSetup` writes `#status.textContent`; it must call `say(text)`. If it does not, nothing
-  breaks (`say` rebuilds the line's two parts), but the sentence then skips `fitStatus`;
-- its new status sentences belong in `longestStatusesFit`, and `draw()` must still end with
-  `fitStatus()`;
-- the setup view must carry `trick_leading` like every other view (`trickShows` requires the
-  field), and a setup phase is a preparation phase for `ExpoDirector.briefable`;
-- its `question()` and `seatWords()` must be reconciled with this client's `question()` (the
-  status line uses the question without its sentence of consequence) and `whoOf()`.
+- `drawSetup` speaks through `say()`, never `#status.textContent`, so the live region keeps its
+  two parts; its status sentences name one person and count the rest (`whoOf`) and ask a
+  decision's question without a second sentence, as on the board;
+- `question()` has the two setup questions ("Open on mission 16 against the clock?", "Seat
+  Tonoja after both players?"), with AVR-245's `seatWords()` and `setupWords()` unchanged;
+- a decision in setup (Tonoja's seat, or the crew agreeing the mission) keeps its two answers
+  under the question, as on the result: there is no hand and no dock before a deal. On the board
+  the answers are in the dock (the owner's decision above). The full list of who has not
+  answered is in the decision in both places;
+- `fitStatus()` runs at the end of every draw, setup and lobby included. Off the board there is
+  no mission stage to borrow from, so a sentence too long for the status line's place gets a row
+  of its own (`.app.status-free`);
+- the setup view carries `trick_leading: null` like every other view, with a test;
+- `setupStatusesFit` (tests/_expo_phone.mjs) draws the setup's status sentences with 14-letter
+  names at five sizes and asserts each whole, full touch targets, both answers on screen where
+  the viewer must answer, the live region's two parts, and a page that does not scroll. The
+  Party playtest keeps AVR-245's own setup steps and runs it for a player and for whoever
+  watches or hosts.
 
 ## Not built
 

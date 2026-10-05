@@ -46,12 +46,13 @@ Table lifetime:
 | `proposal` | the pending crew decision and who has confirmed it; a captain's offer in missions 10 and 13 also names its `recipient`, the only seat that may answer |
 | `result` | none, or `{status, reason}` with status `success`, `failed` or `abandoned` |
 | `events`, `event_seq` | the bounded log of semantic events and the number of the newest one (AVR-246); see [Semantic events](#semantic-events) |
+| `setup` | only in phase `setup` (a Party round before its first deal, AVR-245): `{mission, timed, tonoja_position, tonoja_seat}`. The first three are the values offered first; `tonoja_seat` is the seat the two players have agreed for Tonoja (0, 1 or 2), or none: always none until they agree one, and always none with three to five humans. The key `setup` is removed when the setup is confirmed, so a dealt table has exactly the keys it had before this phase existed. Additive: the format `version` is still 1, a snapshot written before 2026-10-05 has no such key and loads unchanged. A `setup` object of another shape (this branch wrote one without `tonoja_seat` for a few hours, never deployed) is refused like any invalid snapshot |
 
 Per attempt (reset by every preparation):
 
 | Key | Meaning |
 |---|---|
-| `phase` | `allocation`, `prediction`, `assistance`, `passing`, `before_trick`, `in_trick`, `mission_result`, `closed` |
+| `phase` | `allocation`, `prediction`, `assistance`, `passing`, `before_trick`, `in_trick`, `mission_result`, `closed`; and `setup`, before any attempt exists: then none of the keys in this table but `phase` and `expiry` (none) is present, `mission` is none, `attempt` is 0 and `seats` is the humans alone (Tonoja has no seat yet) |
 | `hands` | each human's cards, including any shown by communication |
 | `columns` | for two players: seven `{top, covered}` pairs; empty otherwise |
 | `planned` | complete tricks in the deal: 13, 10 or 8 |
@@ -91,11 +92,21 @@ command and rolls it back, or refuses the restore.
 - The event log is in sequence order, no longer than its bound and not ahead of its counter. A
   table is resolving only between two tricks of an attempt still in play, for the trick just
   resolved (AVR-246).
+- In phase `setup` there is no mission, no attempt, no result, no deadline and nothing of a deal;
+  the seats are the humans (Tonoja is seated only at the deal); `setup` holds the three
+  offered values and the agreed seat, which is a seat only with two humans; a pending decision
+  can only be a `setup` or, with two humans, a `tonoja_seat`, in the shape a seat could have
+  sent it and confirmed only by seated humans. A table in any other phase has a mission. A
+  snapshot that mixes the two, or carries a setup of another shape, is refused and never raises
+  anything else (`test_a_forged_or_older_setup_snapshot_is_refused_and_never_crashes`).
 
 ## Phase flow
 
 ```
 (platform lobby / countdown, or Party roster)
+        |
+   setup  (a Party round only: seated, nothing dealt; two players agree Tonoja's seat; waits
+        |  for the `setup` decision, no timer)
         |
    prepare: terrain draw -> task draw -> repair -> deal (redeal on a deal exception) -> captain
         |
@@ -154,6 +165,29 @@ it. See [The resolving phase](#the-resolving-phase).
 | `events`, `event_seq`: the events of the latest resolved trick and after (AVR-246) | own declaration in a currents `COMMUNICATION_SENT` | events of earlier tricks and earlier attempts; the rest of the log |
 | `resolving`: the trick being resolved, with `until` (adapter); `cause` of a failed attempt | | |
 | each task's `state`: PENDING, ACTIVE, COMPLETED, FAILED, IMPOSSIBLE | | |
+
+In phase `setup` the view is a short one and all of it is public (`Engine._setup_view`): `stage`
+`setup`, `mission` none, the seated humans, who is away, the pending decision, and `setup`: the
+three offered values, `tonoja` (whether there is a seat to agree: two humans), `tonoja_seat`
+(the seat the two players have agreed, or none), `seat_proposal` (none, or `{position, by,
+asked}`: the seat proposed, the player who proposed it and the player who must answer),
+`missions` (each mission with `enabled` and the server's `reason`, for this crew size),
+`waiting` (the server's sentence when the setup cannot be confirmed now, else none: a seat
+away, a decision pending, or "The two players decide where Tonoja sits first.") and
+`seat_waiting` (the server's sentence when a seat cannot be proposed now, else none). The view
+is the same for a player, the Party Host and a watcher, but for `me`: a seated human's is
+`{seat}` and nothing more; everyone else's is null. No hand, task or captain exists to send
+(`test_the_setup_view_is_public_and_holds_nothing_of_a_deal`). The keys every view carries for
+the events are there in the only state they can have before a deal: `resolving` and `cause`
+none, `events` empty, `event_seq` 0. `lifecycle_reasons` is there too (AVR-263): Begin, Retry
+and Next are each refused in `setup`, in the sentence that step is refused with; why the setup
+itself cannot be confirmed is `setup.waiting`
+(`test_in_setup_every_viewer_is_sent_the_step_reasons_and_they_are_the_tables_answers`).
+Nothing is emitted in `setup`, a seat's return included,
+nothing resolves and no hold is kept
+(`test_the_setup_view_carries_the_event_keys_every_view_has`,
+`test_a_seat_that_reconnects_during_setup_is_recorded_and_emits_nothing`,
+`test_nothing_settles_and_no_hold_is_kept_during_setup`).
 
 Requirements met: no viewer receives another seat's legal cards; unseated viewers cannot act;
 identity is the authenticated connection, never a field in the message. In currents the
@@ -287,7 +321,13 @@ A timed mission and the clock (AVR-242, was E-D7):
   mission, is refused like any other invalid snapshot. The table itself is kept
   and the crew may retry. An appliance without a real-time clock cannot say how long it was off,
   so a reboot always ends a running timed attempt.
-- A table with no running deadline restores whatever the clocks say.
+- A table with no running deadline restores whatever the clocks say. That includes a table
+  saved in `setup`, with a seat for Tonoja proposed or agreed or neither: it comes back in
+  `setup` with every seat away, the proposal and the agreed seat as they were, and deals, once
+  set up, the table it would have dealt
+  (`test_a_session_saved_in_setup_comes_back_in_setup_with_every_seat_away`,
+  `test_a_table_saved_while_the_seat_is_being_agreed_restores_and_then_deals_the_same_table`). No Party round writes
+  one, so this is reached only through the snapshot interface.
 
 ## The seat leading an unfinished trick
 
@@ -600,14 +640,30 @@ just resolved in an attempt still in play, is refused like any other invalid sna
 When Party launches EXPO (`core/party_session.py`, Party ADR 0006 and 0010):
 
 - The roster's players are the seats, in roster order, under their Party names. The game's own
-  lobby and settings are skipped (E-P1, AVR-245).
+  lobby and its `settings` verb are skipped.
+- **Setup before the first deal** (owner decision 2026-10-05, AVR-245). Because the lobby is
+  skipped, the table opens in phase `setup` when the Party's countdown ends, and the mission,
+  the timed setting and Tonoja's seat are chosen inside EXPO
+  ([ACTIONS](ACTIONS.md#setup-before-the-first-deal-a-party-round)). The Party launch contract
+  carries none of it. Setup (the mission and the timed setting) is the first routine step of
+  the table's life, so it belongs to whoever owns the others (next bullet): the Party Host, or
+  the whole crew under a Party that does not name its host. Tonoja's seat is not part of it:
+  the rules give it to the players (R p22), so with two humans the two of them agree it as a
+  crew decision, and the setup is refused until they have (owner decisions 2026-10-05, DECIDED:
+  "Setup confirmation remains Party Host only."; "Tonoja's seat must follow the rulebook. The
+  players decide it. Do not give that decision solely to the Party Host."; "An unconfirmed
+  table must never start itself. Explicit setup confirmation is required."). Nothing is dealt,
+  no timer runs and no seat is taken as agreed until that is done. The adapter's `settings`
+  then hold what was chosen, as a lobby's would.
 - Players are admitted by Party ticket; a browser token only watches.
 - Party spectators receive the public view.
 - **Two authorities** (AVR-252, AVR-275). The Party Host owns the table's routine steps (Begin,
-  Retry, Next) and ends EXPO; the EXPO captain owns what the rules give the captain (the first
+  Retry, Next, and the setup before the first deal) and ends EXPO; the EXPO captain owns what the rules give the captain (the first
   lead, Tonoja's cards, the offer in missions 10 and 13) and nothing else; the crew still decides
-  together what the rules say it decides together (distress, shared assignments). The host may be
-  the captain, another seat or a spectator.
+  together what the rules say it decides together (distress, shared assignments, and for two
+  players where Tonoja sits). The host may be the captain, another seat or a spectator. The
+  owner's principle (2026-10-05): "The Party Host controls party/game flow. Game-specific
+  decisions remain with whoever the game's rules assign them to."
 - **Who the host is** is never stored here. `GameSession.party_host` only records that this
   Party says who its host is (a ticket carried the claim). Each host action brings a fresh
   ticket, and the game server then asks the Party whether that participant is its host at that
@@ -626,7 +682,7 @@ When Party launches EXPO (`core/party_session.py`, Party ADR 0006 and 0010):
   the sentence Begin, Retry and Next are each refused with at that moment, from the same ordered
   checks that refuse them (`Engine._lifecycle_refusals`, `ExpoSession._host_refusal`; for a table
   the crew moves on, `Engine.apply`'s refusal of the proposal).
-- **An away seat** still stops Begin, Retry and Next (AVR-240 owns recovery). It never strands
+- **An away seat** still stops the setup, the seat agreement, Begin, Retry and Next (AVR-240 owns recovery). It never strands
   the Party: the host's end is the Party's and does not pass through the table.
 - No seat ends a Party round from inside the game. The host ends it from the Party, whose signed
   `end` releases the room; the Party records `ended_by_host`. A standalone table still closes by

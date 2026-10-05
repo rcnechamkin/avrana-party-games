@@ -753,13 +753,30 @@ def test_a_rejected_request_is_not_remembered_and_an_accepted_one_is():
     assert not e.apply(turn, ok, 100)                               # the duplicate is a no-op
 
 
-def test_a_party_round_locks_settings_so_the_table_opens_on_mission_one():
+def test_a_party_round_refuses_lobby_settings_and_opens_in_setup_with_nothing_dealt():
+    # Was test_a_party_round_locks_settings_so_the_table_opens_on_mission_one (E-P1). Owner
+    # decision 2026-10-05 (AVR-245): the lobby and its `settings` verb stay closed to a Party
+    # round, and the choice is made in EXPO instead, before the first deal
+    # (tests/test_expo_authority.py, last section). The Party launch contract is unchanged.
     s = ExpoSession(random.Random(3))
     s.party_start([('t1', 'Alice'), ('t2', 'Bob'), ('t3', 'Cara')])
     s.set_settings('t1', {'mission': 5, 'timed': True})
     assert s.settings == {'mission': 1, 'timed': False, 'tonoja_position': 2}
+    for t in ('t1', 't2', 't3'):
+        s.join(t)
     s.tick(s.gen)
-    assert s.engine.s['mission']['id'] == 1 and s.engine.s['timed'] is False
+    e = s.engine.s
+    assert s.phase == e['phase'] == 'setup' and e['mission'] is None and e['attempt'] == 0
+    assert e['setup'] == {'mission': 1, 'timed': False, 'tonoja_position': 2,      # offered, not dealt
+                          'tonoja_seat': None}                 # (a seat is agreed only by two players)
+    assert not {'hands', 'columns', 'captain', 'pool'} & set(e)
+    assert s.deadline is None                                   # and no timer will start it
+    s.set_settings('t1', {'mission': 5, 'timed': True})         # still not the lobby's to change
+    assert s.settings == {'mission': 1, 'timed': False, 'tonoja_position': 2} and e['mission'] is None
+    s.host_action({'t': 'lifecycle', 'attempt': 0, 'revision': e['revision'],
+                   'decision': {'kind': 'setup', 'mission': 5, 'timed': True}})
+    assert s.engine.s['mission']['id'] == 5 and s.engine.s['timed'] is True
+    assert s.settings == {'mission': 5, 'timed': True, 'tonoja_position': 2}
 
 
 # ---- C20 / AVR-239: the captain and captain comparison tasks (was defect E-D1) -------------------

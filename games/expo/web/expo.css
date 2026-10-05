@@ -48,6 +48,9 @@ html[data-avrana="1"] .app{height:100%}
 /* A sentence too long for the status line's own place: whole, over the mission stage's lesser lines (client.js, fitStatus). */
 .app.status-long .status-strip{position:absolute;z-index:1;margin:0;min-height:0;top:var(--status-top);height:var(--status-height);left:calc(max(var(--pad),env(safe-area-inset-left)) + 5px);right:calc(max(var(--pad),env(safe-area-inset-right)) + 5px);padding:2px 8px;background:#0d0b08f2}
 .app.status-long .status{-webkit-line-clamp:unset;display:block;max-height:100%}
+/* Off the board (the lobby, setup) a sentence too long for the line gets a row of its own (client.js, fitStatus). */
+.app.status-free .status{-webkit-line-clamp:unset;display:block}
+.app.status-free .status-strip{position:static;height:auto;min-height:30px;margin:var(--gap) max(var(--pad),env(safe-area-inset-right)) 0 max(var(--pad),env(safe-area-inset-left));padding:4px 10px}
 .app.status-long .mission-line,.app.status-long .chips,.app.status-long .stage-news{visibility:hidden}
 .status.urgent{color:#ffe08a}
 .conn{flex:none;color:var(--muted);font-size:11px}

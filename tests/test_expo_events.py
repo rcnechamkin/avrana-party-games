@@ -1628,3 +1628,13 @@ def test_the_leading_seat_is_derived_and_never_stored():
     play(e, *first_legal(e))
     assert 'trick_leading' not in json.dumps(e.snapshot()) and set(e.snapshot()) == before
     assert Engine.restore(deepcopy(e.snapshot())).view(None)['trick_leading'] == e.view(None)['trick_leading'] is not None
+
+
+@pytest.mark.parametrize('n', (2, 3, 5))
+def test_before_a_deal_the_setup_view_carries_the_leading_seat_as_none_for_every_viewer(n):
+    e = Engine([f'p{i}' for i in range(n)], random.Random(5), setup=True)
+    for viewer in list(e.s['humans']) + [None]:
+        view = e.view(viewer)
+        assert view['stage'] == 'setup' and 'trick_leading' in view and view['trick_leading'] is None
+    assert 'trick_leading' not in json.dumps(e.snapshot())
+

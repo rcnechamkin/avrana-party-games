@@ -58,7 +58,9 @@ Hub.buildAvatarGrid($("avatars"), Hub.identity.avatar, avatar => {
   conn.send({t:"profile",avatar});
 });
 const conn = Hub.connect("/games/expo/ws", {
-  onWelcome: () => present(() => director.resync()),      // what arrives next is the state, not news
+  // What arrives next is the state, not news; and a new connection may be a new table: nothing
+  // chosen in setup carries over.
+  onWelcome: () => { ui.setup = null; present(() => director.resync()); },
   onState: render,
   onFx: fx => {
     if (fx.kind === "invalid") { settle(); Hub.toast(fx.msg, "err"); }
@@ -236,9 +238,9 @@ $("name").onchange = () => {
 };
 $("ready").onclick = () => conn.send({t:"ready",ready:!ST?.you?.ready});
 $("start").onclick = () => conn.send({t:"start"});
-$("mission").onchange = () => conn.send({t:"settings",patch:{mission:Number($("mission").value)}});
-$("timed").onchange = () => conn.send({t:"settings",patch:{timed:$("timed").checked}});
-$("tonoja-position").onchange = () => conn.send({t:"settings",patch:{tonoja_position:Number($("tonoja-position").value)}});
+$("mission").onchange = () => choose({mission:Number($("mission").value)});
+$("timed").onchange = () => choose({timed:$("timed").checked});
+$("tonoja-position").onchange = () => choose({tonoja_position:Number($("tonoja-position").value)});
 $("menu-toggle").onclick = e => openSheet("menu", e.currentTarget);
 $("help-toggle").onclick = e => openSheet("help", e.currentTarget);
 for (const tab of document.querySelectorAll(".tab")) tab.onclick = e => openSheet(tab.dataset.sheet, e.currentTarget);
@@ -320,10 +322,12 @@ function draw() {
   const focusKey = document.activeElement?.dataset?.key;
   const values = new Map([...document.querySelectorAll("[data-key]")]
     .filter(n => ["INPUT","SELECT"].includes(n.tagName)).map(n => [n.dataset.key, n.value]));
-  const lobby = ["lobby","countdown"].includes(st.phase);
+  const setup = setupOf(st);                       // a Party round before its first deal (AVR-245)
+  if (!setup) leaveSetup();
+  const lobby = ["lobby","countdown"].includes(st.phase) || Boolean(setup);
   $("lobby").hidden = !lobby; $("game").hidden = lobby || !st.game;
   $("countdown-overlay").hidden = st.phase !== "countdown";
-  if (lobby) { drawLobby(st); $("result").hidden = true; drawSheet(null, st); syncModal(); return; }
+  if (lobby) { setup ? drawSetup(st, setup) : drawLobby(st); $("result").hidden = true; drawSheet(null, st); syncModal(); fitStatus(); return; }
   const g = st.game;
   if (!g) { say("This table has ended."); $("result").hidden = true; drawSheet(null, st); syncModal(); return; }
   // A crew decision after a result is answered on the result: never leave it put away.
@@ -347,6 +351,13 @@ function draw() {
     if (n.dataset.key === focusKey && !n.disabled && document.activeElement !== n) n.focus({preventScroll:true});
   }
   syncModal();
+  if (ui.fromSetup) {
+    // The table was just dealt and the control that did it is gone: focus lands on the board,
+    // where a result that goes away puts it too, unless something still holds it.
+    ui.fromSetup = false;
+    const at = document.activeElement;
+    if (!modalTop() && (!at || at === document.body || $("lobby").contains(at))) { $("mission-title").tabIndex = -1; $("mission-title").focus({preventScroll:true}); }
+  }
   updateTimer();
   fitStatus();
 }
@@ -372,6 +383,124 @@ function drawLobby(st) {
     : ready<2 ? "Ready at least two players to begin. With two, Tonoja joins your crew." : "Crew order follows joining order, clockwise.";
 }
 
+// ---- setup: a Party round chooses what it opens on, in EXPO, before anything is dealt (AVR-245) ----
+// The lobby's mission and clock controls, for whoever moves the table on: the Party Host, or the
+// crew under a Party that does not name its host. The choice is this phone's until it is sent as
+// one decision, as the next mission is after a success. Tonoja's seat is not in it: with two
+// players the two of them agree it (one proposes, the other answers in the usual decision
+// panel), and everyone else reads what they agreed. What may be chosen, what is agreed and the
+// reason a control cannot be used are the server's (g.setup). ui.setup is this phone's choice
+// while it is being made.
+const SETUP_PROFILE = ['label[for="name"]', "#name", "[data-avrana-global]", ".lobby .intro"];
+function setupOf(st) { const g = st && st.game; return g && g.stage === "setup" ? g : null; }
+function setupChoice(g) {
+  // What is offered, until this phone chooses otherwise. A choice does not outlive its table
+  // (leaveSetup, onWelcome), and one the server no longer offers is dropped.
+  const open = id => g.setup.missions.some(m => m.id === id && m.enabled);
+  if (ui.setup && !open(ui.setup.mission)) ui.setup = null;
+  if (!ui.setup) ui.setup = {mission:g.setup.mission, timed:g.setup.timed, tonoja_position:g.setup.tonoja_seat ?? g.setup.tonoja_position};
+  return ui.setup;
+}
+// A seat for Tonoja in the lobby's own words ("after both players").
+function seatWords(position) {
+  const seat = $("tonoja-position").querySelector(`option[value="${position}"]`);
+  return seat ? seat.textContent.toLowerCase() : `in seat ${position}`;
+}
+function choose(patch) {
+  const g = setupOf(ST);
+  if (!g) { conn.send({t:"settings",patch}); return; }
+  Object.assign(setupChoice(g), patch); draw();
+}
+function setupWords(p) {
+  // The clock is the table's setting and the lobby's own label says what it is for: mission 16.
+  const clock = !p.timed ? "" : p.mission === 16 ? " against the clock" : " (clock on, for mission 16 only)";
+  return `mission ${p.mission}${clock}`;
+}
+function leaveSetup() {
+  ui.setup = null;
+  for (const id of ["setup-box", "setup-why"]) { const n = $(id); if (n) n.remove(); }
+  for (const n of document.querySelectorAll("[data-setup-hid]")) { n.hidden = false; delete n.dataset.setupHid; }
+  document.querySelector('label[for="tonoja-position"]').hidden = $("tonoja-position").hidden = false;
+}
+function drawSetup(st, g) {
+  const focusKey = document.activeElement?.dataset?.key;
+  const mine = mayMoveOn(g), choice = setupChoice(g), wait = g.setup.waiting;
+  for (const n of SETUP_PROFILE.map(q => document.querySelector(q))) if (n && !n.hidden) { n.hidden = true; n.dataset.setupHid = "1"; }
+  $("lobby-form").hidden = !mine || Boolean(g.proposal);
+  $("lobby-actions").hidden = true;
+  // A mission that cannot be chosen says why in the server's own sentence: in its option where
+  // that fits, and in words on the page, one line for each reason, under the list.
+  const shut = g.setup.missions.filter(m => !m.enabled), label = m => `${m.id>32?"Deep dive":"Mission"} ${m.id}`;
+  choices($("mission"), g.setup.missions.map(m => ({value:m.id,text:label(m) + (m.enabled ? "" : ` · ${m.reason && m.reason.length <= 60 ? m.reason : "unavailable"}`),disabled:!m.enabled})), choice.mission);
+  let whyNot = $("setup-why");
+  if (!whyNot) {
+    whyNot = el("details"); whyNot.id = "setup-why";
+    const head = el("summary", undefined, "muted"); head.style.cssText = "min-height:44px;display:flex;align-items:center;cursor:pointer";
+    whyNot.append(head); $("mission").after(whyNot);
+  }
+  whyNot.hidden = !shut.length;
+  whyNot.firstChild.textContent = `${shut.length} unavailable · why`;
+  while (whyNot.children.length > 1) whyNot.lastChild.remove();
+  for (const reason of new Set(shut.map(m => m.reason))) whyNot.append(why(`${shut.filter(m => m.reason === reason).map(m => m.id).join(", ")} · ${reason || "unavailable"}`));
+  $("timed").checked = choice.timed;
+  // The lobby's seat control belongs to a standalone lobby. Here the seat is the two players'
+  // (below), never part of what the setup sends.
+  document.querySelector('label[for="tonoja-position"]').hidden = $("tonoja-position").hidden = true;
+  ui.fromSetup = true;
+  const seatOpen = g.setup.tonoja && g.setup.tonoja_seat === null;
+  // The status line names one person and counts the rest (whoOf), as on the board; the decision
+  // under it lists everyone who has not answered.
+  const text = g.away.length ? `Waiting for ${whoOf(g.away)} to reconnect.`
+    : g.proposal ? (mustAnswer(g) ? `Your answer is needed: ${question(g).replace(/\?.*$/, "?")}` : `Crew decision · waiting for ${whoOf(stillAsked(g))}`)
+    : seatOpen ? (g.me ? "Agree where Tonoja sits" : "Waiting for the two players to agree where Tonoja sits")
+    : !hostOwned(g) ? "Agree on the mission to open on"
+    : amHost() ? "Choose the mission to open on" : `Waiting for ${theHost()} (Party Host) to choose the mission`;
+  say((g.me ? "" : "Watching · ") + text);         // the one live region, in its two parts (never #status.textContent)
+  $("status").classList.toggle("urgent", Boolean(g.proposal && mustAnswer(g)));
+  $("roster").replaceChildren();
+  for (const seat of g.seats) {
+    const p = st.players.find(q => q.pid === seat) || {}, row = el("div",undefined,"person"), avatar = el("span",p.avatar,"avatar");
+    if (p.pid) Hub.fillAvatar(avatar,p);
+    row.append(avatar, el("strong",name(seat),"name"), el("span", g.away.includes(seat) ? "Away" : "Aboard", "muted"));
+    $("roster").append(row);
+  }
+  $("lobby-reason").textContent = mine && wait && !g.proposal ? wait : hostOwned(g)
+    ? (amHost() ? "You are the Party Host: you choose. Nothing is dealt until you do." : "Nothing is dealt until the Party Host has chosen.")
+    : `Nothing is dealt until the whole crew agrees.${g.lifecycle_transitional ? " This Party does not tell EXPO who its Host is yet, so the crew decides for now." : ""}`;
+  let box = $("setup-box");
+  if (!box) { box = el("div", undefined, "actions"); box.id = "setup-box"; $("roster").before(box); }      // above the crew list: in view on a short phone
+  box.replaceChildren();
+  if (g.setup.tonoja) {
+    // Public, for every phone: the seat the two players agreed, or that none is agreed yet.
+    const agreed = g.setup.tonoja_seat;
+    const line = el("p", agreed === null ? "Tonoja’s seat is not agreed yet. The two players decide it."
+      : `Tonoja sits ${seatWords(agreed)} · agreed by ${names(g.seats)}.`, "muted");
+    line.dataset.key = "tonoja-seat"; line.style.cssText = "flex-basis:100%;margin:0"; box.append(line);
+  }
+  // Setup is drawn in the lobby's place: there is no hand and no dock here, so the two answers
+  // stay under the question (as on the result). On the board they are in the dock.
+  if (g.proposal) box.append(decisionNode(g, true));
+  else {
+    if (g.setup.tonoja && g.me) {
+      // A seated player proposes a seat; the other player is then asked, in the decision panel.
+      const pick = el("select"); pick.dataset.key = "seat-choice"; pick.setAttribute("aria-label", "Tonoja’s seat");
+      choices(pick, [...$("tonoja-position").options].map(o => ({value:o.value, text:o.textContent})), choice.tonoja_position);
+      pick.onchange = () => { choice.tonoja_position = Number(pick.value); };
+      const stop = g.setup.seat_waiting;
+      box.append(pick, button(g.setup.tonoja_seat === null ? "Propose Tonoja’s seat" : "Propose another seat",
+        () => propose("tonoja_seat", {position:Number(pick.value)}), "seat-propose", Boolean(stop), stop || ""));
+      if (stop && !(mine && stop === wait)) { const said = why(stop); said.style.flexBasis = "100%"; box.append(said); }   // else it is the line under the crew list
+    }
+    if (mine) {
+      box.append(button(`Deal mission ${choice.mission}`, () => lifecycle({kind:"setup",mission:choice.mission,timed:choice.timed}),
+        "setup-confirm", Boolean(wait), wait || "", "btn-primary"));
+    }
+  }
+  if (!g.proposal && st.party_round && amHost()) box.append(endButton("End EXPO for everyone", "end-expo", "quiet"));
+  const back = focusKey && box.querySelector(`[data-key="${CSS.escape(focusKey)}"]`);
+  if (back && !back.disabled && document.activeElement !== back) back.focus({preventScroll:true});
+}
+
 // A new moment at the table: drop a selection made for the last one, and bring up the cards
 // that are about to be played (Tonoja's, for the captain on Tonoja's turn).
 function syncTurn(g) {
@@ -389,7 +518,8 @@ function question(g) {
     distress:`Activate distress and pass one color card ${p.direction}? This adds one recorded attempt to the mission.`,
     assign:p.task==="all"?`Give all tasks to ${name(p.owner)}?`:`Give this task to ${name(p.owner)}?`,
     retry:p.keep?"Retry with the same tasks?":"Retry with fresh tasks?",
-    next:`Begin mission ${p.mission}?`, end:"End this table?"}[p.kind];
+    next:`Begin mission ${p.mission}?`, end:"End this table?", setup:`Open on ${setupWords(p)}?`,
+    tonoja_seat:`Seat Tonoja ${seatWords(p.position)}?`}[p.kind];
 }
 function mustAnswer(g) {
   const asked = g.proposal.recipient;
@@ -451,8 +581,11 @@ function say(text, news="") {
 // Measured, not guessed: its own place is tried first, every time.
 function fitStatus() {
   const app = $("app"), box = $("status");
-  app.classList.remove("status-long");
-  if ($("game").hidden || box.scrollHeight <= box.clientHeight + 1) return;
+  app.classList.remove("status-long", "status-free");
+  if (box.scrollHeight <= box.clientHeight + 1) return;
+  // Off the board (the lobby, a Party round's setup) there is no mission stage to borrow from:
+  // the line is given a row of its own, as long as it needs.
+  if ($("game").hidden) { app.classList.add("status-free"); return; }
   app.classList.add("status-long");            // the strip leaves its place, so measure after
   const frame = app.getBoundingClientRect(), head = document.querySelector(".mission-head").getBoundingClientRect(), stage = $("mission-stage").getBoundingClientRect();
   app.style.setProperty("--status-top", `${Math.round(head.bottom - frame.top + 2)}px`);

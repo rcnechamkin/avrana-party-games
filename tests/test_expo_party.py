@@ -49,7 +49,19 @@ async def seated_table():
     await settle()
     await a[0].inbox.put({"t": "start"})
     await asyncio.sleep(3.3)                        # the 3-2-1 countdown
-    assert b.session.phase == "allocation"
+    # A Party round opens in setup (AVR-245). The two players agree where Tonoja sits (the seat
+    # offered: after both of them); these tickets do not say who the Party Host is, so the crew
+    # then agrees on what is offered: mission 1, untimed.
+    assert b.session.phase == "setup"
+    for request, proposal in (("seat", {"kind": "tonoja_seat", "position": 2}),
+                              ("setup", {"kind": "setup", "mission": 1, "timed": False})):
+        await a[0].inbox.put({"t": "propose", "request": request, "attempt": 0,
+                              "revision": b.session.engine.s["revision"], "proposal": proposal})
+        await settle()
+        await c[0].inbox.put({"t": "confirm", "request": "agree-" + request, "yes": True, "attempt": 0,
+                              "revision": b.session.engine.s["revision"]})
+        await settle()
+    assert b.session.phase == "allocation" and b.session.engine.s["seats"][2] == "tonoja"
     assert set(b.session.participants) == {ALICE_TOKEN, BOB_TOKEN}
     return b, a, c
 
@@ -141,7 +153,16 @@ def test_a_party_round_never_inherits_or_writes_a_standalone_snapshot(tmp_path):
     assert room.engine is None and room.store is None and room.recovery_error is None
     assert list(room.players) == [ALICE_TOKEN, BOB_TOKEN] and room.party_round
     room.tick(room.gen)                                # arrival deadline: the round starts
-    assert room.phase == "allocation" and set(room.engine.s["humans"]) == {p.pid for p in room.players.values()}
+    assert room.phase == "setup" and set(room.engine.s["humans"]) == {p.pid for p in room.players.values()}
+    for token in (ALICE_TOKEN, BOB_TOKEN):             # the seats arrive
+        room.join(token)
+    scope = lambda: {"attempt": 0, "revision": room.engine.s["revision"]}
+    # the two players agree where Tonoja sits; then the Party Host sets the table up
+    assert room.game_action(ALICE_TOKEN, {"t": "propose", "request": "seat", **scope(),
+                                          "proposal": {"kind": "tonoja_seat", "position": 2}}) == []
+    assert room.game_action(BOB_TOKEN, {"t": "confirm", "request": "agree", "yes": True, **scope()}) == []
+    room.host_action({"t": "lifecycle", **scope(), "decision": {"kind": "setup", "mission": 1, "timed": False}})
+    assert room.phase == "allocation"
     assert path.read_bytes() == before                 # the standalone save is untouched
 
 

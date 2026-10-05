@@ -282,6 +282,44 @@ export async function longestStatusesFit(pg, label, shots = null) {
   return [...said];
 }
 
+/* AVR-245 on this board: a Party round's setup, drawn in the lobby's place before anything is
+   dealt. Its status sentences, with the longest names, at every phone size: each is whole; a
+   decision this viewer must answer has both answers on screen as full targets (there is no dock
+   before a deal, so they are under the question); and the page itself never scrolls. */
+export async function setupStatusesFit(pg, label) {
+  const real = await pg.evaluate(() => ST), size = pg.viewport(), said = new Set();
+  assert.equal(real.game.stage, "setup", `${label}: the table is in setup`);
+  const cases = await pg.evaluate(st => {
+    const g = st.game, me = g.me && g.me.seat, others = g.seats.filter(s => s !== me);
+    const ask = (payload, votes) => ({proposal: {payload, votes, recipient: null}, away: []});
+    const list = [["as it stands", {}], ["watching", {me: null}], ["one seat away", {away: others.slice(0, 1), proposal: null}],
+      ["the opening mission asked", ask({kind: "setup", mission: 16, timed: true}, [])],
+      ["waiting for the others on the opening mission", ask({kind: "setup", mission: 16, timed: true}, me ? [me] : [])]];
+    if (g.setup.tonoja) list.push(["Tonoja's seat asked", ask({kind: "tonoja_seat", position: 0}, me ? others.slice(0, 1) : [])],
+      ["waiting for the other player on Tonoja's seat", ask({kind: "tonoja_seat", position: 0}, me ? [me] : others.slice(0, 1))],
+      ["watching: Tonoja's seat not agreed", {me: null, proposal: null, away: [], setup: {...g.setup, tonoja_seat: null}}]);
+    return list.map(([what, patch]) => [what, {...st, players: st.players.map(p => ({...p, name: "WWWWWWWWWWWWWW"})), game: {...g, ...patch}}]);
+  }, real);
+  try {
+    for (const phone of PHONES) {
+      await pg.setViewport({...size, ...phone});
+      for (const [what, st] of cases) {
+        await pg.evaluate(s => render(s), st);
+        const where = `${label}: ${what}`;
+        await criticalTextWhole(pg, where);
+        await touchTargets(pg, where);
+        const m = await pg.evaluate(() => ({must: Boolean(ST.game.proposal && ST.game.me && mustAnswer(ST.game)), text: document.getElementById("status-now").textContent,
+          parts: document.getElementById("status").children.length, scroll: [document.scrollingElement, document.body, document.getElementById("app")].map(n => n.scrollHeight - n.clientHeight)}));
+        assert.equal(m.parts, 2, `${where}: the live region keeps its two parts (setup speaks through say())`);
+        for (const over of m.scroll) assert.ok(over <= 1, `${where} at ${phone.width}x${phone.height}: the page does not scroll (${over}px)`);
+        if (m.must) for (const k of ["agree", "decline"]) await onScreen(pg, k, where);
+        said.add(m.text);
+      }
+    }
+  } finally { await pg.setViewport(size); await pg.evaluate(st => render(st), real); }
+  return [...said];
+}
+
 /* Every control a thumb can reach is a real target: at least 44 px tall and 40 px wide (a hand
    of seven shares a 360 px screen), measured on the element itself, not a padded hit area. */
 export async function touchTargets(pg, label) {
