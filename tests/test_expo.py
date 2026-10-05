@@ -22,7 +22,11 @@ def command(e, actor, t, **kwargs):
 
 
 def act(e, actor, t, now=100, **kwargs):
+    """One accepted command, then the server's part: a trick that the command completed is
+    settled (AVR-246), as the adapter does after its short hold. Tests of the resolving phase
+    itself call `Engine.apply` and `Engine.settle` apart (tests/test_expo_events.py)."""
     e.apply(actor, command(e, actor, t, **kwargs), now)
+    e.settle()
 
 
 def decide(e, actor, kind, **kwargs):
