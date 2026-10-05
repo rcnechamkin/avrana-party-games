@@ -131,9 +131,16 @@ class Table:
 
 
 async def table(host=ALICE, claims=True, players=PLAYERS, mission=1, seed=1, watchers=()):
+    """A launched Party round, dealt from `seed`: the same seed is the same deal, tasks and
+    captain every time, so a test meets the table it was written for."""
     b = GameBinding("expo", ExpoSession(rng=random.Random(seed)), party=proto.GameSide(KEY, "expo"))
     entries = [(p, n, "player") for p, n in players] + [(p, n, "spectator") for p, n in watchers]
     await b.party_launch(proto.launch_message(KEY, "expo", SID, roster(*entries)))
+    # A launch replaces the room with a new session of its own (GameBinding._fresh_room), which
+    # draws from an unseeded generator: the one given above is gone with the session it was
+    # given to. The deal is drawn from the session's generator when the round starts, so that
+    # is where the seed goes.
+    b.session.rng = random.Random(seed)
     b.session.settings["mission"] = mission
     socks = {}
     early = Table(b, socks, host if claims else None)       # the Party answers from the first hello
@@ -145,6 +152,12 @@ async def table(host=ALICE, claims=True, players=PLAYERS, mission=1, seed=1, wat
     async with b.lock:                                     # the 3-2-1, without the wait
         await b.push_all(b.session.tick(b.session.gen))
     assert b.session.engine is not None and b.session.party_round
+    # The seed took: this is the table that seed deals, card for card and task for task.
+    dealt, same = b.session.engine.s, Engine([early.pid(p) for p, _ in players], random.Random(seed), mission).s
+    for key in ("seats", "hands", "columns", "captain", "selected", "pool", "deck", "mission"):
+        assert dealt[key] == same[key], f"seed {seed} did not decide the deal ({key})"
+    assert b.session.engine.rng.getstate() == Engine(
+        [early.pid(p) for p, _ in players], random.Random(seed), mission).rng.getstate()
     return early
 
 
@@ -236,6 +249,9 @@ def test_a_host_who_is_not_the_captain_gets_none_of_the_captains_mechanics():
         # Mission 10: the captain alone decides who takes the tasks (AVR-251).
         t = await table(mission=10)
         captain = t.engine.s["captain"]
+        # The deal this test needs, which seed 1 gives: tasks the captain may keep. About one
+        # mission 10 deal in sixteen draws a captain comparison task, which the captain may not own.
+        assert all(t.engine.eligible(k, captain) for k in t.engine.s["pool"])
         host = other_than(t, captain)
         t.party_host = host
         owner = t.pid(host)
