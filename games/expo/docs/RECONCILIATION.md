@@ -62,7 +62,7 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 | E-M14 | Pass only when fewer tasks than seats at the start, and all tasks placed in one circuit (R p9) | `pass_task` | `test_pass_capacity_and_captain_comparison`, `test_difficulty_generation_and_no_pass_in_second_circuit` | MATCH |
 | E-M15 | Captain may not take a captain-comparison task (R p18), in every allocation mode | `eligible`, `_assign`, `_proposal` | `test_pass_capacity_and_captain_comparison`, `test_collective_and_free_allocation_refuse_a_captain_comparison_task_for_the_captain` | MATCH |
 | E-M16 | Mission succeeds when all tasks are complete, fails as soon as one cannot be (R p10 to p11) | `_outcome` | `test_full_seeded_games_only_use_legal_actions`, `test_every_enabled_task_has_deterministic_success_fixture` | MATCH. Early success when the last open task completes: `test_closing_the_window_on_the_last_open_task_wins_the_mission_at_once` |
-| E-M17 | Impossible forced pair is repaired by an equal-difficulty replacement; not when one seat could hold both (R p14) | `_repair_tasks` | `test_explicit_feasibility_and_used_deck_replenishment` | MATCH |
+| E-M17 | Impossible forced pair is repaired by an equal-difficulty replacement; not when one seat could hold both (R p14) | `_repair_tasks` | `test_explicit_feasibility_and_used_deck_replenishment`, `test_the_recorded_tables_reach_the_mission_that_was_refused` | MATCH |
 | E-M18 | Named submarine alignments are redealt free (R p14, p17; V footnotes) | `_deal_exception`, `prepare` | `test_named_submarine_alignments_are_deal_exceptions`, `test_a_deal_exception_is_redealt_before_the_attempt_is_counted` | MATCH |
 | E-M19 | Retry redeals; tasks kept or redrawn (R p11) | `retry` decision, `prepare(keep)` | `test_explicit_feasibility_and_used_deck_replenishment`, `test_distress_surcharge_is_logged_once_and_a_new_mission_clears_it` | MATCH |
 | E-M20 | Distress: before any communication; everyone passes one non-submarine the same way; stays active; one extra recorded attempt (R p14 to p15) | `distress` decision, `pass_card`, `_finish` log | `test_distress_sealed_exchange_and_persistence`, `test_distress_surcharge_is_logged_once_and_a_new_mission_clears_it` | MATCH |
@@ -146,7 +146,7 @@ a source's wording makes the choice non-obvious and the owner has not confirmed 
 | P13 | A real-time deadline keeps running while a player is away | fairness; no source | `test_a_timed_mission_expires_while_a_player_is_away` | uncontested |
 | P14 | An unknown credential during a table watches the public view; watchers are bounded; Party spectators get the public view | platform convention | `test_five_human_table_accepts_public_watcher_without_seating`, `test_nobody_else_sees_or_takes_an_empty_seat`, `test_a_spectator_ticket_watches_the_table_without_a_hand` | uncontested |
 | P15 | A volunteer who may not own one of the tasks ends the attempt as a counted failure | R p13: avoidable | `test_timed_start_barrier_and_volunteer_eligibility_failure` | uncontested; the same rule now covers the captain (Q9) |
-| P16 | The equal-difficulty replacement is drawn at random from the deck and the replaced task returns to it | R p14 says "a different task" | `test_explicit_feasibility_and_used_deck_replenishment` | uncontested |
+| P16 | The equal-difficulty replacement is drawn at random from the deck and the replaced task returns to it. When the deck holds no such task and the used pile does, the used pile is shuffled back into the deck first, as the draw does (P04), and the replacement is drawn from there. A mission's own named tasks (mission 32) are never replaced | R p14 says "a different task"; R p8 for reshuffling used tasks. The source game's task-deck behaviour, not an Avrana rule | `test_explicit_feasibility_and_used_deck_replenishment`, `test_the_used_pile_is_shuffled_into_the_deck_and_the_replacement_drawn_from_it`, `test_a_comparison_task_forced_on_the_captain_is_replaced_from_the_recycled_used_pile`, `test_the_named_tasks_of_mission_thirty_two_are_never_looked_at_for_repair` | decided by the owner 2026-10-05 (AVR-270) |
 | P17 | Deal exceptions are checked against every hand, the dummy's included, before selection | R p14: "no matter who takes the task" | `test_named_submarine_alignments_are_deal_exceptions` | uncontested |
 | P18 | Commands carry attempt, revision and a request id; identical repeats are no-ops; stale commands are refused | digital necessity | `test_rejected_actions_are_transactional_and_duplicates_idempotent`, `test_hostile_payloads_do_not_mutate` | uncontested |
 | P19 | Durable restoration is opt-in, atomic, and fails closed; Party rounds do not use it | platform has no store | `test_atomic_store_session_restart_and_fail_closed`, `test_storage_failure_rejects_action_without_losing_table`, `test_closed_snapshot_restores_shared_lobby_reset_and_rejects_corrupt_phase`, `test_a_party_round_never_inherits_or_writes_a_standalone_snapshot`, `test_a_snapshot_from_other_content_or_rules_is_refused` | uncontested |
@@ -444,6 +444,20 @@ reveal order decisive? Now: mission disabled.
 is such a lead illegal (the engine would have to refuse it, and needs a rule for a leader holding
 only those suits) or legal and mission-losing? R p19's never-lead tasks are the second kind. Now:
 mission disabled.
+
+### Decision of 2026-10-05 (AVR-270)
+
+**Where does the same-difficulty replacement come from when the task deck has none?** The owner,
+on the issue, 2026-10-05:
+
+> Approved: when EXPO must replace an impossible/conflicting task with another task of the same
+> difficulty and the remaining task deck cannot supply one, recycle/shuffle the used task pile and
+> continue the same-difficulty replacement from there. This is intended to follow The Crew:
+> Mission Deep Sea's task-deck behavior, not invent a new Avrana rule. Mission-specific fixed
+> tasks remain fixed and are not subject to this generic replacement path.
+
+Built as policy P16. It follows the source game's handling of its task deck; it is not an Avrana
+rule. The named tasks of mission 32 are exempt.
 
 ## Implementation report
 
@@ -1010,31 +1024,58 @@ Still open:
 | Party `tools/contract_check.py --games` against this branch | compatible |
 | A real phone | not run |
 
-### AVR-270, 2026-10-04
+### AVR-270, 2026-10-05
 
 - **Cause.** `Engine._repair_tasks` exchanges a task that makes an unavoidable combination for
   another of the same difficulty, and looked for it in the task deck only. Late in a long table
   the deck is small and held none, so `prepare` refused with `feasibility`. The last confirmation
   of a `next` decision (or a `retry` with new tasks) was rolled back, every time it was tried.
-- **Fix.** When the deck holds no such task the replacement is taken from the used pile, and
-  removed from it; the conflicting task goes to the deck as before. `feasibility` remains for a
-  combination that no task in either pile can repair. Which tasks conflict is unchanged.
-- **Assumption.** The rulebook is not cited for taking a replacement from the used pile. This is
-  the mechanical remedy the draw already uses (it refills the deck from the used pile when it
-  cannot reach the difficulty), not a rule decision.
-- **Tests** (`tests/test_expo_repair.py`, 606 cases):
+- **Decision.** The owner decided it on 2026-10-05 (above, "Decision of 2026-10-05"): recycle the
+  used pile and go on with the same-difficulty replacement, as the source game's task deck is
+  handled; a mission's own named tasks are exempt.
+- **Fix (P16).** The deck is looked at first, exactly as before. Only when it holds no such task,
+  and the used pile does, the used pile is put back into the deck, the used pile is emptied and
+  the deck is shuffled with the table's own random generator: the three steps the draw takes when
+  it cannot reach the difficulty (P04). The replacement is then drawn at random from the deck and
+  the conflicting task goes to the end of the deck, as before. `feasibility` remains for a
+  combination that no task in either pile can repair; in that case nothing is shuffled. Which
+  tasks conflict is unchanged. A mission with named tasks (32) is not examined at all.
+- **An earlier version of this branch** took the replacement out of the used pile and left the
+  rest of the pile where it was. That is not what the draw does and not what was decided, and it
+  was never merged.
+- **Unchanged where the deck has a replacement.** `tests/test_expo_repair.py` carries the repair
+  as it was (`DeckOnly`) and plays every table on both. Run by hand against the engine file of
+  `main` at `9f9aa41` as well: 600 seeded tables (150 seeds at 2, 3, 4 and 5 humans, 40 missions
+  each), 24,000 `next` decisions; 23,997 gave the same table, random state included; `main`
+  refused the other three, which are the recorded tables.
+- **Tests** (`tests/test_expo_repair.py`, 128 cases):
   `test_the_recorded_tables_reach_the_mission_that_was_refused` (3),
-  `test_a_long_table_is_never_refused_its_next_mission_and_keeps_its_piles_apart` (150 seeds at
-  2, 3, 4 and 5 humans, 40 missions each, piles and `Engine.check` after every step),
-  `test_a_replacement_taken_from_the_used_pile_leaves_it`,
-  `test_a_replacement_in_the_deck_is_preferred_and_the_used_pile_is_untouched`,
-  `test_no_replacement_in_either_pile_is_still_refused`.
+  `test_a_table_repaired_from_the_used_pile_is_stored_restored_and_played_on_the_same` (3),
+  `test_the_same_seed_recycles_the_used_pile_the_same_way` (3),
+  `test_a_long_table_is_never_refused_keeps_every_task_in_one_place_and_draws_as_before` (25 seeds
+  at 2, 3, 4 and 5 humans, 40 missions each; after every step every enabled task is in exactly
+  one of the deck, the used pile and the mission, `Engine.check` passes, and the table equals the
+  old repair's; none of these 100 tables needs the used pile, the recorded three do),
+  `test_the_used_pile_is_shuffled_into_the_deck_and_the_replacement_drawn_from_it`,
+  `test_recycling_the_used_pile_is_decided_by_the_seed_alone`,
+  `test_a_replacement_in_the_deck_is_taken_as_before_and_the_used_pile_is_untouched`,
+  `test_no_replacement_in_either_pile_is_still_refused_and_nothing_is_shuffled`,
+  `test_a_comparison_task_forced_on_the_captain_is_replaced_from_the_recycled_used_pile` (three
+  draw orders, by `next` and by `retry` with new tasks, through the crew decision),
+  `test_a_comparison_task_is_never_the_replacement_for_one_forced_on_the_captain`,
+  `test_the_named_tasks_of_mission_thirty_two_are_never_looked_at_for_repair` (2 to 5 humans),
+  `test_named_tasks_are_not_exchanged_even_if_they_would_make_a_forced_combination`,
+  `test_mission_thirty_two_keeps_its_tasks_out_of_a_recycled_pile` (3).
 
-Before the fix 7 of the 606 failed (the three recorded tables, the same three seeds in the walk,
-and the used-pile test). After it, on Windows 11, `pytest tests/test_expo.py
-tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_coverage.py
-tests/test_expo_persistence.py tests/test_expo_input.py tests/test_expo_deck.py
-tests/test_expo_repair.py tests/test_expo_docs.py`: 1,630 passed, 2 skipped, 2 expected failures.
+Each new test was seen to fail: with the engine of `main` 26 of the 28 that are not the long walk
+fail; without the exemption for named tasks 5 do; without the shuffle 1 does.
 
-Not covered: the whole repository suite, the browser playtest, a live socket, a Party round,
-real phones, the timed variant, tables longer than 40 missions, a `retry` decision.
+On Windows 11, with `main` at `9f9aa41` merged in, `pytest -q tests/test_expo_*.py
+tests/test_expo.py`: 1,194 passed, 2 skipped, 2 expected failures. `tests/test_no_private_data.py`,
+`ops/export_avrana_catalog.py --check provider/catalog.json`, `ops/check_docs.py` and
+`ops/check_static.sh`: clean.
+
+Not covered: the whole repository suite, the browser playtests, a live socket, a Party round,
+real phones, the appliance, the timed variant, tables longer than 40 missions, the Party Host's
+`lifecycle` path to `next` and `retry` (the tests use the crew decision; both reach the same
+`prepare`).
