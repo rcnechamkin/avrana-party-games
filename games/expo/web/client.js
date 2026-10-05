@@ -1134,6 +1134,7 @@ function updateConnection() {
   const text = up ? "Connected" : "Reconnecting…";
   if ($("conn").textContent !== text) $("conn").textContent = text;
   $("conn-dot").classList.toggle("down", !up);
+  $("conn").classList.toggle("down", !up);        // a lost connection is always said in words
 }
 setInterval(() => {
   updateTimer(); updateConnection();

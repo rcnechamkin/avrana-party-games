@@ -314,7 +314,8 @@ input[type=checkbox]{width:22px;min-height:22px;accent-color:var(--sea)}
   /* The status line moves up between the two top buttons: the row it had goes to the board. */
   .brand{display:none}
   .status-strip{position:absolute;z-index:1;top:calc(4px + env(safe-area-inset-top));left:calc(max(var(--pad),env(safe-area-inset-left)) + 50px);right:calc(max(var(--pad),env(safe-area-inset-right)) + 50px);height:44px;min-height:0;margin:0;padding:3px 8px;font-size:12.5px}
-  .conn{display:none}
+  .conn:not(.down){display:none}
+  .conn.down{color:var(--bad);font-weight:700}
   .mission-head h1{font-size:21px}
   .seat-role{display:none}
   .card .suit{display:none}

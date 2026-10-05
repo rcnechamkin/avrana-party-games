@@ -44,7 +44,8 @@ One viewport, phone first; the trick is the only flexible row.
 
 The mission stage is 15 to 25 percent of the screen height at every phone size tested (16.5 % by
 default, 15.5 % on screens of 700 px or less, 18 % from 820 px). On screens of 700 px or less the
-status line moves between the two top-bar buttons so that its row goes to the board.
+status line moves between the two top-bar buttons so that its row goes to the board; the word
+"Connected" is not spelled out there, and a lost connection still is ("Reconnecting…").
 
 **Not shown: who is winning an unfinished trick.** The view and the events do not say, and the
 client does not work out a rule. See "Not built".

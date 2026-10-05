@@ -295,6 +295,18 @@ try{
     if(size.width<600){await touchTargets(pg,"the table");await withLongText(pg,async()=>{await oneViewport(pg,"the table at its fullest");await touchTargets(pg,"the table at its fullest");});}
     await pg.screenshot({path:path.join(OUT,`table-${size.width}x${size.height}.png`)});
   }
+  {
+    // On a short screen the status line shares the top bar and "Connected" is not spelled out;
+    // a lost connection still is, in words and not only by the colour of the dot.
+    await pg.setViewport(PHONES[4]);await pause(60);
+    const words=()=>pg.evaluate(()=>{updateConnection();const n=document.getElementById("conn");return {text:n.textContent,shown:getComputedStyle(n).display!=="none"};});
+    assert.deepEqual(await words(),{text:"Connected",shown:false});
+    await pg.evaluate(()=>{window.__ws=conn.ws;conn.ws=null;});
+    assert.deepEqual(await words(),{text:"Reconnecting…",shown:true},"a lost connection is said in words on a short screen");
+    await oneViewport(pg,"while reconnecting");
+    await pg.evaluate(()=>{conn.ws=window.__ws;});
+    assert.deepEqual(await words(),{text:"Connected",shown:false});
+  }
   await pg.setViewport(PHONES[0]);
   // Every secondary surface opens over the board and leaves it where it was.
   // (AVR-267: the crew strip opens the crew, the objectives open the tasks, the log is beside them.)

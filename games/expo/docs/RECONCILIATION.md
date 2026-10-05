@@ -1168,7 +1168,11 @@ three places ("Into the waste.", "Ready to move out", the failure subtitle).
   measured.
 
 Every browser run is headless desktop Chrome at phone viewport sizes on Windows 11, by the
-author, at commit `cebfd55` (the code and tests of this change).
+author, at commit `cebfd55` (the code and tests of this change). One correction followed it (a
+lost connection is said in words on a short screen, with its own check in the standalone
+playtest); the standalone playtest with 3 and 2 humans and with reduced motion, the Party
+playtest with 3 seated, the director tests, the EXPO pytest files and the documentation, static,
+privacy and catalog checks were repeated on it and passed.
 
 | Check | Result |
 |---|---|
