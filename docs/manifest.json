@@ -24,6 +24,7 @@
     {"path": "games/expo/docs/VTT_REFERENCE.md", "class": "canonical", "status": "current", "last_verified": "2026-10-03", "notes": "Source pins, reuse/rewrite boundary, conflict register, task catalog."},
     {"path": "games/expo/docs/IMPLEMENTATION_PLAN.md", "class": "canonical", "status": "current", "last_verified": "2026-10-03", "notes": "Architecture, milestone state, rule-to-test matrix, next work."},
     {"path": "games/expo/docs/RECONCILIATION.md", "class": "canonical", "status": "current", "last_verified": "2026-10-03", "notes": "Source/spec/code/test audit, defects, policy audit, owner decisions."},
+    {"path": "games/expo/docs/PRESENTATION.md", "class": "canonical", "status": "current", "last_verified": "2026-10-05", "notes": "The five-zone board, the presentation director, fidelity tiers and asset slots as built (AVR-267). No final art or audio exists."},
     {"path": "games/expo/docs/STATE_DRIVEN_GAMEPLAY_BEHAVIOR_SPEC.md", "class": "reference", "status": "historical", "notes": "NON-CANONICAL draft (AVR-246): product intent for state-driven presentation. The code and the canonical EXPO documents win; see RECONCILIATION E-X1."},
     {"path": "games/expo/docs/MISSION_GAMEPLAY_UI_UX_SPEC.md", "class": "reference", "status": "historical", "notes": "NON-CANONICAL draft (AVR-246): design intent for the mission screen. The code and the canonical EXPO documents win; see RECONCILIATION E-X1."},
     {"path": "games/bluff/PLAYTEST-BRIEFING.md", "class": "reference", "status": "current"},

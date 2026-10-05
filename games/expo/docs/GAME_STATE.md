@@ -15,7 +15,7 @@ in [ACTIONS](ACTIONS.md).
 | Engine | `games/expo/engine.py` | the whole table state, command validation, transitions, per-viewer views, snapshots | touch sockets, files, wall clock (time and randomness are passed in) |
 | Adapter | `games/expo/game.py` (`ExpoSession`) | mapping platform tokens to seats, lobby and settings, the timer tick, presence, the optional snapshot file, the outcome report | decide any rule |
 | Store | `games/expo/storage.py` | atomic write of one JSON file | be imported by the engine |
-| Client | `games/expo/web/` | drawing the view it is sent, sending intentions | decide legality, winner, task status or result |
+| Client | `games/expo/web/` | drawing the view it is sent, sending intentions; presenting the events ([PRESENTATION](PRESENTATION.md)) | decide legality, winner, task status or result |
 | Platform | `core/session.py`, `core/net.py` | sockets, one lock around every mutation, per-viewer pushes, Party tickets | know EXPO's rules |
 
 Every mutation runs under the binding's lock, one at a time. The client is never trusted: the
@@ -283,7 +283,7 @@ lost and when a mission ends are exactly what they were; the engine now also rep
 The engine keeps a log of what happened, as meaning (`Engine.s['events']`). An event is written in
 the same transaction as the change it reports, so a rejected command writes none. An event never
 says how to show, sound, vibrate or time anything and carries no fiction: that is the client's
-business (AVR-267). Nothing in the engine reads the log to decide a rule
+business ([PRESENTATION](PRESENTATION.md), AVR-267). Nothing in the engine reads the log to decide a rule
 (`test_the_engine_never_reads_the_log_to_decide_a_rule`).
 
 Every event has `seq`, `type`, `attempt`, `mission` (the mission's number) and `trick`. `seq`

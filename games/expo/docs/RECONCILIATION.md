@@ -177,7 +177,7 @@ they were wrong or have been overtaken; the committed documents carry the correc
 
 | Entry | What | Status |
 |---|---|---|
-| E-X1 | Presentation and causality events from the two draft presentation specifications (who triggered a failure, "impossible" state, synchronized events, cinematic client) | **Engine half built 2026-10-04 (AVR-246)**: semantic events, failure causality, objective states, a resolving phase; the drafts are committed as non-canonical files. The client half (anything shown, heard or felt from them) is DEFERRED, AVR-267. What is and is not built: [the AVR-246 report](#avr-246-2026-10-04) |
+| E-X1 | Presentation and causality events from the two draft presentation specifications (who triggered a failure, "impossible" state, synchronized events, cinematic client) | **Engine half built 2026-10-04 (AVR-246)**: semantic events, failure causality, objective states, a resolving phase; the drafts are committed as non-canonical files. What is and is not built: [the AVR-246 report](#avr-246-2026-10-04). **Client half, architecture and placeholders built 2026-10-05 (AVR-267)**: a five-zone board, a presentation director, fidelity tiers and named asset slots ([PRESENTATION](PRESENTATION.md)). Final art, audio and real-phone acceptance are outstanding, so AVR-267 stays open: [the AVR-267 report](#avr-267-2026-10-05) |
 | E-X2 | Showing cards won toward an unfinished task (R p16, optional) | DEFERRED |
 | E-X3 | Missions 3, 4, 12, 14, 15, 19, 20, 26 and their special rules (lead restriction, hardest-to-captain, two volunteers, other timers) | not implemented; blocked on sources, AVR-244 |
 | E-X4 | Tasks `moreRedThanGreen`, `moreYellowThanBlue`, `4with8`, `6with6` | definitions stored, disabled. `5with7` left this list on 2026-10-04 (Q5, AVR-249) |
@@ -1057,3 +1057,138 @@ timer path itself is tested through real sockets
 | `pytest tests/test_expo.py tests/test_expo_*.py` (every EXPO test file) | 1113 passed, 2 skipped (distress with two players, C11), 2 expected failures (E-D2, E-D8) at 84e179b; the review repairs add five tests |
 | `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check | OK |
 | `pytest -q` (whole repository), the cross-repository tests, the two browser playtests, a real phone | not run for this change |
+
+### AVR-267, 2026-10-05
+
+Entry E-X1, client half. **State: architecture and placeholder treatment built; final assets and
+real-phone acceptance outstanding. The issue is not complete and cannot be completed by code.**
+Contract: [PRESENTATION](PRESENTATION.md). Changed: `games/expo/web/` (`client.js`, `expo.css`,
+`index.html`; new `director.js`, `slots.js`), `tests/_expo_phone.mjs`, the two browser
+playtests, new `tests/expo_director_test.mjs`, `tests/test_expo_docs.py` (one more required
+document), `docs/ASSETS.md`, `docs/manifest.json` and these documents. Not changed: the engine,
+the adapter, `core/`, `provider/`, `deploy/`, the catalog, the snapshot format. The change is
+stacked on the AVR-246 branch.
+
+**Built.**
+
+- **Five zones, always on screen, phone first**: mission stage, crew strip, shared trick, crew
+  objectives, private hand and controls. The mission stage is 15 to 25 percent of the screen at
+  every size tested. The one-viewport contract of AVR-275 holds with them.
+- **Crew strip**: name, Captain mark, Party Host tag, turn marker, hand size, tricks, radio state
+  and "Reconnecting…", as text on each tile.
+- **Shared trick**: each card in its player's place, numbered from the lead, the lead marked and
+  its suit named; the resolved winner marked from the server's result.
+- **Objectives**: compact task cards drawn from each task's `state`, with done-of-total.
+- **Card states**: legal, hard-illegal (muted, readable, with the server's reason as text) and
+  transmitted (a marker until the card leaves the hand). A legal card that loses the mission has
+  no state, no style and no warning, and the playtests compare legal cards with each other.
+- **The helmet radio (Burst Transmission)**, opened in place beside the hand: only the cards and
+  meanings the server lists; the radio's state named by the fiction and stated as a rule.
+- **A presentation director** (`director.js`): consumes events by `seq`; settles without
+  replaying on a first view, a reconnect, a gap, a duplicate, a rewind, a hidden tab, a backlog
+  and a new attempt; maps event to intensity tier (micro, gameplay, cinematic) to effect. It is
+  handed a frozen copy of the view and, of the connection, only its clock; its source has no
+  sender; every call into it is fenced, and three throws switch it off.
+- **Three fidelity tiers** (high, medium, low) chosen by reduced motion, then the player, then
+  the device; the same board, words and controls at each. The whole playtest passes at each
+  tier, with reduced motion and with the director off.
+- **Trick resolution inside the server's hold**: at most 700 ms of the 0.8 s, shortened to what
+  is left, skipped under 250 ms; measured in the browser against `resolving.until`.
+- **A mission briefing** (5.6 s, 2.2 s for a repeated attempt) inside the mission stage only: it
+  takes no input and a tap or a key ends it.
+- **A failed attempt explained from the server's `cause`**: what failed, the deciding play, whose
+  objective it was; when a seat is named, a sentence that this is the deciding card and not a
+  fault. Checked for the three shapes: trigger is not the affected seat, trigger is the affected
+  seat, nobody named.
+- **Words for every event**: the newest two events as sentences in the mission stage and, for a
+  screen reader, in the existing live region.
+- **Asset slots**: eleven visual and eleven audio slots named in `slots.js` and
+  [docs/ASSETS.md](../../../docs/ASSETS.md#expo-presentation-slots); haptics behind a gate (no
+  gesture, no vibration; the suite's haptics and mute settings are honoured).
+
+**Not built, and why.**
+
+- **Final artwork and audio.** They must be made or licensed by people. Every visual is a CSS
+  gradient or an inline SVG polygon written in this change; every audio slot is empty. Nothing
+  was generated as artwork and nothing is fetched from outside the appliance.
+- **Real-phone acceptance.** Every run below is desktop Chrome at phone viewport sizes.
+- **The current winner of an unfinished trick.** The issue asks for it. The server does not send
+  it (not in the view, not on `CARD_PLAYED`), and working it out in the client is a rule in the
+  client, which the same issue forbids. It needs a field from the engine, which was out of
+  bounds for this change. The resolved winner is shown.
+- **Sound.** Slots and the gate only; nothing plays.
+- **Fiction per mission, cinematic templates, a debrief of the attempt.** One placeholder line
+  per kind of failure. A viewer is sent the latest trick only (AVR-246, question 1), so the
+  result shows that trick and nothing earlier.
+- **Collecting a trick off the table.** The resolved trick stays, tucked, until the next card,
+  as AVR-275 built it and its playtest requires.
+- **Medium tier by measurement.** The device guess (memory, cores, data saving) is untested on
+  any real low-end phone.
+
+**Changed from AVR-275, on purpose.** The row of four tabs is gone: a crew tile opens the crew
+sheet, the objectives open the tasks, Log is a button beside them, and the Sonar sheet became the
+radio beside Play. On screens of 700 px or less the status line sits between the two top-bar
+buttons and the brand is not shown. A hand of more than seven cards has slightly shorter cards.
+The palette moved from sea to dust, and "sonar" reads "radio" on the page (the server's own
+sentences still say "sonar"; the engine was out of bounds). Lobby and preparation copy changed in
+three places ("Into the waste.", "Ready to move out", the failure subtitle).
+
+**For the owner.**
+
+1. **The word for communication.** The page says radio and Burst Transmission; the server's
+   refusals and the state keys say sonar. Which is the product's word, and should the server's
+   sentences follow?
+2. **The current winner of an unfinished trick.** Add a field to the view or to `CARD_PLAYED`, or
+   drop the requirement?
+3. **Debrief.** May a client be sent the whole attempt once it has a result (AVR-246, question
+   1)? Until then the debrief is the final trick.
+4. **Art and audio.** Who makes or licenses them, and against which direction. The palette, the
+   four lines of failure fiction and the radio's state names are placeholders to replace or keep.
+5. **Attribution wording.** "Deciding play" and "not a fault" are this change's words for
+   `trigger_seat`.
+6. **The AVR-275 layout changes above**, the tabs and the short-screen status line in
+   particular.
+7. **The Effects choice** in the table menu is a new per-browser setting (`expo-fx`) owned by
+   this game. Keep it here, or make it the suite's?
+8. **The briefing in a Party round** plays once per attempt and tab, also for a phone that opens
+   EXPO during the preparation; a reload does not replay it.
+
+**Not verified.**
+
+- No real phone, no Safari, no assistive technology: the live region's text is asserted, how a
+  screen reader speaks it is not.
+- "The same rules state with the director on and off" is the same playtest passing both ways on
+  different deals, plus the frame record (no frame leaves the page with `director.js` on the
+  stack) and the audit of the director's source. One seeded deal was not replayed both ways: the
+  server has no seed setting and adding one was out of bounds.
+- A reconnect during a resolving hold is the server's own resolving view shown to a director
+  that was told the connection came back; a real reload inside the 0.8 s was not timed.
+- `tests/expo_director_test.mjs` and the playtests are run by hand; no CI job runs them.
+- The haptic patterns were never felt, and the ambient motion's cost on a phone was not
+  measured.
+
+Every browser run is headless desktop Chrome at phone viewport sizes on Windows 11, by the
+author, at commit `cebfd55` (the code and tests of this change).
+
+| Check | Result |
+|---|---|
+| `node tests/expo_director_test.mjs` | 17 passed |
+| seven faults put into `director.js` one at a time (a 900 ms resolution, a sender, the low tier animating, the medium tier moving, no settle for a hidden tab, a gap replayed, haptics before a gesture): by hand, not in the repository | each caught by `tests/expo_director_test.mjs` |
+| three faults checked against the browser playtest (one legal card given a class of its own, a resolution that ignores the hold, the frame record pointed at `client.js`): by hand, not in the repository | each caught |
+| `tests/playtest_expo.mjs`, high tier, with 2, 3, 4 and 5 humans | PASS each; 1 to 3 resolving holds checked per run |
+| `tests/playtest_expo.mjs`, 3 humans, `EXPO_FX=medium`, `EXPO_FX=low`, `EXPO_MOTION=reduced`, `EXPO_FX=off` | PASS each |
+| `tests/playtest_expo_party.mjs`, high tier, 3 seated and 2 seated with Tonoja | PASS each |
+| `tests/playtest_expo_party.mjs`, 3 seated, `EXPO_FX=low`, `EXPO_MOTION=reduced`, `EXPO_FX=off` | PASS each |
+| `tests/playtest_expo_party.mjs` with `EXPO_HOST=spectator`, and with `EXPO_PARTY=old` | PASS each |
+| `pytest tests/test_expo.py tests/test_expo_*.py` | 1119 passed, 2 skipped (distress with two players, C11), 2 expected failures (E-D2, E-D8) |
+| `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check | OK |
+| `pytest -q` (whole repository), the cross-repository tests, Linux CI | not run |
+| A real phone, Safari, a screen reader | not run |
+
+One intermittent failure was met and explained while these were run: the one-viewport check
+compares a hand card's height with 44 px, and a card read while the director slides it into
+place (a fractional `translate`) measures 43.99997 px. The card is not smaller; the box is
+arithmetic. The check now waits for the hand to be at rest before it measures
+(`tests/_expo_phone.mjs`); the comparison itself is unchanged. The watching-host run that showed
+it passed four times in a row afterwards.
+
