@@ -240,7 +240,9 @@ def mint_ticket(key, game, sid, participant, role, now=None, ttl=TICKET_TTL, hos
     # older verifier ignores the field; the vectors (minted without it) still verify.
     payload.update({'pid': participant, 'role': role, 'jti': secrets.token_hex(8)})
     if host is not None:
-        payload['host'] = bool(host)
+        if type(host) is not bool:
+            raise ValueError('bad ticket fields')
+        payload['host'] = host
     return seal(key, payload)
 
 

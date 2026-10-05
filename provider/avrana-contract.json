@@ -5,7 +5,7 @@
   "session_protocol": {
     "version": "avrana.party-session/v0",
     "vendored": "core/party_protocol.py",
-    "vendored_sha256": "a8f136157d269b7764b3ffb4b10f9df8ca93dc09df2427bbeaf7bf9f5f692271",
+    "vendored_sha256": "57e9833060dd74a06ddc36eeb0202caae9356141e15ad4cfdf184e817874983b",
     "vectors": "tests/vectors/party-session.v0.json",
     "vectors_sha256": "07474dde39d46ecbc8c2f989db4c748ed63eb98f8740a6250807dc668493f794"
   },

@@ -8,6 +8,7 @@ nothing kept here. Harness: test_party_session.py.
 """
 from __future__ import annotations
 
+import time
 import random
 
 import pytest
@@ -157,6 +158,11 @@ def test_no_other_crew_member_can_move_the_table_on():
         t.b.party.present(used)
         assert [m["code"] for m in await t.send(ALICE, dict(stolen, ticket=used))] == ["host"]
         assert [m["code"] for m in await t.send(ALICE, dict(stolen, ticket="aps0.forged.ticket"))] == ["host"]
+        # ... a host ticket for another game, another session, or one that has run out
+        for bad in (proto.mint_ticket(KEY, "bluff", SID, ALICE, "player", host=True),
+                    proto.mint_ticket(KEY, "expo", "another-session", ALICE, "player", host=True),
+                    proto.mint_ticket(KEY, "expo", SID, ALICE, "player", host=True, now=time.time() - 3600)):
+            assert [m["code"] for m in await t.send(ALICE, dict(stolen, ticket=bad))] == ["host"]
         assert t.engine.s["revision"] == before and t.engine.s["phase"] == "assistance"
         await t.close()
     run(scenario())

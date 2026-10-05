@@ -179,6 +179,8 @@ function draw() {
   if (lobby) { drawLobby(st); $("result").hidden = true; drawSheet(null, st); return; }
   const g = st.game;
   if (!g) { $("status").textContent = "This table has ended."; $("result").hidden = true; drawSheet(null, st); return; }
+  // A crew decision after a result is answered on the result: never leave it put away.
+  if (g.result && g.proposal) ui.resultHidden = false;
   syncTurn(g);
   drawStatus(g);
   drawHead(g);
