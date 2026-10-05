@@ -12,8 +12,9 @@ disable a control; the engine rejects the same thing independently. A test that 
 client's restriction must still see a rejection.
 
 **Envelope.** Every game command is a JSON object with exactly `t` (the verb), `attempt`,
-`revision`, `request` (1 to 80 printable ASCII characters, chosen by the client; the client sends
-a UUID) and the verb's own fields. Extra
+`revision`, `request` (1 to 80 characters, each a letter `A` to `Z` or `a` to `z`, a digit `0` to
+`9` or `-`; chosen by the client, which sends a UUID) and the verb's own fields. Any other
+`request` is rejected with `payload` before anything is remembered. Extra
 or missing fields, wrong types (a boolean is not an integer) and unknown verbs are rejected.
 
 **Common checks, in order.** These apply to every command below and are not repeated per action.
