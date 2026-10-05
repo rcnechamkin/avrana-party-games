@@ -62,11 +62,13 @@ function button(text, action, key, disabled=false, reason="", cls="") {
   b.dataset.key = key; b.title = reason; b.onclick = action; return b;
 }
 // A control that cannot be used says why in words on the page: a phone never shows a title.
-// Why a card, a task, a pass, an answer or an offer is unavailable is the server's sentence, from
-// the view (`me.*_reason`, `me.*_reasons`): the very words it refuses that request with. This
-// file words no reason of its own for them, and such a control is disabled exactly when the view
-// gives a reason (AVR-263).
+// Why a card, a task, a pass, an answer, an offer or a prediction is unavailable is the server's
+// sentence, from the view (`me.*_reason`, `me.*_reasons`): the very words it refuses that request
+// with. So is why Begin, Retry or Next is (`lifecycle_reasons`, the same for every viewer: the
+// Party Host may hold no seat). This file words no reason of its own for them, and such a control
+// is disabled exactly when the view gives a reason (AVR-263).
 function why(text) { return el("p", text, "why"); }
+function stepReason(g, kind) { return g.lifecycle_reasons[kind] || ""; }
 function busy() {
   pending = true;
   clearTimeout(pendingTimer);
@@ -115,7 +117,16 @@ function theHost() { return hostName() || "the Party Host"; }
 function hostOwned(g) { return g.lifecycle === "host"; }
 // May this phone ask for Begin, Retry or Next?
 function mayMoveOn(g) { return hostOwned(g) ? amHost() : Boolean(g.me); }
+// Ending a standalone table is the crew's decision: not offered while it cannot be proposed.
 function blocked(g) { return Boolean(g.proposal) || g.away.length > 0; }
+// The server's sentence for a Begin that cannot be used now, in words for whoever has the
+// control: in the stage, where there is room for a line (the dock has none).
+function beginWhy(g) {
+  const refused = g.stage === "assistance" && !g.result && mayMoveOn(g) ? stepReason(g, "begin") : "";
+  if (!refused) return null;
+  const line = why(refused); line.dataset.key = "begin-why";
+  return line;
+}
 // Seconds until the Party Host's Begin opens: the crew's moment to ask for distress (server's).
 function graceLeft(g) { return g && g.begin_at ? Math.max(0, Math.ceil(g.begin_at - conn.now()/1000)) : 0; }
 // The seat the Party Host sits in, when the name says so without doubt (the Party gives a name,
@@ -436,6 +447,8 @@ function decisionNode(g) {
     row.append(button(asked?"Accept":"Agree",()=>send("confirm",{yes:true}),"agree",false,"","btn-primary"),button("Decline",()=>send("confirm",{yes:false}),"decline"));
     box.append(row);
   } else if (!g.away.length) box.append(why(`Waiting for ${names(stillAsked(g))}.`));
+  const begin = beginWhy(g);
+  if (begin) box.append(begin);
   return box;
 }
 
@@ -532,6 +545,7 @@ function predictionNode(g) {
   const box = el("section", undefined, "prep"); box.setAttribute("aria-label", "Predictions");
   box.append(el("h2", "Predict your tricks"));
   let mine = 0;
+  const said = new Set();       // why a prediction cannot be locked now: said once, not per task
   for (const task of g.tasks) {
     if (!(task.prediction_required && !task.prediction_committed && g.me && (task.owner === g.me.seat || (task.owner === "tonoja" && g.captain === g.me.seat)))) continue;
     mine++;
@@ -540,9 +554,12 @@ function predictionNode(g) {
     const form = el("div", undefined, "choice-row"), input = el("input");
     input.type = "number"; input.min = "0"; input.max = String(g.planned_tricks); input.step = "1"; input.value = "0";
     input.inputMode = "numeric"; input.dataset.key = "predict:"+task.id; input.setAttribute("aria-label","Predicted tricks");
-    form.append(input, button("Lock prediction", () => send("predict",{task:task.id,count:Number(input.value)}), "lock:"+task.id, g.away.length > 0, "", "btn-primary"));
+    const refused = g.me.predict_reasons[task.id] || "";
+    form.append(input, button("Lock prediction", () => send("predict",{task:task.id,count:Number(input.value)}), "lock:"+task.id, Boolean(refused), refused, "btn-primary"));
     item.append(form); box.append(item);
+    if (refused) said.add(refused);
   }
+  for (const reason of said) box.append(why(reason));
   if (!mine) box.append(why("Waiting for the crew to lock their predictions."));
   else box.append(why("A prediction cannot be changed once locked."));
   return box;
@@ -551,6 +568,8 @@ function predictionNode(g) {
 function assistanceNode(g) {
   const box = el("section", undefined, "prep"); box.setAttribute("aria-label", "Before the first trick");
   box.append(el("h2", "Ready to dive"));
+  const begin = beginWhy(g);            // first, so a short screen shows it without scrolling
+  if (begin) box.append(begin);
   const begins = !hostOwned(g) ? "Beginning needs the whole crew to agree."
     : amHost() ? "You begin the mission as Party Host, below."
     : `${theHost()} begins the mission as Party Host. Nobody has to confirm.`;
@@ -644,14 +663,19 @@ function tableZone(g) {
   if (hostOwned(g)) {
     const z = zone("Party Host", "table control"); z.id = "dock-host";
     if (!amHost()) z.append(el("p", begin ? `Waiting for ${theHost()} to begin` : `${hostName() || "The Party Host"} runs the table`, "dock-note"));
-    else if (begin && ui.grace > 0) z.append(button(`Begin in ${ui.grace}`, () => {}, "begin", true, "The crew has a moment to ask for distress first.", "btn-primary"));
-    else if (begin) z.append(button("Begin mission", () => lifecycle({kind:"begin"}), "begin", blocked(g), g.away.length ? "Waiting for the crew to reconnect." : "The crew is deciding something.", "btn-primary"));
-    else z.append(endButton("End EXPO", "end"));
+    else if (begin) {
+      // Closed exactly while the server gives a reason; `begin_at` only counts the wait down.
+      const refused = stepReason(g, "begin");
+      z.append(button(ui.grace > 0 ? `Begin in ${ui.grace}` : "Begin mission", () => lifecycle({kind:"begin"}), "begin", Boolean(refused), refused, "btn-primary"));
+    } else z.append(endButton("End EXPO", "end"));
     return z;
   }
   // The crew decides: a standalone table, or a Party that does not say who its host is.
   const z = zone("Crew", g.lifecycle_transitional ? "decides for now" : "decides together"); z.id = "dock-host";
-  if (begin) z.append(button("Begin without passing", () => propose("begin"), "begin", blocked(g) || !g.me, "", "btn-primary"));
+  if (begin && g.me) {
+    const refused = stepReason(g, "begin");
+    z.append(button("Begin without passing", () => propose("begin"), "begin", Boolean(refused), refused, "btn-primary"));
+  } else if (begin) z.append(el("p", "The crew agrees to begin", "dock-note"));
   else if (!ST.party_round) z.append(button("End table", () => propose("end"), "end", !g.me || blocked(g)));
   else if (amHost()) z.append(endButton("End EXPO", "end"));
   else z.append(el("p", `${hostName() || "The Party Host"} ends EXPO`, "dock-note"));
@@ -726,17 +750,24 @@ function drawResult(g, st) {
   if (facts.children.length) card.append(facts);
   const controls = el("div", undefined, "result-actions");
   if (g.proposal) controls.append(decisionNode(g));
-  else if (g.away.length) controls.append(why(`Waiting for ${names(g.away)} to reconnect.`));
   else if (mayMoveOn(g)) {
+    // Retry and Next are closed exactly while the server gives a reason, and say it in words.
     if (hostOwned(g)) controls.append(el("p", "You are the Party Host: you choose what happens next.", "result-who"));
-    if (r.status === "failed") controls.append(button("Retry same tasks", () => lifecycle({kind:"retry",keep:true}), "retry-same"), button("Retry new tasks", () => lifecycle({kind:"retry",keep:false}), "retry-new", false, "", "btn-primary"));
+    if (r.status === "failed") {
+      const refused = stepReason(g, "retry");
+      controls.append(button("Retry same tasks", () => lifecycle({kind:"retry",keep:true}), "retry-same", Boolean(refused), refused), button("Retry new tasks", () => lifecycle({kind:"retry",keep:false}), "retry-new", Boolean(refused), refused, "btn-primary"));
+      if (refused) controls.append(why(refused));
+    }
     if (ok) {
+      const refused = stepReason(g, "next");
       const next = el("select"); next.dataset.key = "next-mission"; next.setAttribute("aria-label", "Next mission");
       const open = (st.missions||[]).filter(m => m.enabled);
       choices(next, open.map(m => ({value:m.id,text:`Mission ${m.id}`})), open.find(m => m.id > g.mission.id)?.id || g.mission.id);
-      controls.append(next, button("Next mission", () => lifecycle({kind:"next",mission:Number(next.value)}), "next", false, "", "btn-primary"));
+      controls.append(next, button("Next mission", () => lifecycle({kind:"next",mission:Number(next.value)}), "next", Boolean(refused), refused, "btn-primary"));
+      if (refused) controls.append(why(refused));
     }
-  } else controls.append(el("p", hostOwned(g) ? `Waiting for ${theHost()} (Party Host) to choose what’s next.` : "The crew decides what’s next.", "result-who waiting"));
+  } else if (g.away.length) controls.append(why(`Waiting for ${names(g.away)} to reconnect.`));
+  else controls.append(el("p", hostOwned(g) ? `Waiting for ${theHost()} (Party Host) to choose what’s next.` : "The crew decides what’s next.", "result-who waiting"));
   // Ending EXPO: the Party Host's in a Party; the crew's own decision at a standalone table.
   if (!g.proposal) {
     if (ST.party_round ? amHost() : false) controls.append(endButton("End EXPO for everyone", "end-expo", "quiet"));

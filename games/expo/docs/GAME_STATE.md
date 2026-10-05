@@ -127,7 +127,7 @@ retry or go on. Only `closed` hands control back to the platform (`game_end`).
 | Public | Private to its owner | Never sent |
 |---|---|---|
 | mission definition, seats, captain, leader, turn | own hand | other hands |
-| trick in progress, the most recent resolved trick only | own legal cards and, for each of the viewer's own controls that is unavailable, the server's reason ([ACTIONS](ACTIONS.md#conventions): `play_reason`, `card_reasons`, `task_reasons`, `pass_task_reason`, `volunteer_reasons`, `offer_reason`, `offer_owner_reasons`) | Tonoja's covered cards |
+| trick in progress, the most recent resolved trick only | own legal cards and, for each of the viewer's own controls that is unavailable, the server's reason ([ACTIONS](ACTIONS.md#conventions): `play_reason`, `card_reasons`, `task_reasons`, `pass_task_reason`, `volunteer_reasons`, `offer_reason`, `offer_owner_reasons`, `predict_reasons`) | Tonoja's covered cards |
 | per-seat hand counts and trick counts | own communication options | resolved tricks before the latest |
 | tasks: text, difficulty, owner, status, eligible owners | own secret prediction, until the mission result | task deck order, used pile |
 | predictions that are public; whether one is committed | whether own distress choice is locked | sealed distress choices |
@@ -138,6 +138,7 @@ retry or go on. Only `closed` hands control back to the platform (`game_end`).
 | the pending crew decision and who confirmed | | |
 | `lifecycle`: who moves the table on, `host` or `crew` (added by the adapter) | | who the Party Host is: the game is never told |
 | `begin_at`: the wall-clock moment the host's Begin opens, or null (adapter) | | |
+| `lifecycle_reasons` `{begin, retry, next}`: for each step the sentence the server refuses it with now, or null (adapter and engine; [ACTIONS](ACTIONS.md#conventions)). The same for every viewer: it reads who is away, whether a decision is pending, the phase, the result and the crew's moment, and no hand | | |
 | `lifecycle_transitional`: true only under a Party that does not name its host yet (adapter) | | |
 
 Requirements met: no viewer receives another seat's legal cards; unseated viewers cannot act;
@@ -293,7 +294,14 @@ When Party launches EXPO (`core/party_session.py`, Party ADR 0006 and 0010):
 - **The crew's moment before Begin.** Where distress is available the host's Begin opens
   `DISTRESS_GRACE` seconds after the tasks are settled (`begin_at`), once per attempt. The
   moment is the adapter's (`ExpoSession._grace`, monotonic clock), not engine state: it is not
-  saved, and a restored table gives the crew the moment again.
+  saved, and a restored table gives the crew the moment again. While it is open
+  `lifecycle_reasons.begin` is its sentence, and the table's one timer (otherwise the mission's
+  deadline, which does not run before play) is set for its end: the tick pushes a state in which
+  the reason is gone, so no page opens Begin from its own clock (AVR-263).
+- **Why a step is unavailable** is the server's to say: `lifecycle_reasons` gives every viewer
+  the sentence Begin, Retry and Next are each refused with at that moment, from the same ordered
+  checks that refuse them (`Engine._lifecycle_refusals`, `ExpoSession._host_refusal`; for a table
+  the crew moves on, `Engine.apply`'s refusal of the proposal).
 - **An away seat** still stops Begin, Retry and Next (AVR-240 owns recovery). It never strands
   the Party: the host's end is the Party's and does not pass through the table.
 - No seat ends a Party round from inside the game. The host ends it from the Party, whose signed

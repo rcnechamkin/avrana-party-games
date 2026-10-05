@@ -13,6 +13,13 @@ LIFECYCLE = ('begin', 'retry', 'next')
 # What a request id is made of (AVR-273). The client sends a UUID. None of these characters is
 # escaped in the snapshot file, so the request memory of a full attempt has a known size.
 REQUEST_CHARS = frozenset('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-')
+# What a lifecycle step needs of the table first, in the words it is refused with when that is
+# missing. One copy: a seat's proposal (`_proposal`), the host's commit (`lifecycle`) and the
+# reason shown beside the control (`lifecycle_reasons`) all read it here.
+STEP_NEEDS = {'begin': 'Finish task allocation and predictions first.',
+              'retry': 'Retry is available after a failed mission.',
+              'next': 'Complete this mission first.'}
+assert set(STEP_NEEDS) == set(LIFECYCLE)
 
 
 class Invalid(ValueError):
@@ -389,9 +396,9 @@ class Engine:
     def _proposal(self, actor, payload, now):
         s = self.s
         kind = payload['kind']
-        if kind == 'begin':
-            require(s['phase'] == 'assistance', 'phase', 'Finish task allocation and predictions first.')
-        elif kind == 'distress':
+        if kind in LIFECYCLE:
+            require(self._step_open(kind), 'phase', STEP_NEEDS[kind])
+        if kind == 'distress':
             require(s['phase'] == 'assistance' and len(s['humans']) > 2, 'distress',
                     'Distress is available before play; the Tonoja exchange is not yet verified.')
             require(payload.get('direction') in ('left', 'right'), 'direction', 'Choose left or right.')
@@ -410,19 +417,13 @@ class Engine:
             require(all(isinstance(k, str) and k in s['pool'] and self.eligible(k, owner) for k in keys),
                     'task', 'Every task needs an eligible owner.')
         elif kind == 'retry':
-            require(s['phase'] == 'mission_result' and s['result']['status'] == 'failed',
-                    'phase', 'Retry is available after a failed mission.')
             require(type(payload.get('keep')) is bool, 'payload', 'Choose whether to keep the tasks.')
         elif kind == 'next':
-            require(s['phase'] == 'mission_result' and s['result']['status'] == 'success',
-                    'phase', 'Complete this mission first.')
             try:
                 mission(payload.get('mission'), s['timed'])
             except ValueError as e:
                 raise Invalid('mission', str(e)) from e
-        elif kind == 'end':
-            pass
-        else:
+        elif kind not in ('begin', 'end'):
             raise Invalid('action', 'Unknown crew decision.')
         s['proposal'] = {'payload': payload, 'votes': [actor]}
         if kind == 'assign' and s['mission']['allocation'] == 'captain_one':
@@ -433,6 +434,40 @@ class Engine:
                 self._commit_proposal(now)
             else:
                 s['proposal']['recipient'] = payload['owner']
+
+    def _step_open(self, kind):
+        # Whether the table is where this lifecycle step starts from: tasks allocated and
+        # predictions made before Begin, a failure before Retry, a success before Next.
+        s = self.s
+        status = s['result']['status'] if s['phase'] == 'mission_result' else None
+        return {'begin': s['phase'] == 'assistance', 'retry': status == 'failed',
+                'next': status == 'success'}[kind]
+
+    def _lifecycle_refusals(self, kind, stale=False):
+        """Everything about the table that refuses the lifecycle authority's Begin, Retry or Next,
+        in the order it is checked, as (refused, code, sentence). `lifecycle` refuses with the
+        first that holds and `lifecycle_reasons` shows the first that holds, so the two cannot
+        disagree, and a refusal added here is one line (AVR-246's `resolving` goes between the
+        closed table and the pending decision). `stale` is the one that depends on the message."""
+        s = self.s
+        return ((bool(s['away']), 'paused', 'Waiting for the crew to reconnect.'),
+                (stale, 'stale', 'That moment has passed. Use the latest table state.'),
+                (s['phase'] == 'closed', 'phase', 'This table is closed.'),
+                (s['proposal'] is not None, 'vote', 'The crew is deciding something. Wait for their answer.'),
+                (not self._step_open(kind), 'phase', STEP_NEEDS[kind]))
+
+    def lifecycle_reasons(self, host):
+        """Why Begin, Retry and Next are unavailable now: for each, the sentence the table refuses
+        it with at this moment, or None when it would be taken (AVR-263). Where the steps are
+        the host's (`host` true) that is `lifecycle`'s refusal; where the crew proposes them it
+        is `apply`'s refusal of a seated crew member's proposal. For Next, None is about a
+        mission that exists and is open to this crew. Only who is away, whether a decision is
+        pending, the phase and the result are read: the same for every viewer, seated or not."""
+        if host:
+            return {kind: next((sentence for refused, _, sentence in self._lifecycle_refusals(kind) if refused), None)
+                    for kind in LIFECYCLE}
+        gate = self._gate()
+        return {kind: gate or (None if self._step_open(kind) else STEP_NEEDS[kind]) for kind in LIFECYCLE}
 
     def _voters(self):
         # Who must answer the pending decision: every seated human, or the one recipient
@@ -587,11 +622,9 @@ class Engine:
         payload = msg['decision']
         self._decision_shape(payload)
         require(payload['kind'] in LIFECYCLE, 'strategic', 'The crew decides that together.')
-        require(not s['away'], 'paused', 'Waiting for the crew to reconnect.')
-        require(msg['attempt'] == s['attempt'] and msg['revision'] == s['revision'],
-                'stale', 'That moment has passed. Use the latest table state.')
-        require(s['phase'] != 'closed', 'phase', 'This table is closed.')
-        require(s['proposal'] is None, 'vote', 'The crew is deciding something. Wait for their answer.')
+        stale = msg['attempt'] != s['attempt'] or msg['revision'] != s['revision']
+        for refused, code, sentence in self._lifecycle_refusals(payload['kind'], stale):
+            require(not refused, code, sentence)
         old, rng_state = deepcopy(s), self.rng.getstate()
         try:
             self._proposal(None, payload, now)
@@ -714,6 +747,17 @@ class Engine:
         obj.check()
         return obj
 
+    def _gate(self):
+        # What every command of a seated crew member meets before its own checks, in the order
+        # `apply` makes them; the first that refuses is the reason. A refusal added to `apply`
+        # there is one line here (AVR-246's `resolving`: between the closed table and the
+        # pending decision).
+        s = self.s
+        return next((sentence for refused, sentence in (
+            (s['away'], 'Waiting for the crew to reconnect.'),
+            (s['phase'] == 'closed', 'This table is closed.'),
+            (s['proposal'] is not None, 'Confirm or decline the crew decision first.')) if refused), None)
+
     def reasons(self, actor):
         """Why each control this crew member sees is unavailable, in the sentence `apply` rejects
         the same request with (AVR-263). Every list below is in the order `apply` makes its
@@ -724,10 +768,7 @@ class Engine:
         the coverage tests send every request and compare."""
         s = self.s
         first = lambda *checks: next((sentence for refused, sentence in checks if refused), None)
-        # Every command, before its own checks.
-        gate = first((s['away'], 'Waiting for the crew to reconnect.'),
-                     (s['phase'] == 'closed', 'This table is closed.'),
-                     (s['proposal'] is not None, 'Confirm or decline the crew decision first.'))
+        gate = self._gate()                # every command, before its own checks
         mode = s['mission']['allocation'] if s['phase'] == 'allocation' else None
         selecting = mode in ('normal', 'skip_captain')
         asked = self.controller(self.selector()) == actor if mode else False
@@ -771,8 +812,14 @@ class Engine:
             offer = gate or first((mode == 'captain_one' and actor != s['captain'], 'The captain must offer these tasks.'))
             owners = {q: offer or first((not all(self.eligible(k, q) for k in s['pool']), 'Every task needs an eligible owner.'))
                       for q in s['seats']}
+        # predict, task by task. The count is the client's own field (0 to the planned tricks).
+        predictions = {}
+        if s['phase'] == 'prediction':
+            predictions = {k: gate or first((self.controller(owner) != actor, 'Only the task owner can predict.'),
+                                            (k in s['predictions'], 'Your prediction must be in range and cannot be changed.'))
+                           for k, owner in s['assignments'].items() if TASKS[k]['params'].get('predict')}
         kept = lambda reasons: {k: r for k, r in reasons.items() if r}
-        return {'play': play, 'cards': kept(cards), 'tasks': kept(tasks), 'pass_task': pass_task,
+        return {'play': play, 'predictions': kept(predictions), 'cards': kept(cards), 'tasks': kept(tasks), 'pass_task': pass_task,
                 'volunteer': kept(answers), 'offer': offer, 'offer_owners': kept(owners)}
 
     def view(self, actor=None):
@@ -819,6 +866,7 @@ class Engine:
                        'task_reasons': reasons['tasks'], 'pass_task_reason': reasons['pass_task'],
                        'volunteer_reasons': reasons['volunteer'], 'offer_reason': reasons['offer'],
                        'offer_owner_reasons': reasons['offer_owners'],
+                       'predict_reasons': reasons['predictions'],
                        'communication_options': self.communication_options(actor),
                        'may_pass_task': (s['phase'] == 'allocation' and s['mission']['allocation'] in ('normal', 'skip_captain')
                            and self.controller(self.selector()) == actor and

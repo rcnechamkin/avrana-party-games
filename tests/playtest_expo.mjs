@@ -181,6 +181,14 @@ try{
     for(const p of pages)await oneViewport(p,"before the mission begins");
     assert.equal(shown.title,await refusal(pages[0],{t:"play_card",card}));checked.early=true;
   }
+  {
+    // Begin is the crew's at this table: open exactly while the view gives no reason for it
+    // (`lifecycle_reasons`: the server's own refusal of that proposal, AVR-263).
+    const open=(await settle()).game,shown=await control(pages[0],"begin");
+    assert.equal(open.lifecycle,"crew");assert.equal(open.lifecycle_reasons.begin,null);
+    assert.equal(shown.disabled,false);assert.equal(shown.title,"");
+    assert.equal(open.lifecycle_reasons.retry,await refusal(pages[0],{t:"propose",proposal:{kind:"retry",keep:true}}));
+  }
   await crewDecision(pages[0],"begin");
   // Select a non-default sonar card, commit it, then verify its public exposure.
   const sonar=await settle(),opts=sonar.game.me.communication_options;

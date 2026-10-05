@@ -57,6 +57,7 @@ view carries the result in `me`:
 | `volunteer_reasons` `{yes, no: sentence}` | the two volunteer answers (`volunteer`) | that answer is accepted |
 | `offer_reason` | "Offer all tasks" whoever is named (`assign` with `task: all`, missions 6, 10 and 13) | the viewer may offer |
 | `offer_owner_reasons` `{seat: sentence}` | the same offer naming that seat | that seat may be named |
+| `predict_reasons` `{task: sentence}` | "Lock prediction" on each assigned task that needs a prediction, in the `prediction` phase (`predict`) | the viewer may lock a prediction for it (the count itself, 0 to the planned tricks, is the client's own field) |
 
 The maps hold only what is refused. A field that does not apply in the current phase or mission is
 null or empty. The client shows these sentences and words none of its own for the same refusal;
@@ -64,9 +65,41 @@ such a control is disabled exactly when the view gives a reason for it. The reas
 public table and the viewer's own hand and nothing else, and a viewer without a seat gets none
 (`me` is null). `test_at_any_state_a_reason_is_the_rejection_and_no_reason_means_accepted` sends
 every one of these requests in some 1,500 states and compares: a reason is the rejection, word
-for word, and no reason means the request is accepted. Controls outside the table above (a crew
-decision other than the offer, a prediction, a sonar declaration, the Party Host's Begin, Retry
-and Next) carry no reason field; the client hides most of them when they cannot be used.
+for word, and no reason means the request is accepted.
+
+**Begin, Retry and Next have their reason in the public view** (AVR-263, owner decision of
+2026-10-05: "the server is the source of truth for why an action is unavailable", the Party
+Host's Begin included). `lifecycle_reasons` is `{begin, retry, next}`: for each step the sentence
+this server refuses it with at this moment, or null when it would be taken. It sits beside
+`lifecycle`, is the same for every viewer (a seat, a watcher, a Party spectator: the Party Host may
+hold no seat) and reads only who is away, whether a decision is pending, the phase, the result
+and, for the host's Begin, the crew's moment. Which refusal it is depends on who moves the table on:
+
+| `lifecycle` | The sentence is the refusal of | In this order |
+|---|---|---|
+| `host` | the Party Host's [`host`](#host-ticket-action-the-party-hosts-lifecycle-steps) message (`ExpoSession.host_action`, then `Engine.lifecycle`) | Begin only: `grace` The crew has a moment to ask for distress first. Begin in a few seconds. Then `paused` Waiting for the crew to reconnect.; `phase` This table is closed.; `vote` The crew is deciding something. Wait for their answer.; `phase` with the step's own sentence |
+| `crew` (a standalone table, or a Party from before the host claim) | a seated crew member's `propose` of that step (`Engine.apply`) | common checks 2, 6 and 7 above (Waiting for the crew to reconnect. / This table is closed. / Confirm or decline the crew decision first.), then `phase` with the step's own sentence |
+
+The step's own sentence is "Finish task allocation and predictions first." (Begin), "Retry is
+available after a failed mission." (Retry) or "Complete this mission first." (Next). The sentences
+are single-sourced: `Engine._lifecycle_refusals` is the ordered list that `Engine.lifecycle`
+refuses from and that `Engine.lifecycle_reasons` reads; `engine.STEP_NEEDS` and
+`Engine._step_open` are the step's own check for the host's commit, a seat's proposal and the
+reason alike; `ExpoSession._host_refusal` is the adapter's own refusal ("This table is not a Party
+round.", "No active mission.", the crew's moment) for `host_action` and for the reason; and the
+crew path reads the same gate as every other reason (`Engine._gate`). A refusal added later is one
+line in the list it belongs to. What the reason cannot know is what depends on the message: a
+stale `attempt` or `revision`, a malformed action, a `next` naming a mission that does not exist
+or is blocked, and who the sender is (the Party's answer about its host, or a seat proposing a
+step that is the host's).
+
+`test_at_any_table_the_reason_for_begin_retry_and_next_is_what_the_table_answers` walks 48 seeded
+tables (a Party round with a host, one without the host claim, a standalone table) with the clock
+moving, sends every step at every state and compares, for every viewer; the engine half is in the
+property test above. Controls that still carry no reason field: a crew decision other than the
+offer and the three steps (distress, an owner in free allocation, ending a standalone table) and
+a sonar declaration; the client hides them, or lists only what is accepted, when they cannot be
+used.
 
 **Mutation.** Every accepted command also increases `revision` and stores its request id.
 
@@ -164,8 +197,10 @@ See [Crew decisions](#crew-decisions). Used by allocation modes `one`, `captain_
 - **Mutation**: the number is stored permanently. When every prediction task has one, the phase
   becomes `assistance`. A secret prediction is sent only to its owner's controller until the
   mission result.
-- **Knowable before**: yes.
-- **Client**: a number field (0 to planned tricks) and "Lock prediction" on the owner's task.
+- **Knowable before**: yes (`me.predict_reasons`; the range is the client's field).
+- **Client**: a number field (0 to planned tricks) and "Lock prediction" on the owner's task,
+  disabled with `me.predict_reasons[task]` (a seat away, a pending decision), which is also
+  written beside it. Another owner's task and a prediction already made show no control.
 
 ## Crew decisions
 
@@ -233,7 +268,10 @@ kind of table.
 - **Client**: controls appear only in the matching phase. In the stage: "Distress ← left" and
   "Distress → right" (hidden for two players), "Offer all tasks", "Propose owner". In the dock's
   table zone: "Begin without passing" (or the host's "Begin mission") and "End table". On the
-  result: "Retry same tasks", "Retry new tasks", "Next mission". "Offer all tasks" is disabled
+  result: "Retry same tasks", "Retry new tasks", "Next mission". Begin, Retry and Next are
+  disabled exactly when the view's `lifecycle_reasons` gives a sentence for the step, and show
+  it: on the button, and in words in the stage (Begin) or under the buttons (Retry, Next). A
+  watcher at a crew table is shown no Begin button. "Offer all tasks" is disabled
   with `me.offer_reason`, in words beside it: in `captain_one` the `captain` sentence for
   everyone but the captain. A seat the offer may not name (the captain, when a captain comparison
   task is among the tasks) cannot be chosen in the owner list, and `me.offer_owner_reasons` gives
@@ -305,15 +343,23 @@ is reached (`GameBinding._party_host_confirm`, then `_party_host_action`; AVR-25
   (4 s) after the tasks and predictions are settled, once per attempt. The view's `begin_at`
   is the moment it opens. Nobody confirms or says "ready": when the time has passed and no
   request is pending, the host begins alone. A request made in that time blocks Begin by the
-  pending-decision rule until the crew answers it; a declined request starts no new wait.
+  pending-decision rule until the crew answers it; a declined request starts no new wait. This
+  refusal comes before the engine's (an away seat, a pending decision), so during the moment it
+  is the reason every phone is given. When the moment ends the table's timer fires and a state
+  is pushed in which that reason is gone
+  (`test_every_phone_is_given_the_servers_reason_for_begin_and_told_when_it_no_longer_holds`):
+  no page opens Begin from its own clock.
 - **Scope**: `begin`, `retry` and `next` are everything this message can do. Any other `t`, any
   other decision kind and any extra field are refused and change nothing
   (`test_the_host_gets_begin_retry_and_next_and_nothing_else`).
 - **Client**: the dock's left zone, "Party Host (table control)". The host sees "Begin in N"
-  (disabled) during the crew's moment, then "Begin mission", and "End EXPO" otherwise; everyone else sees who the host is and what
+  while `begin_at` counts down, then "Begin mission", and "End EXPO" otherwise; everyone else sees who the host is and what
   the table is waiting for. On the result the host sees "Retry same tasks", "Retry new tasks" or
   "Next mission", and "End EXPO for everyone"; everyone else sees "Waiting for <host> (Party
-  Host) to choose what's next." The page draws these from `AvranaParty.isHost()`, which decides nothing: the
+  Host) to choose what's next." Begin, Retry and Next are disabled exactly when the view's
+  `lifecycle_reasons` gives a sentence for the step, and that sentence is on the button and in
+  words on the page (for Begin in the stage, since the dock has no room for a line); the page
+  words no reason of its own. The page draws these from `AvranaParty.isHost()`, which decides nothing: the
   server reads the ticket.
 
 ## Distress exchange

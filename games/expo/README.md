@@ -59,7 +59,9 @@ write like any other (AVR-268, 2026-10-04). E-D12, request ids that made a snaps
 large to read after a restart: a request id is letters, digits and `-`, and a file over the size
 limit is never written (AVR-273, 2026-10-04). E-D8, reasons on unavailable controls that were not
 the server's rejection: the view now carries the server's own sentence for each such control and
-the client shows only that (AVR-263, 2026-10-05).
+the client shows only that (AVR-263, 2026-10-05). By the owner's final decision of that day the
+same holds for Begin, Retry and Next, the Party Host's included (`lifecycle_reasons`, the same
+for every viewer), and for "Lock prediction" (`me.predict_reasons`).
 
 **Owner decisions, built.** The owner answered the open policy questions on 2026-10-04 under a
 "fidelity first" principle (AVR-243). The four answers that change behaviour are built: a single

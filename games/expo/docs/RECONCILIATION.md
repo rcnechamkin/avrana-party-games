@@ -113,7 +113,7 @@ updated.
 | E-D5 | **Fixed 2026-10-04.** Was: the content hash covered `tasks.json` only, so a changed mission table did not invalidate a snapshot unless it was the mission in flight. Now: the hash covers the task catalog and every mission definition, untimed and timed, a blocked mission by its reason. The hash value changed once with this fix, so a snapshot written before it is refused with the usual recovery message | state contract | `test_the_content_hash_is_the_hash_of_the_tasks_and_of_every_mission_definition`, `test_any_change_to_the_content_changes_the_hash`, `test_a_changed_modifier_timer_or_fixed_task_list_changes_the_hash`, `test_a_snapshot_taken_before_a_mission_table_change_is_refused_after_it`, `test_an_unchanged_mission_table_still_restores` | AVR-242 |
 | E-D6 | **Settled 2026-10-04 by amending the contract; no code change.** Only accepted requests are remembered, and a rejected request id used again is a new request. The earlier draft asked for both to be kept. Keeping rejections adds nothing to idempotency (every state change raises the revision), would forbid resending a request refused only because the disk failed, and would let one seated player fill the capped request memory alone and lock the table. Reasons in [GAME_STATE](GAME_STATE.md#commands-ordering-and-repeats) | state contract (amended) | `test_a_rejected_request_is_not_remembered_and_an_accepted_one_is`, `test_a_flood_of_rejected_requests_is_not_remembered_and_cannot_use_up_the_request_limit`, `test_the_same_rejected_request_sent_again_gets_the_same_answer`, `test_a_rejected_request_id_used_again_is_a_new_request_and_is_remembered_once_accepted`, `test_a_request_refused_only_because_the_disk_failed_succeeds_when_sent_again_unchanged` | AVR-242 |
 | E-D7 | **Fixed 2026-10-04.** Was: the deadline was a wall-clock moment, so a backward clock step granted time, on restore and (found while fixing it) on a live table with no restart at all. Now: the deadline runs on the monotonic clock; a restored timed attempt continues only on the same boot (by the kernel's boot identity) with both clocks agreeing about how long the server was down, and otherwise ends as a counted failure with its own reason, written to the snapshot. A reboot therefore always ends a running timed attempt | state contract; the appliance has no real-time clock | `test_a_timed_mission_runs_on_the_monotonic_clock_and_browsers_get_a_wall_clock_moment`, `test_a_wall_clock_step_during_a_live_timed_mission_neither_grants_nor_takes_time`, `test_a_restart_on_the_same_boot_continues_the_deadline_and_charges_the_downtime`, `test_a_timed_table_restored_after_its_deadline_has_already_failed`, `test_a_timed_table_restored_under_a_clock_that_cannot_be_trusted_ends_and_never_gains_time`, `test_a_timed_snapshot_without_a_clock_record_ends_the_attempt`, `test_a_host_that_never_could_name_its_boot_ends_the_attempt_on_every_restart`, `test_a_saved_deadline_later_than_a_full_timer_is_not_resumed`, `test_an_end_that_could_not_be_written_is_judged_again_and_a_reboot_still_ends_it`, `test_a_snapshot_with_a_deadline_beside_a_result_is_refused_not_raised`, `test_a_snapshot_with_a_deadline_on_an_untimed_mission_is_refused`, `test_clocks_that_agree_within_two_seconds_on_the_same_boot_are_trusted`, `test_a_failed_write_after_a_wall_clock_step_leaves_the_shared_timer_on_the_true_deadline`, `test_a_table_with_no_running_deadline_restores_whatever_the_clocks_say`, `test_on_the_real_clocks_the_shared_timer_and_the_browsers_get_the_same_150_seconds`, `test_the_engine_expires_only_a_running_deadline` | AVR-242 |
-| E-D8 | **Fixed 2026-10-05.** Was: the reason shown on an unavailable control was not the server's rejection in six places. Two stated something untrue: a color card in the distress exchange after the player's own choice was sealed read "Submarines cannot be passed", and a card that follows suit read "You must follow the opening suit." while a crew decision was pending (the captain's off-suit Tonoja card read "Only the captain plays for Tonoja."). Four were a second wording of the same fact: a card before the crew begins, "Take this task" for another seat and for the captain on a comparison task, "Offer all tasks" for a non-captain. Now: the view gives the reason for each card, each open task, the pass, the volunteer answers and the offer of all tasks (`me.play_reason`, `me.card_reasons`, `me.task_reasons`, `me.pass_task_reason`, `me.volunteer_reasons`, `me.offer_reason`, `me.offer_owner_reasons`) in the words the server rejects that request with, and the client shows only those; such a control is unavailable exactly when the view gives a reason for it. The owner chose the server's wording for rows 1 to 4 of the issue on 2026-10-05 | action contract ("the client can disable it with the right reason") | `test_the_reason_shown_before_play_begins_is_the_servers_rejection` (the pinned test, renamed now that it passes); `test_every_reason_shown_on_an_unavailable_control_is_the_servers_rejection`; `test_at_any_state_a_reason_is_the_rejection_and_no_reason_means_accepted`; `test_a_closed_table_says_so_on_every_card_and_refuses_every_command_with_it`; `test_a_decision_pending_during_the_distress_exchange_is_the_reason_on_every_hand_card`; `test_after_the_result_every_card_gives_the_servers_rejection_of_a_play`; `test_the_offer_of_all_tasks_gives_the_servers_rejection_in_missions_six_ten_and_thirteen`; `test_pass_selection_and_the_volunteer_answers_give_the_servers_rejection`; the playtest compares the shown reason with the refusal | AVR-263 |
+| E-D8 | **Fixed 2026-10-05.** Was: the reason shown on an unavailable control was not the server's rejection in six places. Two stated something untrue: a color card in the distress exchange after the player's own choice was sealed read "Submarines cannot be passed", and a card that follows suit read "You must follow the opening suit." while a crew decision was pending (the captain's off-suit Tonoja card read "Only the captain plays for Tonoja."). Four were a second wording of the same fact: a card before the crew begins, "Take this task" for another seat and for the captain on a comparison task, "Offer all tasks" for a non-captain. Now: the view gives the reason for each card, each open task, the pass, the volunteer answers and the offer of all tasks (`me.play_reason`, `me.card_reasons`, `me.task_reasons`, `me.pass_task_reason`, `me.volunteer_reasons`, `me.offer_reason`, `me.offer_owner_reasons`) in the words the server rejects that request with, and the client shows only those; such a control is unavailable exactly when the view gives a reason for it. The owner chose the server's wording for rows 1 to 4 of the issue on 2026-10-05, and later that day for every unavailable action: the same now holds for Begin, Retry and Next, the Party Host's included (`lifecycle_reasons`), and for "Lock prediction" (`me.predict_reasons`) | action contract ("the client can disable it with the right reason") | `test_the_reason_shown_before_play_begins_is_the_servers_rejection` (the pinned test, renamed now that it passes); `test_every_reason_shown_on_an_unavailable_control_is_the_servers_rejection`; `test_at_any_state_a_reason_is_the_rejection_and_no_reason_means_accepted`; `test_a_closed_table_says_so_on_every_card_and_refuses_every_command_with_it`; `test_a_decision_pending_during_the_distress_exchange_is_the_reason_on_every_hand_card`; `test_after_the_result_every_card_gives_the_servers_rejection_of_a_play`; `test_the_offer_of_all_tasks_gives_the_servers_rejection_in_missions_six_ten_and_thirteen`; `test_pass_selection_and_the_volunteer_answers_give_the_servers_rejection`; `test_at_any_table_the_reason_for_begin_retry_and_next_is_what_the_table_answers`; `test_the_reason_for_the_hosts_begin_follows_the_order_the_table_refuses_in`; `test_the_reasons_for_a_prediction_are_the_servers_rejections`; the playtests compare the shown reason with the refusal | AVR-263 |
 | E-D9 | **Fixed 2026-10-04.** Was: a crew decision was checked for its keys but not for the type of every value. In missions 6, 10 and 13 the `task` of an `assign` decision was never read, so any JSON value was stored in the pending decision and sent to every viewer; a value nested about 500 lists deep (one socket message) then made every view, snapshot and command raise, and one seated player could freeze the table. Now: every field of a crew decision must be a plain value of its own type and, where all tasks go together, `task` must be `all`; anything else is rejected before it is stored or remembered | action contract (a rejected request changes nothing) | `test_an_assign_field_of_the_wrong_type_is_refused_in_every_allocation_mode`, `test_every_other_decision_field_of_the_wrong_type_is_refused`, `test_where_all_tasks_go_together_the_task_field_is_the_word_all`, `test_the_request_that_froze_the_table_is_refused_and_the_table_plays_on` | AVR-264 |
 | E-D10 | **Fixed 2026-10-04.** Was: mission 32 took its four named tasks without removing them from the task deck; after it ended they were in the used pile too, and once the deck was refilled from the used pile a later mission could deal the same task twice. Assigning the second copy overwrote the first copy's owner, so one task disappeared and the mission was easier than its difficulty. Now: a fixed mission takes its tasks out of the deck and the used pile, and the engine's invariant refuses any state with a task id twice in a pile or in two piles | no source involved: a task card cannot be in two piles | `test_no_task_is_dealt_twice_in_the_missions_after_mission_thirty_two`, `test_no_task_is_dealt_twice_for_any_crew_size`, `test_retries_before_and_after_mission_thirty_two_keep_every_task_in_one_place`, `test_mission_thirty_two_takes_its_four_tasks_out_of_the_deck_and_the_used_pile`, `test_a_table_that_opens_on_mission_thirty_two_deals_its_four_tasks`, `test_the_reported_table_reaches_mission_forty_seven_with_distinct_tasks`, `test_a_snapshot_with_a_task_in_two_places_is_refused` | AVR-265 |
 | E-D11 | **Fixed 2026-10-04.** Was: a request id was checked only for its length; one that cannot be written as UTF-8 (a lone surrogate) on an otherwise legal command was accepted and remembered, the snapshot write then raised, and every later command on a table with a snapshot file raised too. Now: a request id is 1 to 80 printable ASCII characters, and a snapshot that cannot be written as text is a failed write: the command is rolled back and answered `storage` | action contract (a rejected request changes nothing); state contract (a failed write rolls back) | `test_a_request_id_that_is_not_plain_printable_text_is_refused`, `test_a_plain_request_id_is_still_accepted`, `test_an_unstorable_request_id_leaves_a_stored_table_saving_and_answering`, `test_a_snapshot_that_cannot_be_written_as_text_is_a_storage_failure_not_a_crash`, `test_the_store_reports_any_snapshot_it_cannot_write_as_a_failed_write` | AVR-268 |
@@ -1101,9 +1101,22 @@ E-D8 is fixed. The owner decided on 2026-10-05 that the server's rejection wordi
 source for rows 1 to 4 of the issue and that the client keeps no second sentence for the same
 refusal; rows 5 and 6 needed no decision.
 
-Changed: `games/expo/engine.py` (`Engine.reasons`, seven fields of `me` in the view; no rule, no
-rejection code and no check in `apply` changed), `games/expo/web/client.js`,
-`tests/test_expo_coverage.py`, `tests/playtest_expo.mjs`, and these documents.
+**Final owner decision, 2026-10-05 (evening).** "The server is the source of truth for why an
+action is unavailable. Therefore: Accept the remaining sentence replacements where they make the
+UI accurately describe authoritative server state. This includes rows 5–6. Do not preserve old
+wording merely because it already exists. The Party Host's Begin reason must also use
+authoritative/server-derived wording rather than an independently invented client explanation.
+Keep wording concise and comprehensible to a player. Update tests and documentation
+accordingly." With it the ten replacements listed below as beyond the six places are accepted,
+and the two things first left unchanged (the Party Host's Begin, "Lock prediction") are done.
+
+Changed: `games/expo/engine.py` (`Engine.reasons`, eight fields of `me` in the view;
+`Engine.lifecycle_reasons`, with `_lifecycle_refusals`, `_step_open`, `_gate` and `STEP_NEEDS`
+as the one copy of each check; no rule, no rejection code, no sentence and no order of checks
+changed), `games/expo/game.py` (`lifecycle_reasons` in the view, `_host_refusal`, the timer for
+the end of the crew's moment), `games/expo/web/client.js`, `tests/test_expo_coverage.py`,
+`tests/test_expo_authority.py`, `tests/playtest_expo.mjs`, `tests/playtest_expo_party.mjs`, and
+these documents.
 
 - **Engine.** `Engine.reasons(seat)` gives, for each control a crew member sees, the sentence
   `apply` rejects that request with. Each control is an ordered list of refusals, in the order
@@ -1136,18 +1149,77 @@ rejection code and no check in `apply` changed), `games/expo/web/client.js`,
   hand panel and the dock give up a pixel of padding above and below (worst case now 89.5). The
   playtest draws that state for every seat on turn at every phone size, so it no longer depends
   on the deal, and checks that the line beside the hand is whole. No assertion was weakened.
-- **Not changed, and why.** The Party Host's "Begin mission" is disabled with two sentences the
-  client words itself ("Waiting for the crew to reconnect.", which is the server's, and "The crew
-  is deciding something.", which is the first half of it). That request is the lifecycle message
-  of AVR-252, its sender may hold no seat, and a viewer without a seat gets no reasons; giving
-  one needs a decision about what a watching host may be told. "Lock prediction" is disabled
-  without a reason while a seat is away.
+- **Begin, Retry and Next** (final decision). The Party Host's "Begin mission" was disabled with
+  sentences the client worded itself. The view now carries `lifecycle_reasons` `{begin, retry,
+  next}`: for each step the sentence the server refuses it with at that moment, or null. It is
+  public (the Party Host may hold no seat, and a viewer without a seat gets no `me`): it reads
+  who is away, whether a decision is pending, the phase, the result and the crew's moment, all
+  of which every viewer is already shown, and no hand; the privacy differential and the table
+  walk compare it across viewers. Where the steps are the Party Host's it is the refusal of the
+  host message, in the order the server checks: the crew's moment (`game.GRACE`, Begin only),
+  then an away seat, a closed table, a pending crew decision, what the step itself needs. Where
+  the crew proposes them (a standalone table, a Party from before the host claim) it is
+  `apply`'s refusal of that proposal, so a pending decision reads "Confirm or decline the crew
+  decision first." there and "The crew is deciding something. Wait for their answer." for the
+  host: each is what that sender is told.
+- **One copy of each check.** `Engine.lifecycle` now refuses from an ordered list
+  (`_lifecycle_refusals`) and `lifecycle_reasons` reads the same list; what a step needs
+  (`STEP_NEEDS`, `_step_open`) is one check for the host's commit, a seat's proposal and the
+  reason; the adapter's own refusals of a host step ("This table is not a Party round.", "No
+  active mission.", the crew's moment) are `ExpoSession._host_refusal`, which `host_action`
+  raises and the reason shows; the crew path uses the gate every other reason uses
+  (`Engine._gate`). The refusal AVR-246 adds while a trick is resolving is one line in
+  `_lifecycle_refusals` and one in `_gate`, between the closed table and the pending decision.
+- **The crew's moment ends on the server.** The page used to open Begin when its own clock
+  passed `begin_at`. With the reason coming from the view that would leave a stale sentence on
+  a phone, so the table's one timer (the mission's deadline, which does not run before play) is
+  set for the end of the moment and its tick pushes a state without the reason. `begin_at` now
+  only counts the wait down on the button.
+- **"Lock prediction"** was disabled without a reason while a seat was away.
+  `me.predict_reasons` gives the server's sentence for each prediction that is awaited, by the
+  same mechanism as the other controls (while a crew decision is pending the decision takes the
+  stage and the control is not drawn).
+- **Client.** The host's and the crew's Begin, and Retry and Next on the result, are disabled
+  exactly when `lifecycle_reasons` gives a sentence, with that sentence on the button and in
+  words (Begin: in the stage, first in the panel or under a pending decision, because the dock
+  has no room for a line; Retry and Next: under the buttons). A seat that may move the table on
+  after a result while a seat is away now sees the buttons, closed, with the server's sentence,
+  where it saw only who the table was waiting for. A watcher at a table the crew moves on is
+  shown "The crew agrees to begin" and no button (it was a disabled button with no reason).
+- **Not done.** "End table" at a standalone table is still closed by a condition the client
+  works out (a pending decision, a seat away), with no sentence, and the sonar sheet says in the
+  client's words when sonar is available. They are outside this decision's list; the gate
+  (`Engine._gate`) would serve the first. The distress buttons and "Propose owner" are hidden,
+  not closed, when they cannot be used.
+
+#### Server sentences a player may find unclear
+
+The decision asks for wording that is concise and comprehensible to a player. Every sentence the
+page can now show was read in the place it is shown. None is misleading there, so none was
+changed; these are the ones a player may not understand at once, for the owner to judge:
+
+| Sentence | Where it is shown | Why it may be unclear |
+|---|---|---|
+| "That card is not in the playable hand." | the captain's own cards on Tonoja's turn; Tonoja's cards on the captain's own turn | does not say which hand is the one to play from |
+| "This is not a card-play phase." | beside the hand before Begin and after a result | "phase" is the engine's word; does not say what the table is waiting for |
+| "Your pass is already locked or unavailable." | every hand card once the viewer's distress choice is sealed | "or unavailable" covers a case the player is not in |
+| "Every task needs an eligible owner." | beside a seat the offer may not name (the captain, with a captain comparison task among the tasks) | does not say that this seat is the one that may not take them |
+| "The remaining crew must take the tasks." | the volunteer "No" when the last crew members asked cannot decline | does not say "you cannot decline" |
+| "Choose one of your color cards." | a submarine during the distress exchange | does not say that submarines cannot be passed |
+| "The captain cannot take a captain comparison task." | "Take this task" for the captain | "captain comparison task" is not a term the page explains |
+
+Two sentences are in the view and never reach the page, because the client shows no control
+there: "Only the task owner can predict." and "Your prediction must be in range and cannot be
+changed." (the second is one sentence for two refusals). The three sentences for what a step
+needs ("Finish task allocation and predictions first." and the two after a result) reach the
+page only if a control is drawn in a phase it does not belong to, which the client does not do.
 
 #### Client sentences replaced
 
 Rows 1 to 6 of the issue named six places. Bringing the client to "no second sentence for the
-same refusal" touched more than those six. **The second table goes beyond the six listed places
-and awaits the owner's yes or no**; nothing in it was reworded on the server.
+same refusal" touched more than those six. **The second table goes beyond the six listed places.
+The owner accepted it on 2026-10-05 (the final decision quoted above)**; nothing in it was
+reworded on the server.
 
 Within the six listed places:
 
@@ -1161,7 +1233,7 @@ Within the six listed places:
 | Tonoja's face-up cards (row 6) | "Only the captain plays for Tonoja.", unless play was unavailable to the viewer | the card's own reason: "You must follow the opening suit.", "That card is not in the playable hand.", or the viewer's reason for not playing at all |
 | A hand card while a crew decision is pending (row 6) | "You must follow the opening suit." | "Confirm or decline the crew decision first." |
 
-Beyond the six listed places (awaiting the owner's yes or no):
+Beyond the six listed places (accepted by the owner, 2026-10-05):
 
 | Where | The client said | It now shows, from the view |
 |---|---|---|
@@ -1176,6 +1248,17 @@ Beyond the six listed places (awaiting the owner's yes or no):
 | The line beside the hand and each card, the captain looking at the captain's own hand on Tonoja's turn | "Play from Tonoja's cards." | "That card is not in the playable hand." |
 | A card of the viewer's own hand that does not follow suit | "You must follow the opening suit.", as the client's own copy | the same sentence, from the view |
 
+Begin, Retry, Next and "Lock prediction" (the final decision, 2026-10-05):
+
+| Where | The client said | It now shows, from the view |
+|---|---|---|
+| The Party Host's Begin during the crew's moment | "The crew has a moment to ask for distress first.", on the button only | "The crew has a moment to ask for distress first. Begin in a few seconds." on the button and in the stage |
+| The Party Host's Begin, a seat away | "Waiting for the crew to reconnect.", as the client's own copy, on the button only | the same sentence, from the view, on the button and in the stage |
+| The Party Host's Begin, a crew decision pending | "The crew is deciding something.", on the button only | "The crew is deciding something. Wait for their answer." on the button and under the decision |
+| The crew's Begin (a standalone table, a Party from before the host claim), a decision pending or a seat away | nothing: a disabled button | "Confirm or decline the crew decision first." or "Waiting for the crew to reconnect." on the button and in the stage |
+| Retry and Next on the result, a seat away, for whoever may move the table on | "Waiting for <names> to reconnect." in place of the buttons | the buttons, closed, with "Waiting for the crew to reconnect." under them (everyone else still reads who the table is waiting for) |
+| "Lock prediction", a seat away | nothing: a disabled button | "Waiting for the crew to reconnect." on the button and beside it |
+
 New on the page, with no earlier client sentence: an owner the offer may not name is disabled in
 the owner list with "<name>: Every task needs an eligible owner." beside it, and the volunteer
 "Yes" is disabled with the view's reason like the other controls (a seat that is not being asked
@@ -1184,16 +1267,48 @@ does not see the buttons).
 Tests: `test_at_any_state_a_reason_is_the_rejection_and_no_reason_means_accepted` walks 54 seeded
 tables (missions 1, 6, 10, 13, 16, 17 and 25, two to five players) through 28 states each, with
 seats dropping, decisions left pending, results and closed tables, and in every state sends the
-request behind every card, task, pass, answer and offer for every crew member: a reason is the
-rejection word for word, no reason means accepted. Every sixth state it also changes everything
-the viewer may not see and requires the same view.
+request behind every card, task, pass, answer, offer and prediction for every crew member: a
+reason is the rejection word for word, no reason means accepted. In the same states it sends
+Begin, both retries and Next both ways (the lifecycle authority's commit, and a proposal from
+each seat) and compares them with `Engine.lifecycle_reasons`. Every sixth state it also changes
+everything the viewer may not see and requires the same view and the same lifecycle reasons.
 `test_the_wandering_tables_met_every_reason_and_some_hundreds_of_states` requires that the walk
-met all sixteen sentences. Five further tests name the states the earlier test never reached: a
+met all eighteen sentences of the controls and all seven of the steps.
+`test_at_any_table_the_reason_for_begin_retry_and_next_is_what_the_table_answers` is the same
+property through the adapter: 48 seeded tables (a Party round with a host, a Party round without
+the host claim, a standalone table; two to five players) through 30 states each with the clock
+moving, the host taking steps that are open, and a result forced part way. In every state, twice
+(before and after the clock moves), the view's `lifecycle_reasons` is the same for every seat, a
+watcher, a stranger and a Party spectator; each step is sent by whoever moves that table on
+(`host_action`, or each seat's proposal) and the answer is the reason, word for word, or the step
+is taken where there is none; `begin_at` is given exactly while the crew's moment is the reason.
+`test_the_wandering_tables_met_every_reason_for_begin_retry_and_next` requires each kind of
+table to have met every sentence it can give.
+`test_the_reason_for_the_hosts_begin_follows_the_order_the_table_refuses_in` names the order
+(the crew's moment, then away, then a pending decision),
+`test_a_seat_that_proposes_begin_retry_or_next_gets_the_reason_shown_at_a_crew_table` the crew
+path, `test_when_the_crews_moment_ends_the_table_wakes_and_every_phone_gets_begin_open` the
+timer, `test_every_phone_is_given_the_servers_reason_for_begin_and_told_when_it_no_longer_holds`
+the same over the real room with a host who only watches, and
+`test_the_reasons_for_a_prediction_are_the_servers_rejections` the prediction.
+Five further tests name the states the earlier test never reached: a
 closed table, a decision pending during the distress exchange, the result (failed and
 successful, then with a retry or next pending, then with a seat away), the offer in missions 6,
 10 and 13, and the pass and volunteer answers. Checked that they can fail: with the mission 6
 gate taken out again, with the owner reasons emptied and with the closed-table refusal put
 ahead of the away refusal, the new tests fail.
+
+The same was checked for the steps and the prediction, one change at a time, each put back: the
+away refusal taken out of the reason alone (60 tests fail); the reason made to put the engine's
+refusals before the crew's moment, and `host_action` made to (11 each: the table walk and the
+order test); no timer for the end of the moment (the two timer tests); the crew-table reason
+without what the step needs, with the host's sentence for a pending decision, or the view given
+the other authority's reasons (95, 96 and 50); a prediction reason without the owner or without
+the away seat (the walk and the prediction test). Because the host's refusal and its reason are
+one list, a change to that list moves both and the walk cannot see it: the away refusal taken
+out of the list, and the pending decision put before it, are caught only by the tests that name
+the sentence (`test_the_table_does_not_move_on_while_a_crew_member_is_away`,
+`test_the_reason_for_the_hosts_begin_follows_the_order_the_table_refuses_in`).
 
 Not covered: the browser playtests were not run in this session (the orchestrator runs them),
 real phones, the appliance, a Party-launched round.

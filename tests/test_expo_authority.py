@@ -378,6 +378,43 @@ def test_the_crew_gets_a_moment_to_ask_for_distress_before_the_host_can_begin():
     run(scenario())
 
 
+def test_every_phone_is_given_the_servers_reason_for_begin_and_told_when_it_no_longer_holds(monkeypatch):
+    """AVR-263, owner decision 2026-10-05: why the host's Begin is closed is the server's own
+    sentence, in the view of every phone (the host here only watches and has no seat). When the
+    crew's moment ends the server says so itself: a state arrives with no reason, and nobody
+    sent anything."""
+    monkeypatch.setattr(expo_game, "DISTRESS_GRACE", 1.0)
+
+    async def scenario():
+        t = await table(host=DANA, watchers=((DANA, "Dana"),))
+        await t.prepare(grace=True)
+        phones = [t.socks[p][0] for p in (ALICE, BOB, CAROL, DANA)]
+        views = [ws.last_state()["game"] for ws in phones]
+        assert views[3]["me"] is None and views[0]["me"] is not None
+        for view in views:
+            assert view["lifecycle"] == "host" and view["begin_at"] is not None
+            assert view["lifecycle_reasons"] == {"begin": GRACE, "retry": "Retry is available after a failed mission.",
+                                                 "next": "Complete this mission first."}
+        revision = t.engine.s["revision"]
+        for _ in range(200):                                # the table's own timer, on the real clock
+            if all(ws.last_state()["game"]["lifecycle_reasons"]["begin"] is None for ws in phones):
+                break
+            await asyncio.sleep(0.02)
+        for ws in phones:
+            view = ws.last_state()["game"]
+            assert view["lifecycle_reasons"]["begin"] is None and view["begin_at"] is None
+        assert t.engine.s["revision"] == revision and t.engine.s["phase"] == "assistance"   # nothing was played
+        assert await t.host(DANA, "begin", role="spectator") == []
+        assert t.engine.s["phase"] == "before_trick"
+        # in play, Begin is refused for what it needs, and every phone already says so
+        for ws in phones:
+            assert ws.last_state()["game"]["lifecycle_reasons"]["begin"] == "Finish task allocation and predictions first."
+        said = await t.host(DANA, "begin", role="spectator")
+        assert [m["msg"] for m in said] == ["Finish task allocation and predictions first."]
+        await t.close()
+    run(scenario())
+
+
 def test_a_distress_request_made_in_that_moment_holds_begin_until_it_is_answered():
     async def scenario():
         t = await table()
