@@ -25,6 +25,10 @@ class SnapshotStore:
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(name, self.path)
+        except (TypeError, ValueError, RecursionError) as e:
+            # A snapshot that cannot be written as text is a failed write like any other
+            # (AVR-268): the caller rolls back; the file on disk is untouched.
+            raise OSError('Snapshot cannot be serialised') from e
         finally:
             if os.path.exists(name):
                 os.unlink(name)

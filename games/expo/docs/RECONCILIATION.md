@@ -26,7 +26,7 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 - The card rules, deal, captain, trick resolution, communication truth and timing, selection and
   pass rule, task evaluators, mission targets and modifiers of the 24 enabled missions match R
   and L.
-- Ten defects were recorded (E-D1 to E-D7 by the reconciliation, E-D8 by AVR-247, E-D9 and E-D10 by probing during its review). Seven are fixed: E-D10, a task dealt twice after mission 32 (AVR-265), E-D9, the table freeze from one malformed crew decision (AVR-264), E-D1, the selection stall
+- Eleven defects were recorded (E-D1 to E-D7 by the reconciliation, E-D8 by AVR-247, E-D9 and E-D10 by probing during its review, E-D11 by the review of AVR-264). Eight are fixed: E-D11, a request id that stopped a stored table (AVR-268), E-D10, a task dealt twice after mission 32 (AVR-265), E-D9, the table freeze from one malformed crew decision (AVR-264), E-D1, the selection stall
   (AVR-239), E-D3 and E-D4, late completion of the window tasks and currents visibility
   (AVR-241), and E-D5 and E-D7, the content hash scope and the timed clock (AVR-242). E-D6 was
   settled by amending the contract (AVR-242). Of the two that remain, one affects play and needs
@@ -116,6 +116,7 @@ updated.
 | E-D8 | The reason shown on an unavailable control is not the server's rejection in six places. Two state something untrue: a color card in the distress exchange after the player's own choice is sealed reads "Submarines cannot be passed", and a card that follows suit reads "You must follow the opening suit." while a crew decision is pending (the captain's off-suit Tonoja card reads "Only the captain plays for Tonoja."). Four are a second wording of the same fact: a card before the crew begins, "Take this task" for another seat and for the captain on a comparison task, "Offer all tasks" for a non-captain. The server refuses every one of these requests and nothing changes | action contract ("the client can disable it with the right reason") | `test_defect_the_reason_shown_before_play_begins_is_the_servers_rejection`; the playtest asserts the refusals | AVR-263 |
 | E-D9 | **Fixed 2026-10-04.** Was: a crew decision was checked for its keys but not for the type of every value. In missions 6, 10 and 13 the `task` of an `assign` decision was never read, so any JSON value was stored in the pending decision and sent to every viewer; a value nested about 500 lists deep (one socket message) then made every view, snapshot and command raise, and one seated player could freeze the table. Now: every field of a crew decision must be a plain value of its own type and, where all tasks go together, `task` must be `all`; anything else is rejected before it is stored or remembered | action contract (a rejected request changes nothing) | `test_an_assign_field_of_the_wrong_type_is_refused_in_every_allocation_mode`, `test_every_other_decision_field_of_the_wrong_type_is_refused`, `test_where_all_tasks_go_together_the_task_field_is_the_word_all`, `test_the_request_that_froze_the_table_is_refused_and_the_table_plays_on` | AVR-264 |
 | E-D10 | **Fixed 2026-10-04.** Was: mission 32 took its four named tasks without removing them from the task deck; after it ended they were in the used pile too, and once the deck was refilled from the used pile a later mission could deal the same task twice. Assigning the second copy overwrote the first copy's owner, so one task disappeared and the mission was easier than its difficulty. Now: a fixed mission takes its tasks out of the deck and the used pile, and the engine's invariant refuses any state with a task id twice in a pile or in two piles | no source involved: a task card cannot be in two piles | `test_no_task_is_dealt_twice_in_the_missions_after_mission_thirty_two`, `test_no_task_is_dealt_twice_for_any_crew_size`, `test_retries_before_and_after_mission_thirty_two_keep_every_task_in_one_place`, `test_mission_thirty_two_takes_its_four_tasks_out_of_the_deck_and_the_used_pile`, `test_a_table_that_opens_on_mission_thirty_two_deals_its_four_tasks`, `test_the_reported_table_reaches_mission_forty_seven_with_distinct_tasks`, `test_a_snapshot_with_a_task_in_two_places_is_refused` | AVR-265 |
+| E-D11 | **Fixed 2026-10-04.** Was: a request id was checked only for its length; one that cannot be written as UTF-8 (a lone surrogate) on an otherwise legal command was accepted and remembered, the snapshot write then raised, and every later command on a table with a snapshot file raised too. Now: a request id is 1 to 80 printable ASCII characters, and a snapshot that cannot be written as text is a failed write: the command is rolled back and answered `storage` | action contract (a rejected request changes nothing); state contract (a failed write rolls back) | `test_a_request_id_that_is_not_plain_printable_text_is_refused`, `test_a_plain_request_id_is_still_accepted`, `test_an_unstorable_request_id_leaves_a_stored_table_saving_and_answering`, `test_a_snapshot_that_cannot_be_written_as_text_is_a_storage_failure_not_a_crash`, `test_the_store_reports_any_snapshot_it_cannot_write_as_a_failed_write` | AVR-268 |
 
 Not a defect, recorded so nobody "fixes" it by guessing: other reversible tasks could be proven
 safe early from public cards (a "win no pink" task after all nine pink cards are gone). The
@@ -791,7 +792,8 @@ The independent review passed the change with two findings. Its hostile run (43,
 requests over every action, field and allocation mode) found nothing against the fix, and each
 of five faults put back into the engine was caught by the new tests. It found one more request
 of the same class in another field, not fixed here: a request ID that cannot be written as UTF-8
-stops a standalone table with a snapshot file from saving or answering (AVR-268). E-D9 is
+stops a standalone table with a snapshot file from saving or answering (AVR-268, since fixed
+as E-D11). E-D9 is
 therefore fixed for crew decisions; it does not claim that no single request can stop a table.
 The other finding was a wording error in ACTIONS, corrected.
 
@@ -842,6 +844,59 @@ findings the invariant now also covers the pool and refuses a disabled task in a
 note on old snapshots above was corrected. It found one defect that is older than this change
 and not fixed here: a next mission or a retry with new tasks is sometimes refused because a
 replacement task is looked for in the deck only (AVR-270).
+
+### AVR-268, 2026-10-04
+
+A request id that could not be written to the snapshot file stopped a standalone table (E-D11).
+Changed: `games/expo/engine.py`, `games/expo/storage.py`, `tests/test_expo_input.py`,
+`tests/test_expo_docs.py` and these documents. No client, adapter, shared session, protocol or
+provider file changed.
+
+- **Cause.** A request id was checked only for being 1 to 80 characters. An accepted id is kept
+  in the request memory, which is part of the snapshot. An id with a lone surrogate (a half of a character pair,
+  which JSON can carry) was accepted and remembered; writing the snapshot as UTF-8 then raised, and so did
+  every later command, after changing the table in memory. `ExpoSession.game_action` handles a
+  failed write only as `OSError`.
+- **Fix, in two places.** The engine accepts a request id of printable ASCII only (the client
+  sends a UUID); anything else is `payload` and nothing is stored. The snapshot store reports a
+  snapshot it cannot write as text as a failed write, so the command is rolled back and answered
+  `storage`, whatever value caused it. A player name comes from the platform, not from EXPO; the
+  second test covers a name the file cannot hold.
+- **Scope.** A Party round and a table without a snapshot file were never affected.
+
+Each new test was run against the code before the fix: 17 of 21 failed (the four that passed
+check that ordinary ids are still accepted). With the engine check alone, the storage test still
+failed. After both:
+
+| Check | Result (Windows 11) |
+|---|---|
+| `pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_coverage.py tests/test_expo_persistence.py tests/test_expo_input.py tests/test_expo_deck.py tests/test_expo_docs.py` | 1,024 passed, 2 skipped, 2 expected failures (E-D2, E-D8) |
+| `pytest` (whole repository, with a sibling Party checkout present) | 2,548 passed, 4 skipped, 2 expected failures, 0 failed |
+| `ops/check_docs.py`, `tests/test_no_private_data.py`, `ops/export_avrana_catalog.py --check provider/catalog.json` | all passed |
+| `tests/playtest_expo.mjs`, headless Chrome | passed once each at 2, 3, 4 and 5 humans (default mission) |
+
+The independent review passed the change with findings, none Important. Its hostile run (4,696
+requests on a stored table and 617 tables with hostile names, settings and tokens) left every
+table saving, answering and restarting. One finding was inside this change, an untested arm of
+the store's failure handling; it has a test now. Recorded and not fixed here:
+
+- Two cooperating seats can still make a snapshot too large to read back, with about 7,000
+  accepted commands whose request ids are all quotation marks (each is escaped twice in the
+  file). The table keeps playing and is lost only at a restart. No issue is filed yet.
+- An integer of more than 4,300 digits raises out of `Engine.apply`. A socket cannot deliver one
+  (the JSON reader refuses it); state and file are unchanged.
+
+The counts below include `main` and the later AVR-242 commit merged in. The playtest was run
+before that merge and not repeated.
+
+Not covered: a live socket carrying the request (the tests call the adapter), real phones, the
+appliance, a Party-launched round, the playtest on Linux.
+
+Later the same day the branch was brought up to `main` with the one-viewport and Party Host
+work (AVR-275, AVR-252, AVR-266). The fix did not change. The new tests were run again without
+it: with the engine check taken out 16 of the 27 failed, with the store's handling taken out 6
+did. With both in place, `pytest tests/test_expo_*.py` gave 926 passed, 2 skipped, 2 expected
+failures (Windows 11). The whole repository and the playtests were not run again.
 
 ### AVR-275, AVR-252 and AVR-266, 2026-10-04
 

@@ -618,7 +618,10 @@ class Engine:
         require(set(msg) == allowed and all(type(msg[k]) is typ for k, typ in fields[t].items()),
                 'payload', 'Invalid action fields or types.')
         require(type(msg['attempt']) is int and type(msg['revision']) is int and
-                isinstance(msg['request'], str) and 1 <= len(msg['request']) <= 80,
+                isinstance(msg['request'], str) and 1 <= len(msg['request']) <= 80
+                # An accepted id is kept in the request memory and written to the snapshot
+                # (AVR-268): plain printable text only.
+                and msg['request'].isascii() and msg['request'].isprintable(),
                 'payload', 'Invalid action scope.')
         if t == 'propose':
             self._decision_shape(msg['proposal'])
