@@ -712,41 +712,65 @@ class Engine:
         return obj
 
     def reasons(self, actor):
-        """Why a control this crew member sees is unavailable, in the words `apply` rejects the
-        same request with (AVR-263). The checks run in the order `apply` runs them; a card or
-        task that is absent from its map is available. Nothing here decides anything: the
-        coverage tests compare every entry with the rejection itself."""
+        """Why each control this crew member sees is unavailable, in the sentence `apply` rejects
+        the same request with (AVR-263). Every list below is in the order `apply` makes its
+        checks and the first that refuses is the reason, so a refusal added to `apply` is one
+        line added here, in the same place. A control with no reason is available; a card, task,
+        owner or answer absent from its map is. Nothing here decides anything, and nothing reads
+        more than the public table and this crew member's own hand: `apply` alone refuses, and
+        the coverage tests send every request and compare."""
         s = self.s
-        gate = ('Waiting for the crew to reconnect.' if s['away'] else
-                'This table is closed.' if s['phase'] == 'closed' else
-                'Confirm or decline the crew decision first.' if s['proposal'] is not None else None)
-        play = gate or ('This is not a card-play phase.' if s['phase'] not in ('before_trick', 'in_trick') else
-                        'It is another crew member’s turn.' if self.controller(s['turn']) != actor else None)
+        first = lambda *checks: next((sentence for refused, sentence in checks if refused), None)
+        # Every command, before its own checks.
+        gate = first((s['away'], 'Waiting for the crew to reconnect.'),
+                     (s['phase'] == 'closed', 'This table is closed.'),
+                     (s['proposal'] is not None, 'Confirm or decline the crew decision first.'))
+        mode = s['mission']['allocation'] if s['phase'] == 'allocation' else None
+        selecting = mode in ('normal', 'skip_captain')
+        asked = self.controller(self.selector()) == actor if mode else False
+
+        # play_card, for any card; then card by card.
+        play = gate or first((s['phase'] not in ('before_trick', 'in_trick'), 'This is not a card-play phase.'),
+                             (self.controller(s['turn']) != actor, 'It is another crew member’s turn.'))
         hand, tops = self.playable(actor), self.playable('tonoja') if 'tonoja' in s['seats'] else []
-        cards = {}
+        turn = [] if play else self.playable(s['turn'])
+        legal = legal_cards(turn, s['trick'])
+        cards = {c: play or first((c not in turn, 'That card is not in the playable hand.'),
+                                  (c not in legal, 'You must follow the opening suit.'))
+                 for c in hand + tops}
         if s['phase'] == 'passing':
-            sealed = gate or ('Your pass is already locked or unavailable.' if actor in s['pass_choices'] else None)
+            # pass_card: in the distress exchange a hand card is a card to pass, not to play.
             for c in hand:
-                cards[c] = sealed or ('Choose one of your color cards.' if suit(c) == 'submarine' else None)
-            for c in tops:
-                cards[c] = play
-        else:
-            turn = [] if play else self.playable(s['turn'])
-            legal = legal_cards(turn, s['trick'])
-            for c in hand + tops:
-                cards[c] = play or ('That card is not in the playable hand.' if c not in turn else
-                                    'You must follow the opening suit.' if c not in legal else None)
-        tasks = {}
-        if s['phase'] == 'allocation' and s['mission']['allocation'] in ('normal', 'skip_captain'):
+                cards[c] = gate or first((actor in s['pass_choices'], 'Your pass is already locked or unavailable.'),
+                                         (suit(c) == 'submarine', 'Choose one of your color cards.'))
+
+        # choose_task and pass_task, in clockwise selection.
+        tasks, pass_task = {}, None
+        if selecting:
             seat = self.selector()
-            for k in s['pool']:
-                tasks[k] = gate or ('It is another crew member’s task selection.' if self.controller(seat) != actor else
-                                    'The captain cannot take a captain comparison task.' if not self.eligible(k, seat) else None)
-        offer = None
-        if s['phase'] == 'allocation' and s['mission']['allocation'] == 'captain_one':
-            offer = gate or ('The captain must offer these tasks.' if actor != s['captain'] else None)
-        return {'play': play, 'offer': offer,
-                'cards': {c: r for c, r in cards.items() if r}, 'tasks': {k: r for k, r in tasks.items() if r}}
+            tasks = {k: gate or first((not asked, 'It is another crew member’s task selection.'),
+                                      (not self.eligible(k, seat), 'The captain cannot take a captain comparison task.'))
+                     for k in s['pool']}
+            pass_task = gate or first((not asked, 'It is another crew member’s turn.'),
+                                      (not self._may_pass_task(), 'The remaining tasks must be assigned this round.'))
+
+        # volunteer, by answer.
+        answers = {}
+        if mode == 'volunteer':
+            forced = len(s['seats']) - len(s['answers']) <= s['mission']['volunteers'] - len(s['volunteers'])
+            turn_to_answer = gate or first((not asked, 'Answer when the captain asks you.'))
+            answers = {'yes': turn_to_answer,
+                       'no': turn_to_answer or first((forced, 'The remaining crew must take the tasks.'))}
+
+        # propose assign of all tasks (missions 6, 10 and 13): whoever is named, then owner by owner.
+        offer, owners = None, {}
+        if mode in ('one', 'captain_one'):
+            offer = gate or first((mode == 'captain_one' and actor != s['captain'], 'The captain must offer these tasks.'))
+            owners = {q: offer or first((not all(self.eligible(k, q) for k in s['pool']), 'Every task needs an eligible owner.'))
+                      for q in s['seats']}
+        kept = lambda reasons: {k: r for k, r in reasons.items() if r}
+        return {'play': play, 'cards': kept(cards), 'tasks': kept(tasks), 'pass_task': pass_task,
+                'volunteer': kept(answers), 'offer': offer, 'offer_owners': kept(owners)}
 
     def view(self, actor=None):
         s = self.s
@@ -789,7 +813,9 @@ class Engine:
                 'proposal': deepcopy(s['proposal']),
                 'me': {'seat': actor, 'hand': self.playable(actor), 'legal_cards': allowed,
                        'play_reason': play_reason, 'card_reasons': reasons['cards'],
-                       'task_reasons': reasons['tasks'], 'offer_reason': reasons['offer'],
+                       'task_reasons': reasons['tasks'], 'pass_task_reason': reasons['pass_task'],
+                       'volunteer_reasons': reasons['volunteer'], 'offer_reason': reasons['offer'],
+                       'offer_owner_reasons': reasons['offer_owners'],
                        'communication_options': self.communication_options(actor),
                        'may_pass_task': (s['phase'] == 'allocation' and s['mission']['allocation'] in ('normal', 'skip_captain')
                            and self.controller(self.selector()) == actor and

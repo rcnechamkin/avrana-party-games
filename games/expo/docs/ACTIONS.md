@@ -42,6 +42,31 @@ know the action is illegal, so the client can disable it with the right reason. 
 the action is legal and whether it helps or loses the mission is deliberately not computed for the
 player (R08).
 
+**The reason on an unavailable control is the server's own sentence** (AVR-263, owner decision of
+2026-10-05). `Engine.reasons(seat)` works out, for the controls a crew member sees, the sentence
+`apply` would reject that very request with, making the same checks in the same order, and the
+view carries the result in `me`:
+
+| Field | Control | Absent or null means |
+|---|---|---|
+| `play_reason` | playing any card (`play_card`) | the viewer plays now |
+| `card_reasons` `{card: sentence}` | each card of the viewer's hand and each of Tonoja's face-up cards: `play_card`, or `pass_card` for a hand card during the distress exchange | that card may be sent |
+| `task_reasons` `{task: sentence}` | "Take this task" on each open task (`choose_task`) | the viewer may take it for the selecting seat |
+| `pass_task_reason` | "Pass selection" (`pass_task`) | the viewer may pass |
+| `volunteer_reasons` `{yes, no: sentence}` | the two volunteer answers (`volunteer`) | that answer is accepted |
+| `offer_reason` | "Offer all tasks" whoever is named (`assign` with `task: all`, missions 6, 10 and 13) | the viewer may offer |
+| `offer_owner_reasons` `{seat: sentence}` | the same offer naming that seat | that seat may be named |
+
+The maps hold only what is refused. A field that does not apply in the current phase or mission is
+null or empty. The client shows these sentences and words none of its own for the same refusal;
+such a control is disabled exactly when the view gives a reason for it. The reasons read the
+public table and the viewer's own hand and nothing else, and a viewer without a seat gets none
+(`me` is null). `test_at_any_state_a_reason_is_the_rejection_and_no_reason_means_accepted` sends
+every one of these requests in some 1,500 states and compares: a reason is the rejection, word
+for word, and no reason means the request is accepted. Controls outside the table above (a crew
+decision other than the offer, a prediction, a sonar declaration, the Party Host's Begin, Retry
+and Next) carry no reason field; the client hides most of them when they cannot be used.
+
 **Mutation.** Every accepted command also increases `revision` and stores its request id.
 
 ## Platform actions (shared session layer)
@@ -81,8 +106,9 @@ These belong to the platform; EXPO only constrains them.
   tasks to other crew members on the next attempt." (C20). Only the captain can be in that
   position. The unassigned task stays unassigned; the crew may retry with the same or new tasks.
 - **Knowable before**: yes. Outcome no: a hard or even hopeless choice is legal (R08).
-- **Client**: "Take this task" on each open task, disabled unless the viewer controls the selecting
-  seat and that seat is eligible ("Another crew member must select this task.").
+- **Client**: "Take this task" on each open task, disabled with `me.task_reasons[task]`: the
+  `turn` sentence for a viewer who does not control the selecting seat, the `owner` sentence for
+  the captain on a captain comparison task.
 - **Not warned**: the client does not tell the crew that a pick will leave the captain without a
   legal task. The information is public (the tasks and the order are visible), and the mistake is
   the crew's to avoid (R08). A draw that makes it unavoidable never reaches selection: it is
@@ -96,8 +122,9 @@ These belong to the platform; EXPO only constrains them.
 - **Illegal**: `phase` "Passing is not available here."; `turn`; `pass` "The remaining tasks must
   be assigned this round."
 - **Mutation**: cursor advances.
-- **Knowable before**: yes (`me.may_pass_task`).
-- **Client**: "Pass selection", disabled with the `pass` message.
+- **Knowable before**: yes (`me.pass_task_reason`; `me.may_pass_task` is the same fact as a flag).
+- **Client**: "Pass selection", shown to the viewer who controls the selecting seat and disabled
+  with `me.pass_task_reason`, which is also written beside it.
 
 ### `volunteer {yes}`
 
@@ -109,9 +136,11 @@ These belong to the platform; EXPO only constrains them.
 - **Mutation**: the answer is recorded. On the first yes that seat receives every task and the
   phase advances. If that seat may not own one of the tasks (the captain and a captain-comparison
   task), the attempt ends at once as a counted failure with a visible reason (P15).
-- **Knowable before**: the forced yes is (`me.may_decline_volunteer`). The eligibility failure is
-  knowable from public tasks but is not shown as a warning.
-- **Client**: "Yes · take the tasks" and "No" for the asked seat; "No" disabled when forced.
+- **Knowable before**: the forced yes is (`me.volunteer_reasons.no`; `me.may_decline_volunteer` is
+  the same fact as a flag). The eligibility failure is knowable from public tasks but is not shown
+  as a warning.
+- **Client**: "Yes · take the tasks" and "No" for the asked seat; "No" disabled when forced, with
+  `me.volunteer_reasons.no` beside it.
 
 ### Crew decision `assign {owner, task}`
 
@@ -199,8 +228,11 @@ kind of table.
 - **Client**: controls appear only in the matching phase. In the stage: "Distress ← left" and
   "Distress → right" (hidden for two players), "Offer all tasks", "Propose owner". In the dock's
   table zone: "Begin without passing" (or the host's "Begin mission") and "End table". On the
-  result: "Retry same tasks", "Retry new tasks", "Next mission". In `captain_one` the offer
-  button is disabled for everyone but the captain, with the reason in words beside it.
+  result: "Retry same tasks", "Retry new tasks", "Next mission". "Offer all tasks" is disabled
+  with `me.offer_reason`, in words beside it: in `captain_one` the `captain` sentence for
+  everyone but the captain. A seat the offer may not name (the captain, when a captain comparison
+  task is among the tasks) cannot be chosen in the owner list, and `me.offer_owner_reasons` gives
+  the `task` sentence beside it. "Propose owner" lists only a task's eligible owners.
 - A two-player `next` to a mission refused for two players (C11) is accepted as a proposal and
   rejected when the last confirmation tries to prepare it; the proposal then stays pending until
   someone declines. The client does not offer those missions.
@@ -293,9 +325,10 @@ is reached (`GameBinding._party_host_confirm`, then `_party_host_action`; AVR-25
   chooses, all chosen cards leave their hands and arrive at the agreed neighbour in one step, the
   attempt is counted, a real-time clock starts and the phase becomes `before_trick`.
 - **Knowable before**: yes.
-- **Client**: the hand becomes the chooser; submarines are disabled ("Submarines cannot be
-  passed"); after choosing, "Your pass is sealed". Other players see only that the phase is
-  passing.
+- **Client**: the hand becomes the chooser. Each card is disabled with `me.card_reasons[card]`: a
+  submarine with the `card` sentence, and every card with the `phase` sentence once the viewer's
+  own choice is sealed, which then also stands beside the hand. Other players see only that the
+  phase is passing.
 
 ## Communication
 
@@ -351,13 +384,15 @@ is reached (`GameBinding._party_host_confirm`, then `_party_host_action`; AVR-25
   to history, Tonoja's uncovered cards turn face up, the winner becomes leader and next to play.
   Then every pending task and the mission objective are evaluated, failure before success, and the
   phase becomes `mission_result` if the mission is decided.
-- **Knowable before**: legality yes (`me.legal_cards`, `me.play_reason`). Outcome no: a legal card
-  that loses a task or the mission is accepted and the failure follows (R03, R08).
-- **Client**: each hand card is a button, enabled only when it is the viewer's turn and the card is
-  legal. Tapping a card chooses it; "Play <card>" in the dock sends it, so a small card is never
-  played by a slip. A disabled card's title gives the reason and the same words stand beside the
-  hand. Tonoja's face-up cards replace the captain's hand on Tonoja's turn and are buttons for
-  the captain only ("Only the captain plays for Tonoja."); the other player can look at them.
+- **Knowable before**: legality yes (`me.legal_cards`, `me.play_reason`, `me.card_reasons`).
+  Outcome no: a legal card that loses a task or the mission is accepted and the failure follows
+  (R03, R08).
+- **Client**: each hand card is a button, enabled exactly when `me.card_reasons` gives no reason
+  for it. Tapping a card chooses it; "Play <card>" in the dock sends it, so a small card is never
+  played by a slip. A disabled card's title gives the server's reason, and when no card showing
+  can be chosen the same words stand beside the hand. Tonoja's face-up cards replace the
+  captain's hand on Tonoja's turn and are buttons with the same reasons; the other player can
+  look at them and reads why they are not theirs to play.
   A legal card is never marked, warned about or confirmed for what it may do to the mission.
 
 ## Looking at information

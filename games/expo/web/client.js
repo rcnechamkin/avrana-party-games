@@ -62,6 +62,10 @@ function button(text, action, key, disabled=false, reason="", cls="") {
   b.dataset.key = key; b.title = reason; b.onclick = action; return b;
 }
 // A control that cannot be used says why in words on the page: a phone never shows a title.
+// Why a card, a task, a pass, an answer or an offer is unavailable is the server's sentence, from
+// the view (`me.*_reason`, `me.*_reasons`): the very words it refuses that request with. This
+// file words no reason of its own for them, and such a control is disabled exactly when the view
+// gives a reason (AVR-263).
 function why(text) { return el("p", text, "why"); }
 function busy() {
   pending = true;
@@ -96,9 +100,10 @@ function choices(select, entries, value) {
   }
   if (value !== undefined) select.value = String(value);
 }
-function ownerSelect(key, seats) {
+function ownerSelect(key, seats, refused={}) {
   const select = el("select"); select.dataset.key = key; select.setAttribute("aria-label","Task owner");
-  choices(select, seats.map(s => ({value:s,text:name(s)}))); return select;
+  choices(select, seats.map(s => ({value:s,text:name(s),disabled:Boolean(refused[s])})), seats.find(s => !refused[s]));
+  return select;
 }
 
 // ---- the Party and its host -------------------------------------------------------------------
@@ -248,7 +253,7 @@ function draw() {
   drawSheet(g, st);
   for (const n of document.querySelectorAll("[data-key]")) {
     if (values.has(n.dataset.key) && ["INPUT","SELECT"].includes(n.tagName)
-        && (n.tagName !== "SELECT" || [...n.options].some(o => o.value === values.get(n.dataset.key)))) n.value = values.get(n.dataset.key);
+        && (n.tagName !== "SELECT" || [...n.options].some(o => o.value === values.get(n.dataset.key) && !o.disabled))) n.value = values.get(n.dataset.key);
     if (n.dataset.key === focusKey && !n.disabled && document.activeElement !== n) n.focus({preventScroll:true});
   }
   syncModal();
@@ -478,10 +483,10 @@ function allocationNode(g) {
     const item = el("article", undefined, "pick");
     item.append(el("div", task.text, "pick-text"));
     if (live && ["normal","skip_captain"].includes(mode)) {
-      const mineToTake = g.controller === g.me.seat, eligible = task.eligible_owners.includes(g.selector);
+      const mineToTake = g.controller === g.me.seat, refused = g.me.task_reasons[task.id] || "";
       item.append(button(g.selector === "tonoja" && mineToTake ? "Tonoja takes it" : "Take this task", () => send("choose_task",{task:task.id}), "task:"+task.id,
-        !mineToTake || !eligible, "Another crew member must select this task."));
-      if (mineToTake && !eligible) item.append(why("The captain cannot take a captain comparison task."));
+        Boolean(refused), refused));
+      if (mineToTake && refused) item.append(why(refused));
     } else if (live && mode === "free") {
       const sel = ownerSelect("owner:"+task.id, task.eligible_owners);
       const row = el("div", undefined, "choice-row");
@@ -495,21 +500,26 @@ function allocationNode(g) {
   const actions = el("div", undefined, "choice-row");
   if (["normal","skip_captain"].includes(mode)) {
     if (g.controller === g.me.seat) {
-      actions.append(button("Pass selection", () => send("pass_task"), "pass-task", !g.me.may_pass_task, "The remaining tasks must be assigned this round."));
-      if (!g.me.may_pass_task) box.append(why("You cannot pass: the remaining tasks must be assigned this round."));
+      const refused = g.me.pass_task_reason || "";
+      actions.append(button("Pass selection", () => send("pass_task"), "pass-task", Boolean(refused), refused));
+      if (refused) box.append(why(refused));
     } else box.append(why(`${name(g.controller)} chooses${g.selector === "tonoja" ? " for Tonoja" : ""} now.`));
   }
   if (["one","captain_one"].includes(mode)) {
-    const captainOnly = mode === "captain_one" && g.me.seat !== g.captain;
-    const owner = ownerSelect("all-owner", g.seats);
-    actions.append(owner, button("Offer all tasks", () => propose("assign",{owner:owner.value,task:"all"}), "all-tasks", captainOnly, "The captain decides who takes the tasks."));
-    if (captainOnly) box.append(why(`The captain, ${name(g.captain)}, decides who takes the tasks.`));
+    // An owner the server would refuse cannot be chosen; with nobody left, or no right to offer,
+    // the button is unavailable too.
+    const refusedOwners = g.me.offer_owner_reasons;
+    const refused = g.me.offer_reason || (g.seats.every(s => refusedOwners[s]) ? refusedOwners[g.seats[0]] : "");
+    const owner = ownerSelect("all-owner", g.seats, g.me.offer_reason ? {} : refusedOwners);
+    actions.append(owner, button("Offer all tasks", () => propose("assign",{owner:owner.value,task:"all"}), "all-tasks", Boolean(refused), refused));
+    if (refused) box.append(why(refused));
+    else for (const s of g.seats.filter(s => refusedOwners[s])) box.append(why(`${name(s)}: ${refusedOwners[s]}`));
   }
   if (mode === "volunteer") {
     if (g.controller === g.me.seat) {
       actions.append(button("Yes · take the tasks", () => send("volunteer",{yes:true}), "volunteer-yes", false, "", "btn-primary"),
-        button("No", () => send("volunteer",{yes:false}), "volunteer-no", !g.me.may_decline_volunteer, "The remaining crew must take the tasks."));
-      if (!g.me.may_decline_volunteer) box.append(why("You cannot decline: the remaining crew must take the tasks."));
+        button("No", () => send("volunteer",{yes:false}), "volunteer-no", Boolean(g.me.volunteer_reasons.no), g.me.volunteer_reasons.no || ""));
+      if (g.me.volunteer_reasons.no) box.append(why(g.me.volunteer_reasons.no));
     } else box.append(why(`${name(g.controller)} is asked to volunteer.`));
   }
   if (actions.children.length) box.append(actions);
@@ -555,7 +565,7 @@ function assistanceNode(g) {
 function passingNode(g) {
   const box = el("section", undefined, "prep"); box.setAttribute("aria-label", "Distress");
   box.append(el("h2", "Distress signal"), el("p", "Everyone passes one color card to the next crew member. Choices stay sealed until the whole crew has chosen."));
-  box.append(why(!g.me ? "The crew is choosing." : g.me.pass_locked ? "Your pass is sealed. Waiting for the crew." : "Choose a color card from your hand, then pass it. Submarines cannot be passed."));
+  box.append(why(!g.me ? "The crew is choosing." : g.me.pass_locked ? "Your pass is sealed. Waiting for the crew." : "Choose a color card from your hand, then pass it."));
   return box;
 }
 
@@ -570,16 +580,11 @@ function drawTabs(g) {
 
 // ---- the hand: always on screen ----------------------------------------------------------------
 function handState(g) {
-  // Which cards are showing, and for each whether it may be chosen now and the server's reason.
-  const passing = g.stage === "passing";
-  if (ui.handView === "tonoja") {
-    const mayPlay = Boolean(g.me && g.turn === "tonoja" && g.captain === g.me.seat && !g.proposal && !g.away.length && !g.result);
-    return g.tonoja.map(c => c && ({card:c, enabled:mayPlay && g.me.legal_cards.includes(c), reason:g.me?.play_reason || "Only the captain plays for Tonoja."}));
-  }
-  if (!g.me) return [];
-  return g.me.hand.map(c => ({card:c,
-    enabled: !g.away.length && !g.proposal && !g.result && (passing ? (!g.me.pass_locked && !c.startsWith("submarine")) : g.turn === g.me.seat && g.me.legal_cards.includes(c)),
-    reason: passing ? "Submarines cannot be passed" : g.me.play_reason || (g.turn === g.me.seat ? "You must follow the opening suit." : "Play from Tonoja’s cards.")}));
+  // Which cards are showing, and for each the server's reason it cannot be chosen now, if any
+  // (AVR-263). A watcher has no reasons and can choose nothing.
+  const state = c => { const reason = g.me?.card_reasons[c] || ""; return {card:c, enabled:Boolean(g.me) && !reason, reason}; };
+  if (ui.handView === "tonoja") return g.tonoja.map(c => c && state(c));
+  return g.me ? g.me.hand.map(state) : [];
 }
 
 function drawHand(g) {
@@ -610,13 +615,14 @@ function drawHand(g) {
   if (!n) hand.append(el("p", g.me ? "No cards left." : "Spectators see no hands.", "muted"));
   let reason = "";
   if (g.me) {
+    // When no card showing can be chosen the line says why, in the server's words; otherwise it
+    // says what to do.
     const lead = g.trick[0]?.card.split(":")[0];
-    const tonoja = ui.handView === "tonoja";
-    if (g.result) reason = "The mission is over.";
-    else if (g.stage === "passing") reason = g.me.pass_locked ? "Your pass is sealed" : "Choose one color card";
-    else if (tonoja && g.captain !== g.me.seat) reason = "Only the captain plays for Tonoja.";
-    else if (g.me.play_reason) reason = g.me.play_reason;
-    else if (tonoja !== (g.turn === "tonoja")) reason = tonoja ? "It is not Tonoja’s turn." : "Play from Tonoja’s cards.";
+    const shown = cards.filter(Boolean);
+    const passing = g.stage === "passing" && ui.handView !== "tonoja";
+    if (shown.length && shown.every(c => c.reason && c.reason === shown[0].reason)) reason = shown[0].reason;
+    else if (!shown.length) reason = (passing ? "" : g.me.play_reason) || "";
+    else if (passing) reason = "Choose one color card";
     else reason = lead ? `Follow ${lead === "submarine" ? "submarines" : lead} if you can` : "Lead any card";
   }
   $("hand-reason").textContent = reason;

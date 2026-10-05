@@ -43,7 +43,6 @@ missions.
 | | Defect | Issue |
 |---|---|---|
 | E-D2 | A table cannot be ended while a seated player is away; a standalone table can be stranded until the server restarts | AVR-240 |
-| E-D8 | Six unavailable-control reasons differ from the server's rejection; the server refuses each request | AVR-263 |
 
 Fixed: E-D1, the task-selection stall when the captain was the only seat left for a
 captain-comparison task (AVR-239, 2026-10-04). E-D3 and E-D4, late completion of the "win none of
@@ -56,7 +55,9 @@ checked for its type before anything is stored (AVR-264, 2026-10-04). E-D10, a t
 in a mission played after mission 32: a task card is now in one place at a time (AVR-265,
 2026-10-04). E-D11, a request id that could not be written to the snapshot file and stopped the
 table: a request id is plain printable text, and a snapshot that cannot be written is a failed
-write like any other (AVR-268, 2026-10-04).
+write like any other (AVR-268, 2026-10-04). E-D8, reasons on unavailable controls that were not
+the server's rejection: the view now carries the server's own sentence for each such control and
+the client shows only that (AVR-263, 2026-10-05).
 
 **Owner decisions, built.** The owner answered the open policy questions on 2026-10-04 under a
 "fidelity first" principle (AVR-243). The four answers that change behaviour are built: a single

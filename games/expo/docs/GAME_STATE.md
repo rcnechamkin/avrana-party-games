@@ -127,7 +127,7 @@ retry or go on. Only `closed` hands control back to the platform (`game_end`).
 | Public | Private to its owner | Never sent |
 |---|---|---|
 | mission definition, seats, captain, leader, turn | own hand | other hands |
-| trick in progress, the most recent resolved trick only | own legal cards and the reason play is unavailable | Tonoja's covered cards |
+| trick in progress, the most recent resolved trick only | own legal cards and, for each of the viewer's own controls that is unavailable, the server's reason ([ACTIONS](ACTIONS.md#conventions): `play_reason`, `card_reasons`, `task_reasons`, `pass_task_reason`, `volunteer_reasons`, `offer_reason`, `offer_owner_reasons`) | Tonoja's covered cards |
 | per-seat hand counts and trick counts | own communication options | resolved tricks before the latest |
 | tasks: text, difficulty, owner, status, eligible owners | own secret prediction, until the mission result | task deck order, used pile |
 | predictions that are public; whether one is committed | whether own distress choice is locked | sealed distress choices |

@@ -1002,8 +1002,12 @@ def rejection(e, actor, t, **kwargs):
 
 def shown_reasons(e):
     """Every control reason every crew member's view gives is what the server says to that very
-    request, and a control with no reason is accepted. Returns the reasons seen."""
+    request, and a control with no reason is accepted: every card, task, pass, volunteer answer
+    and offer is sent. Nobody who is not seated gets a reason. Returns the reasons seen."""
     seen = set()
+    mode = e.s['mission']['allocation'] if e.s['phase'] == 'allocation' else None
+    for watcher in (None, 'tonoja', 'stranger'):
+        assert e.view(watcher)['me'] is None
     for q in e.s['humans']:
         view = e.view(q)
         me, tops = view['me'], [c for c in view['tonoja'] if c]
@@ -1017,20 +1021,57 @@ def shown_reasons(e):
         if e.s['phase'] != 'passing':
             assert me['legal_cards'] == [c for c in e.playable(e.s['turn']) if c not in me['card_reasons']
                                          and not me['play_reason']]
-        if e.s['phase'] == 'allocation' and e.s['mission']['allocation'] in ('normal', 'skip_captain'):
+        if mode in ('normal', 'skip_captain'):
             assert set(me['task_reasons']) <= set(e.s['pool'])
             for k in e.s['pool']:
                 assert me['task_reasons'].get(k) == rejection(e, q, 'choose_task', task=k), (q, k)
+            assert me['pass_task_reason'] == rejection(e, q, 'pass_task'), q
+            assert me['may_pass_task'] == (me['pass_task_reason'] is None
+                                           or me['pass_task_reason'] in GATE and e.controller(e.selector()) == q
+                                           and e._may_pass_task())
         else:
-            assert me['task_reasons'] == {}
-        if e.s['phase'] == 'allocation' and e.s['mission']['allocation'] == 'captain_one':
-            owner = next(o for o in e.s['humans'] if o != e.s['captain'])
-            assert me['offer_reason'] == rejection(
-                e, q, 'propose', proposal={'kind': 'assign', 'owner': owner, 'task': 'all'})
+            assert me['task_reasons'] == {} and me['pass_task_reason'] is None
+        if mode == 'volunteer':
+            assert set(me['volunteer_reasons']) <= {'yes', 'no'}
+            for answer in ('yes', 'no'):
+                assert me['volunteer_reasons'].get(answer) == rejection(e, q, 'volunteer', yes=answer == 'yes'), (q, answer)
         else:
-            assert me['offer_reason'] is None
-        seen |= set(me['card_reasons'].values()) | set(me['task_reasons'].values()) | {me['offer_reason']}
+            assert me['volunteer_reasons'] == {}
+        if mode in ('one', 'captain_one'):
+            assert set(me['offer_owner_reasons']) <= set(e.s['seats'])
+            for owner in e.s['seats']:
+                assert me['offer_owner_reasons'].get(owner) == rejection(
+                    e, q, 'propose', proposal={'kind': 'assign', 'owner': owner, 'task': 'all'}), (q, owner)
+            # The offer's own reason is the one that holds whoever is named.
+            if me['offer_reason']:
+                assert me['offer_owner_reasons'] == dict.fromkeys(e.s['seats'], me['offer_reason'])
+            else:
+                assert set(me['offer_owner_reasons'].values()) <= {'Every task needs an eligible owner.'}
+        else:
+            assert me['offer_reason'] is None and me['offer_owner_reasons'] == {}
+        seen |= {me['play_reason'], me['pass_task_reason'], me['offer_reason']}
+        for field in ('card_reasons', 'task_reasons', 'volunteer_reasons', 'offer_owner_reasons'):
+            seen |= set(me[field].values())
     return seen - {None}
+
+
+GATE = ('Waiting for the crew to reconnect.', 'This table is closed.', 'Confirm or decline the crew decision first.')
+EVERY_REASON = set(GATE) | {
+    'This is not a card-play phase.', 'It is another crew member’s turn.',
+    'That card is not in the playable hand.', 'You must follow the opening suit.',
+    'Your pass is already locked or unavailable.', 'Choose one of your color cards.',
+    'It is another crew member’s task selection.', 'The captain cannot take a captain comparison task.',
+    'The remaining tasks must be assigned this round.',
+    'Answer when the captain asks you.', 'The remaining crew must take the tasks.',
+    'The captain must offer these tasks.', 'Every task needs an eligible owner.'}
+
+
+def with_tasks(e, pool):
+    """The mission's tasks laid out by hand, before any is taken."""
+    e.s['pool'], e.s['selected'], e.s['initial_count'] = list(pool), list(pool), len(pool)
+    place(e)
+    e.check()
+    return e
 
 
 def test_every_reason_shown_on_an_unavailable_control_is_the_servers_rejection():
@@ -1093,13 +1134,203 @@ def test_every_reason_shown_on_an_unavailable_control_is_the_servers_rejection()
             assert [e.view(q)['me']['offer_reason'] for q in humans if q != e.s['captain']] \
                 == ['The captain must offer these tasks.'] * (n - 1)
             assert e.view(e.s['captain'])['me']['offer_reason'] is None
-    assert seen == {
-        'Waiting for the crew to reconnect.', 'Confirm or decline the crew decision first.',
-        'This is not a card-play phase.', 'It is another crew member’s turn.',
-        'That card is not in the playable hand.', 'You must follow the opening suit.',
-        'Your pass is already locked or unavailable.', 'Choose one of your color cards.',
-        'It is another crew member’s task selection.', 'The captain cannot take a captain comparison task.',
-        'The captain must offer these tasks.'}
+    assert seen == EVERY_REASON - {'This table is closed.', 'The remaining tasks must be assigned this round.',
+                                   'Answer when the captain asks you.',
+                                   'The remaining crew must take the tasks.', 'Every task needs an eligible owner.'}
+
+
+def test_a_closed_table_says_so_on_every_card_and_refuses_every_command_with_it():
+    for n in (2, 3, 4, 5):
+        e = playing(n)
+        decide(e, e.s['humans'][0], 'end')
+        assert e.s['phase'] == 'closed'
+        assert shown_reasons(e) == {'This table is closed.'}
+        for q in e.s['humans']:
+            me = e.view(q)['me']
+            assert me['play_reason'] == 'This table is closed.' and me['legal_cards'] == []
+            assert set(me['card_reasons']) == set(me['hand'] + e.playable('tonoja') * (n == 2))
+            for t, fields in (('pass_card', {'card': me['hand'][0]}), ('choose_task', {'task': 'blue4'}),
+                              ('pass_task', {}), ('volunteer', {'yes': True}), ('confirm', {'yes': True}),
+                              ('propose', {'proposal': {'kind': 'retry', 'keep': True}})):
+                assert rejection(e, q, t, **fields) == 'This table is closed.'
+        # Away comes first, as it does in `apply`.
+        e.s['away'] = [e.s['humans'][0]]
+        assert shown_reasons(e) == {'Waiting for the crew to reconnect.'}
+
+
+def test_a_decision_pending_during_the_distress_exchange_is_the_reason_on_every_hand_card():
+    for n in (3, 4, 5):
+        e = allocated(Engine([f'p{i}' for i in range(n)], random.Random(n), 1))
+        humans = e.s['humans']
+        decide(e, humans[0], 'distress', direction='right')
+        act(e, humans[0], 'pass_card', card=next(c for c in e.playable(humans[0]) if suit(c) != 'submarine'))
+        act(e, humans[1], 'propose', proposal={'kind': 'end'})
+        assert e.s['phase'] == 'passing' and e.s['proposal'] is not None
+        assert shown_reasons(e) == {'Confirm or decline the crew decision first.'}
+        for q in humans:                                             # the sealed seat and the open ones alike
+            me = e.view(q)['me']
+            assert me['card_reasons'] == dict.fromkeys(me['hand'], 'Confirm or decline the crew decision first.')
+        act(e, humans[0], 'confirm', yes=False)                      # declined: the exchange is as it was
+        assert set(e.view(humans[0])['me']['card_reasons'].values()) == {'Your pass is already locked or unavailable.'}
+        assert set(e.view(humans[1])['me']['card_reasons'].values()) <= {'Choose one of your color cards.'}
+        assert shown_reasons(e) == {'Your pass is already locked or unavailable.', 'Choose one of your color cards.',
+                                    'This is not a card-play phase.'}
+
+
+@pytest.mark.parametrize('status', ['failed', 'success'])
+def test_after_the_result_every_card_gives_the_servers_rejection_of_a_play(status):
+    for n in (2, 3, 4, 5):
+        e = playing(n)
+        q = e.s['turn']
+        act(e, e.controller(q), 'play_card', card=legal_cards(e.playable(q), e.s['trick'])[0])
+        e._finish(status, 'fixture')
+        assert e.s['phase'] == 'mission_result'
+        assert shown_reasons(e) == {'This is not a card-play phase.'}
+        for q in e.s['humans']:
+            me = e.view(q)['me']
+            assert me['play_reason'] == 'This is not a card-play phase.' and me['legal_cards'] == []
+            assert set(me['card_reasons']) == set(me['hand'] + e.playable('tonoja') * (n == 2))
+        act(e, e.s['humans'][0], 'propose', proposal={'kind': 'retry', 'keep': True} if status == 'failed'
+            else {'kind': 'next', 'mission': 1})
+        assert shown_reasons(e) == {'Confirm or decline the crew decision first.'}
+        e.s['away'] = [e.s['humans'][1]]
+        assert shown_reasons(e) == {'Waiting for the crew to reconnect.'}
+
+
+@pytest.mark.parametrize('mid', [6, 10, 13])
+def test_the_offer_of_all_tasks_gives_the_servers_rejection_in_missions_six_ten_and_thirteen(mid):
+    """Finding on AVR-263: mission 6 gave no reason while a pending decision or an away seat made
+    the server refuse, and an offer naming an owner who may not take the tasks was enabled."""
+    for n in (2, 3, 4, 5):
+        humans = [f'p{i}' for i in range(n)]
+        e = Engine(humans, random.Random(n), mid)
+        captain, crew = e.s['captain'], [q for q in humans if q != e.s['captain']]
+        only_captain = 'The captain must offer these tasks.' if mid != 6 else None
+        assert e.s['phase'] == 'allocation' and (e.s['mission']['allocation'] == 'one') == (mid == 6)
+        assert e.view(captain)['me']['offer_reason'] is None
+        assert [e.view(q)['me']['offer_reason'] for q in crew] == [only_captain] * len(crew)
+        seen = shown_reasons(e)
+        # A crew decision is pending: nobody may offer, the captain included.
+        act(e, crew[0], 'propose', proposal={'kind': 'end'})
+        assert {e.view(q)['me']['offer_reason'] for q in humans} == {'Confirm or decline the crew decision first.'}
+        seen |= shown_reasons(e)
+        act(e, captain, 'confirm', yes=False)
+        # A crew member is away: the same, with the sentence `apply` gives first.
+        e.s['away'] = [crew[0]]
+        assert {e.view(q)['me']['offer_reason'] for q in humans} == {'Waiting for the crew to reconnect.'}
+        seen |= shown_reasons(e)
+        e.s['away'] = []
+        # A comparison with the captain among the tasks: the captain cannot be named, anyone else can.
+        with_tasks(e, ['lessTricksThanCaptain', 'blue4'])
+        for q in humans:
+            me = e.view(q)['me']
+            if q == captain or mid == 6:
+                assert me['offer_reason'] is None
+                assert me['offer_owner_reasons'] == {captain: 'Every task needs an eligible owner.'}
+            else:
+                assert me['offer_owner_reasons'] == dict.fromkeys(e.s['seats'], only_captain)
+        seen |= shown_reasons(e)
+        assert seen >= {'Confirm or decline the crew decision first.', 'Waiting for the crew to reconnect.',
+                        'Every task needs an eligible owner.'}
+        assert ('The captain must offer these tasks.' in seen) == (mid != 6)
+
+
+def test_pass_selection_and_the_volunteer_answers_give_the_servers_rejection():
+    for n in (3, 4, 5):
+        humans = [f'p{i}' for i in range(n)]
+        # Clockwise selection with as many tasks as seats: nobody may pass.
+        e = with_tasks(Engine(humans, random.Random(n), 1), ['blue4', 'green6', 'yellow1', 'red3', '2x9'][:n])
+        selecting = e.controller(e.selector())
+        assert e.view(selecting)['me']['pass_task_reason'] == 'The remaining tasks must be assigned this round.'
+        assert {e.view(q)['me']['pass_task_reason'] for q in humans if q != selecting} == {'It is another crew member’s turn.'}
+        seen = shown_reasons(e)
+        # The volunteer question: asked in turn, and the last crew member asked cannot decline.
+        e = Engine(humans, random.Random(n), 16)
+        assert e.s['mission']['allocation'] == 'volunteer'
+        while e.s['phase'] == 'allocation':
+            asked = e.controller(e.selector())
+            waiting = {'yes': 'Answer when the captain asks you.', 'no': 'Answer when the captain asks you.'}
+            assert [e.view(q)['me']['volunteer_reasons'] for q in humans if q != asked] == [waiting] * (n - 1)
+            mine = e.view(asked)['me']
+            assert mine['volunteer_reasons'] == ({} if mine['may_decline_volunteer']
+                                                 else {'no': 'The remaining crew must take the tasks.'})
+            seen |= shown_reasons(e)
+            act(e, asked, 'volunteer', yes=not mine['may_decline_volunteer'])
+        assert seen >= {'The remaining tasks must be assigned this round.', 'Answer when the captain asks you.',
+                        'The remaining crew must take the tasks.'}
+
+
+def wander(e, rng):
+    """One more thing happens at the table: a seat drops or returns, or the first of the crew's
+    possible requests, in a random order, that the server accepts."""
+    s = e.s
+    humans = s['humans']
+    roll = rng.random()
+    if roll < 0.05 or (s['away'] and roll < 0.5):
+        s['away'] = [] if s['away'] else [rng.choice(humans)]
+        return
+    if s['away']:
+        return
+    requests = []
+    if s['proposal'] is not None:
+        requests = [(q, 'confirm', {'yes': rng.random() < 0.7}) for q in humans]
+    else:
+        for q in humans:
+            cards = e.playable(q) + (e.playable('tonoja') if 'tonoja' in s['seats'] else [])
+            requests += [(q, 'pass_card' if s['phase'] == 'passing' and c in s['hands'][q] else 'play_card', {'card': c})
+                         for c in cards]
+            requests += [(q, 'choose_task', {'task': k}) for k in s['pool']]
+            requests += [(q, 'pass_task', {}), (q, 'volunteer', {'yes': True})] + [(q, 'volunteer', {'yes': False})] * 4
+            requests += [(q, 'predict', {'task': k, 'count': rng.randrange(3)}) for k in s['assignments']]
+            proposals = [{'kind': 'begin'}, {'kind': 'distress', 'direction': rng.choice(['left', 'right'])},
+                         {'kind': 'retry', 'keep': rng.random() < 0.5}, {'kind': 'next', 'mission': s['mission']['id']}]
+            proposals += [{'kind': 'assign', 'owner': o, 'task': k} for o in s['seats'] for k in ['all'] + s['pool']]
+            if roll > 0.97:
+                proposals = [{'kind': 'end'}]
+            if roll > 0.9:                                           # a decision left pending, asked at any moment
+                proposals.append({'kind': 'end'})
+                requests = []
+            requests += [(q, 'propose', {'proposal': p}) for p in proposals]
+    rng.shuffle(requests)
+    for q, t, fields in requests:
+        try:
+            act(e, q, t, **fields)
+            return
+        except Invalid:
+            pass
+
+
+WANDERS = [(mid, n, seed) for mid in (1, 6, 10, 13, 16, 17, 25) for n in (2, 3, 4, 5) for seed in (0, 1)
+           if not (mid == 16 and n == 2)]
+REASONS_SEEN, STATES_SEEN = set(), []
+
+
+@pytest.mark.parametrize('mid,n,seed', WANDERS)
+def test_at_any_state_a_reason_is_the_rejection_and_no_reason_means_accepted(mid, n, seed):
+    """The property (AVR-263): in every state a table wanders into, each control the view marks
+    unavailable is refused with exactly that sentence, each control with no reason is accepted,
+    and no reason depends on anything its reader may not see."""
+    rng = random.Random(1000 * mid + 10 * n + seed)
+    e = Engine([f'p{i}' for i in range(n)], random.Random(rng.random()), mid)
+    if seed and mid in (1, 6, 10, 13):                               # a task the captain may not take
+        with_tasks(e, ['lessTricksThanCaptain', 'blue4', 'green6', 'yellow1', 'red3', '2x9'][:len(e.s['seats']) + 1])
+    states = 0
+    for step in range(28):
+        REASONS_SEEN.update(shown_reasons(e))
+        states += 1
+        if step % 6 == 0 and all(len(e.s['hands'][q]) > 2 for q in e.s['humans']):
+            for viewer in e.s['humans']:
+                assert with_other_secrets(e, viewer, step).view(viewer) == e.view(viewer), (viewer, step)
+        wander(e, rng)
+        e.check()
+    STATES_SEEN.append((e.s['mission']['id'], e.s['phase'], states))
+
+
+def test_the_wandering_tables_met_every_reason_and_some_hundreds_of_states():
+    if len(STATES_SEEN) != len(WANDERS):
+        pytest.skip('needs every table of the property test in the same run')
+    assert sum(states for _, _, states in STATES_SEEN) >= 500
+    assert REASONS_SEEN == EVERY_REASON
 
 
 # ---- E-M42 mission 32 played through -----------------------------------------------------------

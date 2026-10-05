@@ -39,7 +39,7 @@ engine depends on the module host.
 | 2 | Pure engine | Built. One defect affects play (E-D2); E-D1 was fixed on 2026-10-04 (AVR-239) |
 | 3 | Task and mission evaluators | Built for 92 tasks and 24 numbered missions plus the continuation. The window-task timing defect (E-D3) was fixed on 2026-10-04 (AVR-241) |
 | 4 | Session adapter and reliability | Built. The persistence shortfalls E-D5 to E-D7 were closed on 2026-10-04 (AVR-242) |
-| 5 | Phone client | Built and playable; six control reasons differ from the server's (E-D8); draft presentation specs not implemented (E-X1). No dedicated TV view |
+| 5 | Phone client | Built and playable; an unavailable control shows the server's own rejection (E-D8, fixed by AVR-263); draft presentation specs not implemented (E-X1). No dedicated TV view |
 | 6 | Integration | Registered, catalogued, Party contract and grant merged. Not deployed; no appliance key; no real-phone acceptance |
 
 ## Verification commands
@@ -135,7 +135,8 @@ In order. Each item has its issue; none is started by this document.
 3. **Ending a table while a player is away** (AVR-240, E-D2), together with the rule for routine
    progression decisions (AVR-252).
 4. ~~Task completion timing and currents visibility (AVR-241, E-D3, E-D4)~~: done 2026-10-04.
-5. ~~Test gaps (AVR-247)~~: done 2026-10-04. It recorded one defect, E-D8 (AVR-263).
+5. ~~Test gaps (AVR-247)~~: done 2026-10-04. It recorded one defect, E-D8, fixed by AVR-263 on
+   2026-10-05.
 6. ~~Persistence hardening (AVR-242, E-D5 to E-D7)~~: done 2026-10-04.
 7. **Blocked content** (AVR-244). Each mission or task is enabled only with source evidence or an
    owner ruling, a fixture per definition, and an update to the register.

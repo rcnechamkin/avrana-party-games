@@ -26,10 +26,10 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 - The card rules, deal, captain, trick resolution, communication truth and timing, selection and
   pass rule, task evaluators, mission targets and modifiers of the 24 enabled missions match R
   and L.
-- Eleven defects were recorded (E-D1 to E-D7 by the reconciliation, E-D8 by AVR-247, E-D9 and E-D10 by probing during its review, E-D11 by the review of AVR-264). Eight are fixed: E-D11, a request id that stopped a stored table (AVR-268), E-D10, a task dealt twice after mission 32 (AVR-265), E-D9, the table freeze from one malformed crew decision (AVR-264), E-D1, the selection stall
+- Eleven defects were recorded (E-D1 to E-D7 by the reconciliation, E-D8 by AVR-247, E-D9 and E-D10 by probing during its review, E-D11 by the review of AVR-264). Nine are fixed: E-D8, the reasons shown on unavailable controls (AVR-263), E-D11, a request id that stopped a stored table (AVR-268), E-D10, a task dealt twice after mission 32 (AVR-265), E-D9, the table freeze from one malformed crew decision (AVR-264), E-D1, the selection stall
   (AVR-239), E-D3 and E-D4, late completion of the window tasks and currents visibility
   (AVR-241), and E-D5 and E-D7, the content hash scope and the timed clock (AVR-242). E-D6 was
-  settled by amending the contract (AVR-242). Of the two that remain, one affects play and needs
+  settled by amending the contract (AVR-242). The one that remains affects play and needs
   an owner decision on the remedy: a table cannot be ended while someone is away (AVR-240).
 - Twenty-three digital policies are in force. The owner decided the open ones on 2026-10-04
   (AVR-243, questions Q1 to Q8 below). Four decisions change behaviour. All four are implemented:
@@ -113,7 +113,7 @@ updated.
 | E-D5 | **Fixed 2026-10-04.** Was: the content hash covered `tasks.json` only, so a changed mission table did not invalidate a snapshot unless it was the mission in flight. Now: the hash covers the task catalog and every mission definition, untimed and timed, a blocked mission by its reason. The hash value changed once with this fix, so a snapshot written before it is refused with the usual recovery message | state contract | `test_the_content_hash_is_the_hash_of_the_tasks_and_of_every_mission_definition`, `test_any_change_to_the_content_changes_the_hash`, `test_a_changed_modifier_timer_or_fixed_task_list_changes_the_hash`, `test_a_snapshot_taken_before_a_mission_table_change_is_refused_after_it`, `test_an_unchanged_mission_table_still_restores` | AVR-242 |
 | E-D6 | **Settled 2026-10-04 by amending the contract; no code change.** Only accepted requests are remembered, and a rejected request id used again is a new request. The earlier draft asked for both to be kept. Keeping rejections adds nothing to idempotency (every state change raises the revision), would forbid resending a request refused only because the disk failed, and would let one seated player fill the capped request memory alone and lock the table. Reasons in [GAME_STATE](GAME_STATE.md#commands-ordering-and-repeats) | state contract (amended) | `test_a_rejected_request_is_not_remembered_and_an_accepted_one_is`, `test_a_flood_of_rejected_requests_is_not_remembered_and_cannot_use_up_the_request_limit`, `test_the_same_rejected_request_sent_again_gets_the_same_answer`, `test_a_rejected_request_id_used_again_is_a_new_request_and_is_remembered_once_accepted`, `test_a_request_refused_only_because_the_disk_failed_succeeds_when_sent_again_unchanged` | AVR-242 |
 | E-D7 | **Fixed 2026-10-04.** Was: the deadline was a wall-clock moment, so a backward clock step granted time, on restore and (found while fixing it) on a live table with no restart at all. Now: the deadline runs on the monotonic clock; a restored timed attempt continues only on the same boot (by the kernel's boot identity) with both clocks agreeing about how long the server was down, and otherwise ends as a counted failure with its own reason, written to the snapshot. A reboot therefore always ends a running timed attempt | state contract; the appliance has no real-time clock | `test_a_timed_mission_runs_on_the_monotonic_clock_and_browsers_get_a_wall_clock_moment`, `test_a_wall_clock_step_during_a_live_timed_mission_neither_grants_nor_takes_time`, `test_a_restart_on_the_same_boot_continues_the_deadline_and_charges_the_downtime`, `test_a_timed_table_restored_after_its_deadline_has_already_failed`, `test_a_timed_table_restored_under_a_clock_that_cannot_be_trusted_ends_and_never_gains_time`, `test_a_timed_snapshot_without_a_clock_record_ends_the_attempt`, `test_a_host_that_never_could_name_its_boot_ends_the_attempt_on_every_restart`, `test_a_saved_deadline_later_than_a_full_timer_is_not_resumed`, `test_an_end_that_could_not_be_written_is_judged_again_and_a_reboot_still_ends_it`, `test_a_snapshot_with_a_deadline_beside_a_result_is_refused_not_raised`, `test_a_snapshot_with_a_deadline_on_an_untimed_mission_is_refused`, `test_clocks_that_agree_within_two_seconds_on_the_same_boot_are_trusted`, `test_a_failed_write_after_a_wall_clock_step_leaves_the_shared_timer_on_the_true_deadline`, `test_a_table_with_no_running_deadline_restores_whatever_the_clocks_say`, `test_on_the_real_clocks_the_shared_timer_and_the_browsers_get_the_same_150_seconds`, `test_the_engine_expires_only_a_running_deadline` | AVR-242 |
-| E-D8 | **Fixed 2026-10-04.** Was: the reason shown on an unavailable control was not the server's rejection in six places. Two stated something untrue: a color card in the distress exchange after the player's own choice was sealed read "Submarines cannot be passed", and a card that follows suit read "You must follow the opening suit." while a crew decision was pending (the captain's off-suit Tonoja card read "Only the captain plays for Tonoja."). Four were a second wording of the same fact: a card before the crew begins, "Take this task" for another seat and for the captain on a comparison task, "Offer all tasks" for a non-captain. Now: the view gives the reason for each card, each open task and the offer (`me.card_reasons`, `me.task_reasons`, `me.offer_reason`, `me.play_reason`) in the words the server rejects that request with, and the client shows only those; a control is unavailable exactly when the view gives a reason for it | action contract ("the client can disable it with the right reason") | `test_defect_the_reason_shown_before_play_begins_is_the_servers_rejection` (now an ordinary passing test); `test_every_reason_shown_on_an_unavailable_control_is_the_servers_rejection`; the playtest compares the shown reason with the refusal | AVR-263 |
+| E-D8 | **Fixed 2026-10-05.** Was: the reason shown on an unavailable control was not the server's rejection in six places. Two stated something untrue: a color card in the distress exchange after the player's own choice was sealed read "Submarines cannot be passed", and a card that follows suit read "You must follow the opening suit." while a crew decision was pending (the captain's off-suit Tonoja card read "Only the captain plays for Tonoja."). Four were a second wording of the same fact: a card before the crew begins, "Take this task" for another seat and for the captain on a comparison task, "Offer all tasks" for a non-captain. Now: the view gives the reason for each card, each open task, the pass, the volunteer answers and the offer of all tasks (`me.play_reason`, `me.card_reasons`, `me.task_reasons`, `me.pass_task_reason`, `me.volunteer_reasons`, `me.offer_reason`, `me.offer_owner_reasons`) in the words the server rejects that request with, and the client shows only those; such a control is unavailable exactly when the view gives a reason for it. The owner chose the server's wording for rows 1 to 4 of the issue on 2026-10-05 | action contract ("the client can disable it with the right reason") | `test_defect_the_reason_shown_before_play_begins_is_the_servers_rejection` (now an ordinary passing test); `test_every_reason_shown_on_an_unavailable_control_is_the_servers_rejection`; `test_at_any_state_a_reason_is_the_rejection_and_no_reason_means_accepted`; `test_a_closed_table_says_so_on_every_card_and_refuses_every_command_with_it`; `test_a_decision_pending_during_the_distress_exchange_is_the_reason_on_every_hand_card`; `test_after_the_result_every_card_gives_the_servers_rejection_of_a_play`; `test_the_offer_of_all_tasks_gives_the_servers_rejection_in_missions_six_ten_and_thirteen`; `test_pass_selection_and_the_volunteer_answers_give_the_servers_rejection`; the playtest compares the shown reason with the refusal | AVR-263 |
 | E-D9 | **Fixed 2026-10-04.** Was: a crew decision was checked for its keys but not for the type of every value. In missions 6, 10 and 13 the `task` of an `assign` decision was never read, so any JSON value was stored in the pending decision and sent to every viewer; a value nested about 500 lists deep (one socket message) then made every view, snapshot and command raise, and one seated player could freeze the table. Now: every field of a crew decision must be a plain value of its own type and, where all tasks go together, `task` must be `all`; anything else is rejected before it is stored or remembered | action contract (a rejected request changes nothing) | `test_an_assign_field_of_the_wrong_type_is_refused_in_every_allocation_mode`, `test_every_other_decision_field_of_the_wrong_type_is_refused`, `test_where_all_tasks_go_together_the_task_field_is_the_word_all`, `test_the_request_that_froze_the_table_is_refused_and_the_table_plays_on` | AVR-264 |
 | E-D10 | **Fixed 2026-10-04.** Was: mission 32 took its four named tasks without removing them from the task deck; after it ended they were in the used pile too, and once the deck was refilled from the used pile a later mission could deal the same task twice. Assigning the second copy overwrote the first copy's owner, so one task disappeared and the mission was easier than its difficulty. Now: a fixed mission takes its tasks out of the deck and the used pile, and the engine's invariant refuses any state with a task id twice in a pile or in two piles | no source involved: a task card cannot be in two piles | `test_no_task_is_dealt_twice_in_the_missions_after_mission_thirty_two`, `test_no_task_is_dealt_twice_for_any_crew_size`, `test_retries_before_and_after_mission_thirty_two_keep_every_task_in_one_place`, `test_mission_thirty_two_takes_its_four_tasks_out_of_the_deck_and_the_used_pile`, `test_a_table_that_opens_on_mission_thirty_two_deals_its_four_tasks`, `test_the_reported_table_reaches_mission_forty_seven_with_distinct_tasks`, `test_a_snapshot_with_a_task_in_two_places_is_refused` | AVR-265 |
 | E-D11 | **Fixed 2026-10-04.** Was: a request id was checked only for its length; one that cannot be written as UTF-8 (a lone surrogate) on an otherwise legal command was accepted and remembered, the snapshot write then raised, and every later command on a table with a snapshot file raised too. Now: a request id is 1 to 80 printable ASCII characters, and a snapshot that cannot be written as text is a failed write: the command is rolled back and answered `storage` | action contract (a rejected request changes nothing); state contract (a failed write rolls back) | `test_a_request_id_that_is_not_plain_printable_text_is_refused`, `test_a_plain_request_id_is_still_accepted`, `test_an_unstorable_request_id_leaves_a_stored_table_saving_and_answering`, `test_a_snapshot_that_cannot_be_written_as_text_is_a_storage_failure_not_a_crash`, `test_the_store_reports_any_snapshot_it_cannot_write_as_a_failed_write` | AVR-268 |
@@ -1010,6 +1010,61 @@ Still open:
 | Party `tools/contract_check.py --games` against this branch | compatible |
 | A real phone | not run |
 
-### AVR-263, 2026-10-04
+### AVR-263, 2026-10-04 and 2026-10-05
 
-E-D8 is fixed. `Engine.reasons` states, in the order `apply` checks them and in its words, why each card, open task and the captain's offer is unavailable to a crew member; the view carries them and `client.js` no longer words a reason of its own for those controls. `test_every_reason_shown_on_an_unavailable_control_is_the_servers_rejection` sends the very request for every card, task and offer in every view, for two to five players, and compares the rejection with the reason shown. `ACTIONS.md` still quotes three of the replaced client sentences; summary counts elsewhere are not yet updated.
+E-D8 is fixed. The owner decided on 2026-10-05 that the server's rejection wording is the single
+source for rows 1 to 4 of the issue and that the client keeps no second sentence for the same
+refusal; rows 5 and 6 needed no decision.
+
+Changed: `games/expo/engine.py` (`Engine.reasons`, seven fields of `me` in the view; no rule, no
+rejection code and no check in `apply` changed), `games/expo/web/client.js`,
+`tests/test_expo_coverage.py`, `tests/playtest_expo.mjs`, and these documents.
+
+- **Engine.** `Engine.reasons(seat)` gives, for each control a crew member sees, the sentence
+  `apply` rejects that request with. Each control is an ordered list of refusals, in the order
+  `apply` checks them, and the first that holds is the reason; the refusals every command meets
+  first (a seat away, a closed table, a pending crew decision) are one list, so a refusal added
+  to `apply` is one line added there. The view carries `play_reason`, `card_reasons`,
+  `task_reasons`, `pass_task_reason`, `volunteer_reasons`, `offer_reason` and
+  `offer_owner_reasons` ([ACTIONS](ACTIONS.md#conventions)).
+- **Mission 6.** `offer_reason` was worked out for missions 10 and 13 only; in mission 6 it was
+  empty while a pending decision or an away seat made the server refuse. It is now given
+  wherever all tasks go to one seat.
+- **An owner the offer may not name.** In missions 6, 10 and 13 an offer naming the captain while
+  a captain comparison task is among the tasks was enabled and then refused.
+  `offer_owner_reasons` gives the server's sentence for each such seat and the client does not
+  let it be chosen. No rule changed: the server refused this offer before and refuses it now.
+- **Client.** On the one-viewport client of AVR-275 every card, "Take this task", "Pass
+  selection", the volunteer "No" and "Offer all tasks" are disabled exactly when the view gives a
+  reason, and show that sentence. Removed, in favour of the server's sentence: "Another crew
+  member must select this task.", "The captain decides who takes the tasks." (two wordings),
+  "You cannot pass: ...", "You cannot decline: ...", "Submarines cannot be passed" (two places),
+  "Only the captain plays for Tonoja." (two places), "Play from Tonoja's cards.", "It is not
+  Tonoja's turn.", "The mission is over." and "Your pass is sealed" beside the hand, and the
+  client's own copies of "You must follow the opening suit.", "The remaining tasks must be
+  assigned this round." and "The remaining crew must take the tasks.". What to do next ("Choose
+  one color card", "Follow blue if you can", "Lead any card", "Choose a card first.") and who the
+  table is waiting for are still the client's words: they are not refusals.
+- **Not changed, and why.** The Party Host's "Begin mission" is disabled with two sentences the
+  client words itself ("Waiting for the crew to reconnect.", which is the server's, and "The crew
+  is deciding something.", which is the first half of it). That request is the lifecycle message
+  of AVR-252, its sender may hold no seat, and a viewer without a seat gets no reasons; giving
+  one needs a decision about what a watching host may be told. "Lock prediction" is disabled
+  without a reason while a seat is away.
+
+Tests: `test_at_any_state_a_reason_is_the_rejection_and_no_reason_means_accepted` walks 54 seeded
+tables (missions 1, 6, 10, 13, 16, 17 and 25, two to five players) through 28 states each, with
+seats dropping, decisions left pending, results and closed tables, and in every state sends the
+request behind every card, task, pass, answer and offer for every crew member: a reason is the
+rejection word for word, no reason means accepted. Every sixth state it also changes everything
+the viewer may not see and requires the same view.
+`test_the_wandering_tables_met_every_reason_and_some_hundreds_of_states` requires that the walk
+met all sixteen sentences. Five further tests name the states the earlier test never reached: a
+closed table, a decision pending during the distress exchange, the result (failed and
+successful, then with a retry or next pending, then with a seat away), the offer in missions 6,
+10 and 13, and the pass and volunteer answers. Checked that they can fail: with the mission 6
+gate taken out again, with the owner reasons emptied and with the closed-table refusal put
+ahead of the away refusal, the new tests fail.
+
+Not covered: the browser playtests were not run in this session (the orchestrator runs them),
+real phones, the appliance, a Party-launched round.
