@@ -162,9 +162,9 @@ class ExpoSession(GameSession):
                 self._hold = (key, _mono() + RESOLVE_HOLD)
         else:
             self._hold = None
-        # One timer serves both: the mission's deadline and the end of a resolving trick.
-        moments = [m for m in (s['expiry'], self._hold and self._hold[1]) if m is not None]
-        self._bump(self._wall_moment(min(moments)) if moments else None)
+        # One timer serves both. While a trick is resolving the mission's clock stands
+        # (Engine.observe_time), so the timer waits for the end of the hold and nothing else.
+        self._bump(self._wall_moment(self._hold[1] if self._hold else s['expiry']))
 
     def _settle_due(self):
         """End a resolving trick whose hold is over. Two things call this, so that a lost timer
@@ -172,9 +172,13 @@ class ExpoSession(GameSession):
         arrives afterwards (_commit). A restore does not wait at all (restore)."""
         if not (self.engine and self.engine.s['resolving']):
             return False
-        if self._hold is not None and self._hold[1] - _mono() > HOLD_SLACK:
-            return False
-        return self.engine.settle()
+        credit = 0.0
+        if self._hold is not None:
+            left = self._hold[1] - _mono()
+            if left > HOLD_SLACK:
+                return False
+            credit = RESOLVE_HOLD - max(0.0, left)    # the hold, never the time a lost timer added
+        return self.engine.settle(credit)
 
     def _distress_open(self):
         # The moment the rules let a crew member ask for distress (Engine._proposal).
@@ -401,6 +405,7 @@ class ExpoSession(GameSession):
         engine.s['away'] = list(engine.s['humans'])
         engine.s['revision'] += 1
         # A trick that was resolving when the snapshot was written has nobody watching it now.
+        # No time is credited: what the downtime costs a timed attempt is decided just below.
         engine.settle()
         if self._clock_continuous(saved.get('clock'), engine.s['expiry'], engine.s['mission']['seconds']):
             engine.observe_time(_mono())

@@ -45,6 +45,7 @@ Table lifetime:
 | `dedup` | accepted request ids of the current attempt with their fingerprints |
 | `proposal` | the pending crew decision and who has confirmed it; a captain's offer in missions 10 and 13 also names its `recipient`, the only seat that may answer |
 | `result` | none, or `{status, reason}` with status `success`, `failed` or `abandoned` |
+| `events`, `event_seq` | the bounded log of semantic events and the number of the newest one (AVR-246); see [Semantic events](#semantic-events) |
 
 Per attempt (reset by every preparation):
 
@@ -64,6 +65,8 @@ Per attempt (reset by every preparation):
 | `pass_choices`, `direction` | sealed distress choices and the agreed direction |
 | `trick`, `history` | plays of the trick in progress; every resolved trick `{index, leader, winner, plays}` |
 | `expiry` | real-time deadline, or none: seconds on the clock the adapter passes in, which is the monotonic clock. The view the adapter sends carries the same moment as wall-clock seconds for the browser's countdown |
+| `resolving` | none, or `{trick}`: the trick just resolved, while no seat may act (AVR-246); see [The resolving phase](#the-resolving-phase) |
+| `cause`, `failures` | what a failed attempt is attributed to, and the kind of each task failure (AVR-246); see [Failure causality](#failure-causality) |
 
 The random generator's state is saved beside this dictionary, so a restored table continues with
 the same future shuffles.
@@ -84,6 +87,9 @@ command and rolls it back, or refuses the restore.
 - Every task of the attempt is enabled content and is either in the pool or assigned, never both;
   every owner is eligible for their task.
 - The mission equals its current definition.
+- The event log is in sequence order, no longer than its bound and not ahead of its counter. A
+  table is resolving only between two tricks of an attempt still in play, for the trick just
+  resolved (AVR-246).
 
 ## Phase flow
 
@@ -118,6 +124,10 @@ card is played.
 `mission_result` is a game phase, not the platform's end screen: the crew stays at the table to
 retry or go on. Only `closed` hands control back to the platform (`game_end`).
 
+Between a completed trick and the next one the table is briefly **resolving** (AVR-246): `phase`
+is already `before_trick`, a separate mark holds every seat's command until the server settles
+it. See [The resolving phase](#the-resolving-phase).
+
 ## What each viewer receives
 
 `Engine.view(seat)` builds the payload on the server. A seated human gets the public part plus
@@ -139,6 +149,9 @@ retry or go on. Only `closed` hands control back to the platform (`game_end`).
 | `lifecycle`: who moves the table on, `host` or `crew` (added by the adapter) | | who the Party Host is: the game is never told |
 | `begin_at`: the wall-clock moment the host's Begin opens, or null (adapter) | | |
 | `lifecycle_transitional`: true only under a Party that does not name its host yet (adapter) | | |
+| `events`, `event_seq`: the events of the latest resolved trick and after (AVR-246) | own declaration in a currents `COMMUNICATION_SENT` | events of earlier tricks and earlier attempts; the rest of the log |
+| `resolving`: the trick being resolved, with `until` (adapter); `cause` of a failed attempt | | |
+| each task's `state`: PENDING, ACTIVE, COMPLETED, FAILED, IMPOSSIBLE | | |
 
 Requirements met: no viewer receives another seat's legal cards; unseated viewers cannot act;
 identity is the authenticated connection, never a field in the message. In currents the
@@ -196,8 +209,9 @@ No source covers disconnection; all of this is policy (P12 to P14).
   a standalone table until the server restarts (E-D2, AVR-240).
 
 Why this is deterministic: the engine state is the only authority and it does not depend on who is
-connected, except for the `away` list that gates commands. Reconnect changes `away` and nothing
-else.
+connected, except for the `away` list that gates commands. Reconnect changes `away`, raises
+`revision` and adds one `PLAYER_RECONNECTED` event (AVR-246), and nothing else
+(`Engine.presence`).
 
 ## Restoration after a server restart
 
@@ -249,6 +263,204 @@ A timed mission and the clock (AVR-242, was E-D7):
   and the crew may retry. An appliance without a real-time clock cannot say how long it was off,
   so a reboot always ends a running timed attempt.
 - A table with no running deadline restores whatever the clocks say.
+
+## Semantic events, failure causality and the resolving phase
+
+Added 2026-10-04 (AVR-246; was deferred entry E-X1). The product intent is in two
+**non-canonical** drafts kept beside this file,
+[STATE_DRIVEN_GAMEPLAY_BEHAVIOR_SPEC](STATE_DRIVEN_GAMEPLAY_BEHAVIOR_SPEC.md) and
+[MISSION_GAMEPLAY_UI_UX_SPEC](MISSION_GAMEPLAY_UI_UX_SPEC.md). They are reference only: this
+section, the code and the tests are the contract, and what was not built from the drafts is listed
+in [RECONCILIATION](RECONCILIATION.md#avr-246-2026-10-04).
+
+Nothing here changes a rule. Which cards are legal, who wins a trick, when a task is complete or
+lost and when a mission ends are exactly what they were; the engine now also reports them.
+
+### Semantic events
+
+The engine keeps a log of what happened, as meaning (`Engine.s['events']`). An event is written in
+the same transaction as the change it reports, so a rejected command writes none. An event never
+says how to show, sound, vibrate or time anything and carries no fiction: that is the client's
+business (AVR-267). Nothing in the engine reads the log to decide a rule
+(`test_the_engine_never_reads_the_log_to_decide_a_rule`).
+
+Every event has `seq`, `type`, `attempt`, `mission` (the mission's number) and `trick`. `seq`
+counts from 1 for the life of the table, rises by one per event and is never reused, across
+attempts and missions. `trick` is the trick the event belongs to: 0 before play begins, otherwise
+the trick in progress, and for the events of a resolution the trick that was resolved.
+
+| Type | When | Fields besides the common ones |
+|---|---|---|
+| `MISSION_MODIFIER_ACTIVATED` | when an attempt is prepared, once for each thing it changes from the base rules, and when one takes effect later | `modifier`, `value`: `communication` (the mode in force when it is not `normal`; `drawn` says whether a terrain card chose it; the card itself is not named), `allocation` (when not `normal`), `objective`, `distress` (`active` when carried into the attempt, else the direction agreed), `timer` (seconds, when the clock starts), `sonar` (`before_first_trick_only`) |
+| `TURN_STARTED` | when play begins; after each card that does not complete its trick; when a resolved trick is settled | `seat`, `controller` (the captain for Tonoja), `lead` (true for the seat that opens the trick) |
+| `CARD_PLAYED` | an accepted `play_card` | `seat`, `controller`, `card`, `position` (1 for the lead), `lead_suit` |
+| `TRICK_RESOLVED` | the card that completes a trick | `winner`, `winning_card`, `leader`, `lead_suit`, `plays` |
+| `COMMUNICATION_SENT` | an accepted `communicate` | `seat`, `card`, `mode`, `token` (`personal` or `shared`), `assertion` (see masking below) |
+| `OBJECTIVE_PROGRESS` | a trick is resolved, a task is still open and its owner won the trick | `objective` (task id), `scope` (`task`), `owner`, `change` (`owner_won_trick`), `owner_tricks`. It says that what the task is judged on has changed, never whether that helps |
+| `OBJECTIVE_COMPLETED` | a task becomes complete; a mission objective holds at the end | `objective`, `scope` (`task` or `mission_objective`), `owner` |
+| `OBJECTIVE_FAILED` | a task or a mission objective is lost | `objective`, `scope`, `owner`, `failure`, `state`, `trigger_seat`, `affected_seat`, `cards` (see causality) |
+| `MISSION_SUCCESS` | the attempt succeeds | `reason`, `attempts`, `distress` |
+| `MISSION_FAILURE` | the attempt fails, for any reason | `reason` (the result's sentence), `cause` (the whole causality record, or null) |
+| `PLAYER_RECONNECTED` | a seated player's first connection comes back | `seat` |
+
+**Order.** Within one command the order is fixed by the code: `CARD_PLAYED`; if the card completes
+the trick, `TRICK_RESOLVED`, then the tasks in assignment order (`OBJECTIVE_COMPLETED`,
+`OBJECTIVE_PROGRESS`, or `OBJECTIVE_FAILED` for the first task found lost), then the mission
+objective; then `MISSION_SUCCESS` or `MISSION_FAILURE` if the attempt is decided; otherwise, for a
+card that did not complete the trick, `TURN_STARTED` for the next seat. The winner's
+`TURN_STARTED` belongs to the settle that ends the resolving phase, not to the card.
+
+**Determinism.** Events contain no clock reading and no random value. The same seed and the same
+commands and server events in the same order give the same log, byte for byte
+(`test_the_same_seed_and_the_same_commands_give_the_same_event_stream`).
+
+**No oracle.** An event exists only after its command was committed. Before a card is played no
+view carries anything about what it will do: the views of a seat about to lose the mission and of
+the same seat about to win it differ only in the public owner of the task
+(`test_nothing_in_any_view_tells_a_player_what_a_legal_card_will_do_before_it_is_played`).
+
+**Retention.** The newest 240 events are kept (`engine.EVENT_LIMIT`), across attempts. A whole
+attempt is about 90 events plus its objective events, so the log holds the attempt in play and
+most of the one before. It is part of the snapshot. It is kept for reconnect, review of the last
+trick, a debrief, debugging and a later replay; only the part below is ever sent.
+
+**What a viewer is sent** (`Engine.events(seat)`, in the view as `events`, with `event_seq`, the
+newest sequence number at the table whether sent or not):
+
+- only events of the attempt in play;
+- of those, only the events of the most recently resolved trick and everything after it; before
+  the first trick is resolved, the whole attempt so far. This is R04: only the most recently won
+  trick may be looked at again. Events of earlier tricks stay on the server, also after the
+  mission result;
+- every field of an event was public when it happened. One field is not public and is stored
+  apart: in `currents` the `assertion` of `COMMUNICATION_SENT` is kept under `private` and is
+  added only to its author's own events, exactly as the view treats the declaration. A watcher, a
+  spectator and every other seat receive the event without it;
+- copies. Nothing a caller does to what it is given reaches the table
+  (`test_what_a_viewer_is_given_is_a_copy_that_cannot_change_the_table`), and no command has a
+  field through which an event, a cause or the resolving mark could be written
+  (`test_no_command_can_write_an_event_or_a_cause`).
+
+No event carries a hand, a covered Tonoja card, a sealed distress choice, a secret prediction, the
+terrain card, the task deck or the random state
+(`test_no_event_names_a_card_that_was_not_played_or_shown_and_none_carries_a_prediction`,
+`test_no_viewers_events_depend_on_what_that_viewer_may_not_see`).
+
+**Not reported as events:** the steps of task selection and prediction, the distress exchange, a
+seat going away, the end of a table, a covered Tonoja card turning face up. The view shows them as
+before.
+
+**Reconnect.** A returning player's view carries the same events as before the drop and one more,
+`PLAYER_RECONNECTED`; a client that keeps the highest `seq` it has shown can tell what is new
+(`test_a_returning_player_is_announced_and_is_sent_the_same_events_again`). A client that has seen
+nothing shows the table from the view itself; events are never needed to know the state.
+
+### Failure causality
+
+A failed attempt has a `cause` beside its `result` (state key `cause`, view key `cause`; `result`
+itself is unchanged). Every field comes from public facts: the cards played, who won, who owns
+the task.
+
+| Field | Meaning |
+|---|---|
+| `kind` | `task`, `mission_objective`, `allocation` (the attempt ended during task selection), `deadline`, `final_trick` |
+| `objective` | the task id, or the mission objective's name (`balance9`, `balance1`, `first_winner`, `final_yellow5`), or null |
+| `failure` | for a task, what the evaluator found: `violated` (something the task forbids happened), `unreachable` (what it needs can no longer happen) or `unmet_at_end` (the deal ended without it). Otherwise `violated`, `unmet_at_end`, `deadline`, `captain_left_with_comparison_tasks` or `ineligible_volunteer` |
+| `state` | `IMPOSSIBLE` when `failure` is `unreachable`, otherwise `FAILED` |
+| `affected_seat` | the task's owner; in mission 23 the first trick's winner; the captain or the volunteer in a selection failure; otherwise null |
+| `trigger_seat`, `trigger_controller`, `trigger_card` | see below; null where nobody can honestly be named |
+| `action` | the committed command the failure followed: `{t, seat, controller, card}` for a play, the selection command for a selection failure, null for a deadline |
+| `cards` | the cards of the deciding trick that the objective is about (the cards a task names, or the ones its selector counts), and the triggering card |
+| `trick` | the trick in which it was established; 0 during task selection |
+| `mission` | `{id, attempt, objective, allocation, communication, timed, distress}` |
+
+**Who triggered it.** The engine names a seat only where that is a fact and not an opinion:
+
+- a failure established when a trick resolved: the seat that **won the trick**, with its winning
+  card. Every task evaluator is a function of who won which cards, so the winner's card is what
+  decided it. This is not always the seat that played last
+  (`test_the_trigger_is_the_seat_that_won_the_trick_not_the_one_that_played_last`), and it may or
+  may not be the affected seat
+  (`test_a_legal_card_that_loses_the_mission_is_accepted_and_names_who_triggered_it_and_who_lost`,
+  `test_a_seat_that_breaks_its_own_task_is_both_trigger_and_affected_and_the_state_is_failed`);
+- a failure established by one card before its trick ended (a forbidden lead, yellow 5 played out
+  of place): the seat that played that card;
+- a failure during task selection: the seat whose choice or answer ended the attempt;
+- a condition merely not met when the deal ended, and a deadline: nobody.
+
+It is an attribution of the deciding card, not a judgement of fault: the engine does not ask
+whether another seat could have prevented it.
+
+**Objective state.** Each task in the view has `state` beside its unchanged `status`: `PENDING`
+(not in play yet), `ACTIVE` (in play, undecided), `COMPLETED`, `FAILED`, `IMPOSSIBLE`. The kind
+of each failure is kept in state key `failures`.
+
+**Limits, stated plainly.**
+
+- `IMPOSSIBLE` is reported for the cases the evaluators always detected (a named card taken by
+  another seat, too few tricks or matching cards left, a missed required trick, a split exact
+  run). No new impossibility is searched for, and no mission ends earlier or later than before.
+- When several tasks are lost by the same trick, the engine stops at the first in assignment
+  order, as it always did: that one is the `objective`, and the others stay `pending`
+  (`ACTIVE`) in the result.
+- No "assist" or "enabled by" is recorded for a success: the engine cannot derive one reliably.
+- A success has no cause.
+
+### The resolving phase
+
+When a card completes a trick and the mission is not decided by it, the table is **resolving**:
+state key `resolving` is `{trick}`, the trick just resolved. Everything about the trick is already
+decided and in the state (winner, task statuses, the next leader); what waits is the next action.
+
+- While resolving, every seat's command is refused with `resolving` "The trick is being
+  resolved." and changes nothing. The view says so: `resolving` is set, `me.legal_cards` and
+  `me.communication_options` are empty and `me.play_reason` is that sentence. `phase` stays
+  `before_trick` and the view's `stage` with it.
+- It ends by `Engine.settle()`, a server event like expiry: no seat can send it, it does not wait
+  for a seat that is away, and it is never refused. It clears the mark, emits the winner's
+  `TURN_STARTED` and raises `revision`.
+- The engine holds no clock for it. **The adapter decides when**: it holds the trick for
+  `game.RESOLVE_HOLD` (0.8 s) on the monotonic clock, arms the session's one timer for that
+  moment (a mission deadline waits behind it), and settles when the timer fires. The view the adapter
+  sends adds `resolving.until`, the wall-clock moment the next trick opens, for a client that
+  wants to time its presentation to it.
+- **It cannot strand a table.** A command that arrives after the hold settles the trick first,
+  timer or no timer (the command itself is then stale, and the next one is accepted). A restore
+  settles at once: the hold is not saved, and nobody is watching a table that has just been
+  restored. A refused command does not move the moment. Going away does not stop it
+  (`test_a_command_after_the_hold_settles_the_trick_even_if_the_timer_never_fired`,
+  `test_a_table_cannot_stay_resolving_when_everyone_leaves`,
+  `test_a_restart_during_a_resolving_trick_restores_a_table_that_is_not_held`).
+- A trick that ends the mission is never resolving: the result is its own boundary, and nothing
+  delays Retry, Next or End.
+- **A real-time mission's clock stands while a trick is resolving.** Nobody may act, so no time
+  is the crew's: `Engine.observe_time` records no expiry meanwhile, and `Engine.settle(credit)`
+  moves the deadline by the time the adapter held the table (at most `RESOLVE_HOLD`, never the
+  extra time a lost timer added). The crew has the same seconds to act as before the hold
+  existed; the attempt lasts 0.8 s longer on the wall clock for each trick. A restore credits
+  nothing: what downtime costs a timed attempt is decided by the clock rules above
+  (`test_a_missions_clock_stands_while_a_trick_is_resolving_and_the_hold_is_credited`,
+  `test_the_hold_and_a_mission_deadline_share_the_one_timer_and_the_hold_is_credited`).
+
+Why this design, and what was rejected:
+
+| Alternative | Why not |
+|---|---|
+| a new `phase` value `resolving` | the previous build refuses a snapshot whose phase it does not know, so it would need a new snapshot format; and every place that reads the stage would change. A separate mark keeps format 1 readable in both directions and the existing client untouched |
+| let the next accepted action end it, with no refusal | no boundary: a fast phone plays into the moment the others are still being shown the trick |
+| a deadline inside the engine state, like `expiry` | a monotonic moment in a snapshot means nothing after a reboot (the E-D7 problem), and a presentation duration would live in the rules engine |
+| wait for every phone to acknowledge | one stalled or absent phone would hold the table (the E-D2 class of defect) |
+| hold the last trick of a mission too | the result already stops play; a hold would only refuse Retry, Next and End for a moment the client does not expect |
+
+### Snapshot
+
+Format `version` stays 1. The keys `events`, `event_seq`, `resolving`, `cause` and `failures` are
+additive: a snapshot written before them is read as a table with an empty log, nothing resolving
+and no cause (`test_a_snapshot_written_before_the_events_existed_is_read_with_an_empty_log`), and
+the previous build reads a snapshot that has them, ignoring them (checked by hand against the
+build before this change; it then plays on without a hold). A snapshot whose log is out of order,
+longer than the bound or ahead of its counter, or whose resolving mark does not name the trick
+just resolved in an attempt still in play, is refused like any other invalid snapshot.
 
 ## Party rounds
 

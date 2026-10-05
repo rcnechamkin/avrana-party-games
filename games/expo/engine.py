@@ -158,16 +158,22 @@ class Engine:
                        cards=list(cause['cards']))
         self._finish('failed', reason, cause)
 
-    def settle(self):
+    def settle(self, credit=0):
         """The server's word that a resolved trick has been taken in: the table leaves
         `resolving` and the winner's turn begins. Not a player's action: no seat can send it, it
         does not wait for anyone who is away, and it is never refused. Who calls it, and when,
         is the adapter's business; the engine holds no clock for it. False if there was nothing
-        to settle."""
+        to settle.
+
+        `credit` is how long the server held the table, in seconds. A real-time mission's clock
+        does not run while nobody may act (observe_time), so its deadline moves by that much:
+        the hold costs the crew no time."""
         s = self.s
         if not s['resolving']:
             return False
         s['resolving'] = None
+        if s['expiry'] is not None and type(credit) in (int, float) and 0 < credit <= 60:
+            s['expiry'] += credit
         self._emit('TURN_STARTED', seat=s['turn'], controller=self.controller(s['turn']), lead=True)
         s['revision'] += 1
         return True
@@ -457,6 +463,9 @@ class Engine:
 
     def observe_time(self, now):
         # `now` and `expiry` are seconds on whatever clock the caller keeps; the engine has none.
+        # While a trick is resolving nobody may act, and the mission's clock stands (settle()).
+        if self.s['resolving']:
+            return False
         if self.s['expiry'] is not None and now >= self.s['expiry']:
             return self.expire()
         return False

@@ -177,7 +177,7 @@ they were wrong or have been overtaken; the committed documents carry the correc
 
 | Entry | What | Status |
 |---|---|---|
-| E-X1 | Presentation and causality events from the two draft presentation specifications (who triggered a failure, "impossible" state, synchronized events, cinematic client). The drafts are not in the repository | DEFERRED, AVR-246 (Q12) |
+| E-X1 | Presentation and causality events from the two draft presentation specifications (who triggered a failure, "impossible" state, synchronized events, cinematic client) | **Engine half built 2026-10-04 (AVR-246)**: semantic events, failure causality, objective states, a resolving phase; the drafts are committed as non-canonical files. The client half (anything shown, heard or felt from them) is DEFERRED, AVR-267. What is and is not built: [the AVR-246 report](#avr-246-2026-10-04) |
 | E-X2 | Showing cards won toward an unfinished task (R p16, optional) | DEFERRED |
 | E-X3 | Missions 3, 4, 12, 14, 15, 19, 20, 26 and their special rules (lead restriction, hardest-to-captain, two volunteers, other timers) | not implemented; blocked on sources, AVR-244 |
 | E-X4 | Tasks `moreRedThanGreen`, `moreYellowThanBlue`, `4with8`, `6with6` | definitions stored, disabled. `5with7` left this list on 2026-10-04 (Q5, AVR-249) |
@@ -427,7 +427,9 @@ dummy's seat?** Now: fixed at mission 1, untimed, dummy after both players. R p2
 dummy's seat a player choice.
 
 **Q12 (AVR-246). Presentation drafts.** Commit them as non-canonical drafts or keep them out; and
-whether a causality record is wanted in results.
+whether a causality record is wanted in results. **Decided 2026-10-04:** commit both as
+non-canonical design and product references; a causality record is wanted. Built:
+[the AVR-246 report](#avr-246-2026-10-04).
 
 **Q13 (C05, AVR-244). "More of one color than another".** R p18's sentence says the cards are "in
 your hand" at the end; the card pictures on the same page say "I will win more ... than ..."; R p16
@@ -954,3 +956,97 @@ Still open:
 | `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check | OK |
 | Party `tools/contract_check.py --games` against this branch | compatible |
 | A real phone | not run |
+
+### AVR-246, 2026-10-04
+
+Entry E-X1: the engine now reports what happened and why an attempt failed, and holds the table
+for a moment between tricks. Contract:
+[GAME_STATE](GAME_STATE.md#semantic-events-failure-causality-and-the-resolving-phase). Changed:
+`games/expo/engine.py`, `games/expo/tasks.py`, `games/expo/game.py`,
+`tests/test_expo_events.py` (new), two test helpers, these documents, and the two drafts added as
+non-canonical files. Not changed: the client, `core/`, the provider contract, the catalog, the
+snapshot format number.
+
+**Owner decisions carried out (Q12).** Both draft presentation specifications are committed
+beside the canonical documents, each under a banner that says it is non-canonical and loses to
+the code and the canonical documents; `tests/test_expo_docs.py` enforces the banner, the manifest
+class and that every file in `docs/` is on one list or the other. A causality record is wanted
+and is built.
+
+**Built.**
+
+- Semantic events in eleven families, numbered for the life of the table, in a fixed order,
+  identical for the same seed and commands, with no presentation instruction in them.
+- A bounded log (240 events) in the state and the snapshot; a viewer is sent the events of the
+  latest resolved trick and after, of the attempt in play, as copies; a currents declaration only
+  in its author's events.
+- Failure causality: objective, kind of failure, triggering seat and card where that is a fact,
+  affected seat, the committed action, the cards, the trick, the mission context.
+- Objective states PENDING, ACTIVE, COMPLETED, FAILED and IMPOSSIBLE beside the unchanged
+  `status`.
+- The resolving phase: a mark in the state, a refusal for every seat, a server settle that the
+  adapter calls after 0.8 s, on a late command, or at once on a restore. A timed mission's clock
+  stands during it and the hold is credited to the deadline, so the crew has the seconds it had
+  before; the attempt is longer on the wall clock by 0.8 s a trick. This is the one place the
+  change touches a number the rules care about, and it was chosen so that the hold takes
+  nothing from the crew.
+- `tasks.judge`, which labels a failure the evaluator already found. It was compared with the
+  evaluator before the change on 5.7 million judgements of all 96 task definitions on random
+  tables (by hand, not kept as a test): every status was the same.
+
+**Not built, on purpose.**
+
+- **No client work.** The page draws exactly what it drew: it does not read `events`, `cause`,
+  `resolving` or a task's `state`. During the hold it shows the resolved trick and the sentence
+  "The trick is being resolved." beside disabled cards, because that is the view's reason. The
+  result does not show the cause yet (the page shows `result.cause` only if it is a string; the
+  engine's cause is a record beside the result). Presenting any of this is AVR-267.
+- **No presentation timing in events.** The drafts ask for a scheduled presentation time on
+  events. Only one moment exists: `resolving.until`, added by the adapter to the view.
+- **No director, no fiction, no cinematic templates, no assists**, no audio or haptics.
+- **No earlier mission end.** The product contract allows ending a mission once impossibility is
+  proven "where consistent with the rules". Nothing was added: `IMPOSSIBLE` names the failures
+  the evaluators already detected.
+- **No full-attempt debrief to clients.** The log holds the whole attempt; a viewer is sent only
+  the latest trick, also after the result, because R04 lets only the last trick be looked at
+  again. Sending more after a mission ends is a product decision that was not made (below).
+- **Events for selection, prediction, the distress exchange, a seat going away and the end of a
+  table** do not exist.
+
+**Differences from the drafts.** Names and shapes are the engine's own (`trigger_seat`, not
+`triggerPlayerId`; suit:rank cards; `phase` and `stage` unchanged). `RESOLVING` is a mark beside
+the phase, not a phase value, and there is no `COMPLETE` status after it. The drafts' example
+calls a named card won by another player "failed"; the engine calls that `IMPOSSIBLE`, as the
+draft's own state model defines it. The drafts' objective constructors, legality response shape
+and performance tiers were not implemented and are not planned by this entry.
+
+**For the owner.**
+
+1. May a client be sent the whole attempt's events once the mission has a result (a debrief or a
+   replay)? Now: no, the latest trick only.
+2. `RESOLVE_HOLD` is 0.8 s, from the draft's "under one second". It is one constant in
+   `games/expo/game.py`; changing it changes no rule. In timed mission 16 the clock stands for
+   the hold; the alternative, letting it run, would cost the crew about ten of its 150 seconds.
+3. The triggering seat is the trick's winner. That is an attribution of the deciding card, not
+   of fault; a presentation that blames a player on it should know that.
+4. The drafts as committed: the example players' first names were replaced by the repository's
+   stand-in names (Alice, Bob, Carol), 30 and 7 occurrences, and a banner was added. The title
+   "The Team II" was left as written; it is the reference tabletop's name, which
+   [VTT_REFERENCE](VTT_REFERENCE.md) already uses, not the publisher's.
+
+**Not verified.** The two browser playtests were not run for this change, and no phone or
+browser has shown the hold. Both scripts read whose turn it is and then expect a legal card, which
+a resolving table does not offer, so their wait for a settled table now also waits for
+`resolving` to clear (one condition each, `tests/playtest_expo.mjs` and
+`tests/playtest_expo_party.mjs`). That edit passes a syntax check and has not been run. The
+timer path itself is tested through real sockets
+(`test_real_phones_are_held_after_a_trick_and_released_by_the_servers_own_timer`).
+
+| Check | Result (Windows 11) |
+|---|---|
+| `pytest tests/test_expo_events.py` | 72 passed |
+| twenty-two faults put into the engine and the adapter, one at a time (by hand, not kept) | each caught by `tests/test_expo_events.py` |
+| a snapshot written by this build, read by the build before it (and the reverse) | restored and played on, both ways |
+| `pytest tests/test_expo.py tests/test_expo_*.py` (every EXPO test file) | 1113 passed, 2 skipped (distress with two players, C11), 2 expected failures (E-D2, E-D8) |
+| `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check | OK |
+| `pytest -q` (whole repository), the cross-repository tests, the two browser playtests, a real phone | not run for this change |
