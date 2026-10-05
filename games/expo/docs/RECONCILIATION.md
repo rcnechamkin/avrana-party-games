@@ -1417,5 +1417,22 @@ the layout continues provisionally); the others stand.
 - **`say()`** rebuilds the live region's two parts if another writer replaced them.
 - **Notes for merging AVR-263 and AVR-245**: [PRESENTATION](PRESENTATION.md#merging-with-avr-263-and-avr-245).
 
-The runs made after this round are in the table that follows.
+Run serially at `da9098c` (the code and tests of this round), headless desktop Chrome at phone
+viewport sizes on Windows 11, by the author, with `EXPO_MISSION=1`:
+
+| Check | Result |
+|---|---|
+| `node tests/expo_director_test.mjs` | 21 passed |
+| `pytest -rf tests/test_expo.py tests/test_expo_*.py` | 1184 passed, 2 skipped, 2 expected failures; no failure in two runs |
+| `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check | OK |
+| `tests/playtest_expo.mjs`, high tier, with 3, 2 and 5 humans | PASS each |
+| `tests/playtest_expo.mjs`, 3 humans, `EXPO_FX=medium`, `EXPO_FX=low`, `EXPO_MOTION=reduced`, `EXPO_FX=off` | PASS each |
+| `tests/playtest_expo_party.mjs`, high tier, 3 and 5 seated | PASS each |
+| 4 humans, mission 9, watching host, old Party, whole-repository `pytest`, Linux CI | not run in this round |
+| A real phone, Safari, a screen reader, accessibility validation | not run |
+
+Not verified in this round: a real deadline passing during a real hold in a browser (the page's
+reading of it is checked on a drawn view whose `expiry` passes while the page watches, and the
+engine's side by the AVR-246 tests); `say()` rebuilding the live region (read, not exercised);
+how a screen reader speaks "is winning the trick".
 
