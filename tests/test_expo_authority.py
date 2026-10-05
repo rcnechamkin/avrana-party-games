@@ -1243,7 +1243,9 @@ def test_the_setup_view_is_public_and_holds_nothing_of_a_deal():
     public = e.view(None)
     assert set(public) == {"kind", "attempt", "revision", "stage", "mission", "seats", "away", "proposal",
                            "result", "expiry", "log", "setup", "me",
-                           "resolving", "cause", "events", "event_seq"}       # AVR-246: in every view
+                           "resolving", "cause", "events", "event_seq",       # AVR-246: in every view
+                           "trick_leading"}                                   # AVR-267: in every view, none before a deal
+    assert public["trick_leading"] is None
     assert public["stage"] == "setup" and public["me"] is None and public["mission"] is None
     assert public["setup"] == {**SETUP, "tonoja_position": SEAT, "tonoja_seat": None, "tonoja": True,
                                "waiting": SEAT_FIRST, "seat_waiting": None, "seat_proposal": None,

@@ -1,8 +1,15 @@
 "use strict";
-/* EXPO's phone client (AVR-275). One viewport during play: the mission, whose turn it is, the
-   current trick and the hand are always on screen; crew detail, full tasks, sonar and history
-   open as sheets over the board. The server's view is the only source of game meaning: this
-   file draws it and sends requests, and never decides a rule.
+/* EXPO's phone client (AVR-275, AVR-267). One viewport during play, in five zones that are
+   always on screen: the mission stage, the crew strip, the shared trick, the crew's objectives,
+   and the private hand with this player's controls. Crew detail, full tasks and the log open as
+   sheets over the board; the helmet radio (Burst Transmission) opens in place, over the trick.
+   The server's view is the only source of game meaning: this file draws it and sends requests,
+   and never decides a rule, a legal card or an outcome.
+
+   Presentation (AVR-267) is a separate file. director.js is shown each new view after the board
+   is drawn and adds transient effects for the server's events. It is given a frozen copy of the
+   view and no connection: the senders below are the only code that sends. Everything a player
+   needs is drawn here from the view alone, so the board is complete with the director off.
 
    Two authorities, kept apart (AVR-252):
      Party Host    begins, retries, moves on and ends EXPO. In a Party round the server takes
@@ -13,8 +20,8 @@
 const $ = id => document.getElementById(id);
 let ST = null, pending = false, pendingTimer = null;
 const ui = { sheet: null, opener: null, selected: null, handView: "mine", turnKey: "",
-             sonarCard: null, sonarMeaning: null, resultKey: "", resultHidden: false, armed: null,
-             grace: 0, modal: null, partySig: "" };
+             radio: false, radioCard: null, radioMeaning: null, resultKey: "", resultHidden: false, armed: null,
+             grace: 0, modal: null, partySig: "", clockOut: false, connUp: true, radioBack: null };
 const symbols = {blue:"○",green:"△",pink:"□",yellow:"×",submarine:"◆"};
 const suitNames = {blue:"blue",green:"green",pink:"pink",yellow:"yellow",submarine:"sub"};
 const OBJECTIVES = {
@@ -26,13 +33,23 @@ const OBJECTIVES = {
 const HELP = [
   "Take tricks together to complete every assigned task. Keep your hand secret: don’t tell, show or hint which cards you hold.",
   "Follow the opening suit when you can. When you cannot, play any card. Submarines beat every color; the highest submarine wins. The captain opens the first trick, and each winner opens the next.",
-  "After tasks are assigned, communicate a color card before a trick. Reveal your highest, lowest or only card of that color. You normally get one sonar token per attempt. Its meaning stays fixed as your hand changes.",
+  "After tasks are assigned, use the helmet radio before a trick: a Burst Transmission reveals one color card as your highest, lowest or only card of that color. You normally get one transmission (one sonar token) per attempt. Its meaning stays fixed as your hand changes.",
   "With two players, the captain controls Tonoja’s visible cards and task choices without discussion. Covered cards turn over only after their covering card’s trick ends.",
   "Task difficulty adds up to the mission’s challenge. Some tasks need the full deal; positive tasks may finish earlier. A legal play can still fail the mission. Only the latest trick may be inspected.",
   "In a Party, the Party Host begins each mission, retries, chooses the next one and ends EXPO. The Captain is a role in the game, not the Party Host. The crew decides together only what the rules give the crew, such as distress.",
   "Some missions and tasks are unavailable while conflicting source rules are clarified. Available task descriptions follow the supplied rules and the pinned The Team II reference.",
 ];
-const SHEETS = {crew:"Crew", tasks:"Mission tasks", sonar:"Sonar", history:"History", menu:"Table", help:"One crew. One mission."};
+const SHEETS = {crew:"Crew", tasks:"Mission tasks", history:"Log", menu:"Table", help:"One crew. One mission."};
+// Words for what the server says, never a judgement of it.
+const STATES = {PENDING:["Standby","open"], ACTIVE:["Active","pending"], COMPLETED:["✓ Done","done"], FAILED:["× Failed","failed"], IMPOSSIBLE:["× Lost","failed"]};
+const MEANING = {highest:["▲","highest"], lowest:["▼","lowest"], only:["●","only"]};
+// The radio as the mission sets it. The fiction names the state; the rule is said in plain words.
+const RADIO = {
+  normal:   ["clear",    "Radio clear", "Clear signal: one Burst Transmission each this attempt, before a trick."],
+  currents: ["degraded", "Radio degraded", "Degraded signal: your card is shown to the crew, but its meaning (highest, lowest, only) stays hidden."],
+  rapture:  ["shared",   "Radio shared", "Shared signal: the whole crew draws on one supply of transmissions."],
+  none:     ["disabled", "Radio off", "Radio disabled: this mission allows no communication."],
+};
 
 if (!Hub.identity.name) Hub.identity.name = "PLAYER";
 $("name").value = Hub.identity.name;
@@ -41,7 +58,9 @@ Hub.buildAvatarGrid($("avatars"), Hub.identity.avatar, avatar => {
   conn.send({t:"profile",avatar});
 });
 const conn = Hub.connect("/games/expo/ws", {
-  onWelcome: () => { ui.setup = null; },   // a new connection may be a new table: nothing chosen carries over
+  // What arrives next is the state, not news; and a new connection may be a new table: nothing
+  // chosen in setup carries over.
+  onWelcome: () => { ui.setup = null; present(() => director.resync()); },
   onState: render,
   onFx: fx => {
     if (fx.kind === "invalid") { settle(); Hub.toast(fx.msg, "err"); }
@@ -49,6 +68,38 @@ const conn = Hub.connect("/games/expo/ws", {
   },
 });
 Hub.wirePfpButton($("photo"), () => conn);
+
+// ---- presentation: the director is optional, read-only and fenced -------------------------------
+// It gets the clock, the per-browser preferences and a frozen copy of each view. It gets no
+// connection, and nothing it returns is used to draw or to decide. `expo-fx` in this browser's
+// storage picks the fidelity (high, medium, low) or turns it off; reduced motion always wins.
+const FX_KEY = "expo-fx";
+function fxChoice() { try { return localStorage.getItem(FX_KEY); } catch { return null; } }
+const director = (() => {
+  try {
+    if (!window.ExpoDirector || fxChoice() === "off") return null;
+    return ExpoDirector.create({
+      doc: document, prefs: Hub.prefs, slots: window.ExpoSlots || {}, clock: () => conn.now(), stored: fxChoice,
+      store: (() => { try { return window.sessionStorage; } catch { return null; } })(),
+      caps: {memory: navigator.deviceMemory, cores: navigator.hardwareConcurrency, saveData: Boolean(navigator.connection && navigator.connection.saveData)},
+      vibrate: pattern => Hub.feedback.haptic(pattern),
+      audio: (src, volume) => { const a = new Audio(src); a.volume = volume ?? .6; a.play().catch(() => {}); },
+      nameOf: seat => name(seat), conditions: g => `${envState(g).text} · ${radioState(g).label}`,
+    });
+  } catch (error) { console.warn("EXPO: presentation is off", error); return null; }
+})();
+// Whatever the director does, the game goes on: a throw is caught, counted, and after three the
+// director stands down. The board was already drawn from the view.
+function present(step) {
+  if (!director || director.stats.disabled) return;
+  try { step(); } catch (error) { console.warn("EXPO: presentation error", error); director.failed(); }
+}
+function frozen(value) {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) { Object.freeze(value); for (const v of Object.values(value)) frozen(v); }
+  return value;
+}
+for (const type of ["pointerdown", "keydown"]) document.addEventListener(type, () => present(() => director.gesture()), {capture: true, passive: true});
+document.addEventListener("visibilitychange", () => present(() => director.visibility()));
 
 // ---- small helpers ----------------------------------------------------------------------------
 function el(tag, text, cls) {
@@ -86,14 +137,33 @@ function name(seat) {
   return ST.players.find(p => p.pid === seat)?.name || seat || "Unassigned";
 }
 function names(seats) { return seats.map(name).join(", "); }
+// Who a sentence is waiting for, at a length that always fits its line: one name, or one name
+// and how many more (the crew strip and the crew sheet name every seat).
+function whoOf(seats) { return seats.length > 1 ? `${name(seats[0])} and ${seats.length - 1} more` : name(seats[0]); }
 function cardLabel(card) { const [s,r] = card.split(":"); return `${r} ${s}`; }
 function cardNode(card, action, enabled=false, reason="") {
   const [s,r] = card.split(":");
   const n = el(action ? "button" : "div", undefined, "card " + s);
   n.append(el("span",r,"rank"),el("span",symbols[s],"symbol"),el("span",suitNames[s],"suit"));
-  n.setAttribute("aria-label", `${s} ${r}`); n.dataset.key = "card:" + card;
-  if (action) { n.type = "button"; n.disabled = !enabled; n.title = reason; n.onclick = action; }
+  n.setAttribute("aria-label", `${s} ${r}`); n.dataset.key = "card:" + card; n.dataset.card = card;
+  if (action) { n.type = "button"; n.disabled = !enabled; n.title = enabled ? "" : reason; n.onclick = action; }      // a reason belongs to a card that cannot be chosen
   return n;
+}
+// A card this seat has shown the crew keeps a public marker until it leaves the hand.
+// In currents the crew sees the card and not its meaning; the author sees both, and is told so.
+function hiddenFromCrew(g, seat) { return Boolean(g && g.communication === "currents" && g.me && g.me.seat === seat); }
+const HIDDEN = "meaning hidden from the crew";
+function mark(node, exposure) {
+  const [glyph, word] = MEANING[exposure.assertion] || ["◌", "meaning hidden"];
+  const m = el("span", `${glyph} ${{highest:"HIGH", lowest:"LOW", only:"ONLY"}[exposure.assertion] || "SENT"}`, "mark");
+  node.append(m); node.classList.add("sent");
+  node.setAttribute("aria-label", `${node.getAttribute("aria-label")}, transmitted${exposure.assertion ? " as your " + word : ", meaning hidden"}${exposure.assertion && hiddenFromCrew(ST?.game, exposure.seat) ? ", " + HIDDEN : ""}`);
+}
+function fx() { const i = el("i", undefined, "fx"); i.setAttribute("aria-hidden", "true"); return i; }
+function icon(symbol) {
+  const NS = "http://www.w3.org/2000/svg", svg = document.createElementNS(NS, "svg"), use = document.createElementNS(NS, "use");
+  svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("aria-hidden", "true"); svg.setAttribute("focusable", "false"); svg.classList.add("ic");
+  use.setAttribute("href", "#" + symbol); svg.append(use); return svg;
 }
 function choices(select, entries, value) {
   select.replaceChildren();
@@ -176,7 +246,10 @@ $("help-toggle").onclick = e => openSheet("help", e.currentTarget);
 for (const tab of document.querySelectorAll(".tab")) tab.onclick = e => openSheet(tab.dataset.sheet, e.currentTarget);
 $("sheet-close").onclick = closeSheet;
 $("sheet-backdrop").onclick = closeSheet;
-document.addEventListener("keydown", e => { if (e.key === "Escape" && ui.sheet && $("result").hidden) closeSheet(); });
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape" || !$("result").hidden) return;
+  if (ui.sheet) closeSheet(); else if (ui.radio) closeRadio();
+});
 document.addEventListener("avrana-party", () => { if (ST) draw(); });
 
 // How to find a control again after a redraw has replaced it.
@@ -235,7 +308,14 @@ document.addEventListener("keydown", e => {
 });
 
 // ---- render -----------------------------------------------------------------------------------
-function render(st) { ST = st; settle(); draw(); }
+// A new view: draw it, then let the director look at it. The director sees a frozen copy and is
+// not waited for; drawing never depends on it.
+function render(st) {
+  ST = st; settle();
+  present(() => director.before());
+  draw();
+  present(() => director.after(frozen(structuredClone(st))));
+}
 
 function draw() {
   const st = ST;
@@ -247,19 +327,20 @@ function draw() {
   const lobby = ["lobby","countdown"].includes(st.phase) || Boolean(setup);
   $("lobby").hidden = !lobby; $("game").hidden = lobby || !st.game;
   $("countdown-overlay").hidden = st.phase !== "countdown";
-  if (lobby) { setup ? drawSetup(st, setup) : drawLobby(st); $("result").hidden = true; drawSheet(null, st); syncModal(); return; }
+  if (lobby) { setup ? drawSetup(st, setup) : drawLobby(st); $("result").hidden = true; drawSheet(null, st); syncModal(); fitStatus(); return; }
   const g = st.game;
-  if (!g) { $("status").textContent = "This table has ended."; $("result").hidden = true; drawSheet(null, st); syncModal(); return; }
+  if (!g) { say("This table has ended."); $("result").hidden = true; drawSheet(null, st); syncModal(); return; }
   // A crew decision after a result is answered on the result: never leave it put away.
   if (g.result && g.proposal) ui.resultHidden = false;
   ui.grace = graceLeft(g);
   syncTurn(g);
+  if (ui.radio && (!g.me || g.proposal || g.result)) endRadio();      // a decision or a result comes first
+  $("game").classList.toggle("radio-mode", ui.radio);
   drawStatus(g);
-  drawHead(g);
+  drawMission(g);
   drawObjectives(g);
   drawCrew(g);
   drawStage(g);
-  drawTabs(g);
   drawHand(g);
   drawDock(g);
   drawResult(g, st);
@@ -278,14 +359,15 @@ function draw() {
     if (!modalTop() && (!at || at === document.body || $("lobby").contains(at))) { $("mission-title").tabIndex = -1; $("mission-title").focus({preventScroll:true}); }
   }
   updateTimer();
+  fitStatus();
 }
 
 function drawLobby(st) {
   const ready = st.players.filter(p => p.ready && p.connected).length;
   // A Party round has no lobby of its own: the Party ran the pregame and its host started it.
   $("lobby-form").hidden = $("lobby-actions").hidden = Boolean(st.party_round);
-  $("status").textContent = st.recovery_error
-    || (st.party_round ? "The crew is boarding…" : `${ready} crew members ready · ${st.players.length} at the table`);
+  say(st.recovery_error
+    || (st.party_round ? "The crew is boarding…" : `${ready} crew members ready · ${st.players.length} at the table`));
   choices($("mission"), (st.missions||[]).map(m => ({value:m.id,text:`${m.id>32?"Deep dive":"Mission"} ${m.id}${m.enabled?"":" · unavailable"}`,disabled:!m.enabled})), st.settings.mission);
   $("timed").checked = st.settings.timed; $("tonoja-position").value = String(st.settings.tonoja_position);
   $("roster").replaceChildren();
@@ -366,12 +448,14 @@ function drawSetup(st, g) {
   document.querySelector('label[for="tonoja-position"]').hidden = $("tonoja-position").hidden = true;
   ui.fromSetup = true;
   const seatOpen = g.setup.tonoja && g.setup.tonoja_seat === null;
-  const text = g.away.length ? `Waiting for ${names(g.away)} to reconnect.`
-    : g.proposal ? (mustAnswer(g) ? `Your answer is needed: ${question(g)}` : `Crew decision · waiting for ${names(stillAsked(g))}`)
+  // The status line names one person and counts the rest (whoOf), as on the board; the decision
+  // under it lists everyone who has not answered.
+  const text = g.away.length ? `Waiting for ${whoOf(g.away)} to reconnect.`
+    : g.proposal ? (mustAnswer(g) ? `Your answer is needed: ${question(g).replace(/\?.*$/, "?")}` : `Crew decision · waiting for ${whoOf(stillAsked(g))}`)
     : seatOpen ? (g.me ? "Agree where Tonoja sits" : "Waiting for the two players to agree where Tonoja sits")
     : !hostOwned(g) ? "Agree on the mission to open on"
     : amHost() ? "Choose the mission to open on" : `Waiting for ${theHost()} (Party Host) to choose the mission`;
-  $("status").textContent = (g.me ? "" : "Watching · ") + text;
+  say((g.me ? "" : "Watching · ") + text);         // the one live region, in its two parts (never #status.textContent)
   $("status").classList.toggle("urgent", Boolean(g.proposal && mustAnswer(g)));
   $("roster").replaceChildren();
   for (const seat of g.seats) {
@@ -393,7 +477,9 @@ function drawSetup(st, g) {
       : `Tonoja sits ${seatWords(agreed)} · agreed by ${names(g.seats)}.`, "muted");
     line.dataset.key = "tonoja-seat"; line.style.cssText = "flex-basis:100%;margin:0"; box.append(line);
   }
-  if (g.proposal) box.append(decisionNode(g));
+  // Setup is drawn in the lobby's place: there is no hand and no dock here, so the two answers
+  // stay under the question (as on the result). On the board they are in the dock.
+  if (g.proposal) box.append(decisionNode(g, true));
   else {
     if (g.setup.tonoja && g.me) {
       // A seated player proposes a seat; the other player is then asked, in the decision panel.
@@ -420,7 +506,7 @@ function drawSetup(st, g) {
 function syncTurn(g) {
   const key = [g.attempt, g.stage, g.trick_number, g.turn, g.trick.length].join(":");
   if (key === ui.turnKey) return;
-  ui.turnKey = key; ui.selected = null;
+  ui.turnKey = key; ui.selected = null; ui.radio = false; ui.radioBack = null; ui.radioCard = null; ui.radioMeaning = null;
   if (!g.me) ui.handView = g.tonoja.length ? "tonoja" : "none";
   else ui.handView = g.tonoja.length && g.turn === "tonoja" && g.captain === g.me.seat
     && ["before_trick","in_trick"].includes(g.stage) ? "tonoja" : "mine";
@@ -444,12 +530,20 @@ function stillAsked(g) {
   return asked ? [asked] : g.seats.filter(s => s !== "tonoja" && !g.proposal.votes.includes(s));
 }
 
+// A timed mission whose deadline has passed and whose result has not arrived yet (the server
+// judges it when the held trick settles). A fact of the view and the clock; no outcome is claimed.
+function clockOut(g) { return Boolean(g && g.expiry && !g.result && g.expiry <= conn.now() / 1000); }
+
+// The status line is the one live instruction and is always read whole: it names one person and
+// counts the rest, and it asks a decision's question without the sentence of consequence that
+// the decision shows under it.
 function statusText(g) {
-  if (g.away.length) return `Waiting for ${names(g.away)} to reconnect. Your table is preserved.`;
+  if (g.away.length) return `Waiting for ${whoOf(g.away)} to reconnect. Your table is preserved.`;
   if (g.proposal) {
-    if (mustAnswer(g)) return `Your answer is needed: ${g.proposal.recipient ? `${name(g.captain)} offers you all tasks.` : question(g)}`;
-    return `Crew decision · waiting for ${names(stillAsked(g))}`;
+    if (mustAnswer(g)) return `Your answer is needed: ${g.proposal.recipient ? `${name(g.captain)} offers you all tasks.` : question(g).replace(/\?.*$/, "?")}`;
+    return `Crew decision · waiting for ${whoOf(stillAsked(g))}`;
   }
+  if (clockOut(g)) return "The mission clock is at zero";
   if (g.result) return g.result.status === "success" ? "Mission complete" : g.result.status === "failed" ? "Mission failed" : "Table ended";
   const mine = seat => g.me && (seat === g.me.seat || (seat === "tonoja" && g.captain === g.me.seat));
   if (g.stage === "allocation") {
@@ -469,81 +563,203 @@ function statusText(g) {
   return mine(g.turn) ? `Your turn to ${verb}` : `${name(g.turn)} to ${verb}`;
 }
 
+// The one live region. First what is asked of this player now; then, for a screen reader only,
+// the latest thing that happened (the mission stage shows the same words to the eye).
+function say(text, news="") {
+  if (!$("status-now") || !$("status-news")) {
+    // Something else wrote into the live region and took its two parts with it: put them back.
+    const now = el("span"), then = el("span", undefined, "sr"); now.id = "status-now"; then.id = "status-news";
+    $("status").replaceChildren(now, then);
+  }
+  if ($("status-now").textContent !== text) $("status-now").textContent = text;
+  if ($("status-news").textContent !== news) $("status-news").textContent = news;
+}
+// The status line has a place of its own: a strip above the board, or, on a short screen, the
+// space between the two top-bar buttons. A sentence too long for that place is shown whole over
+// the mission stage's lesser lines (the objective's line, the chips, the news), under the
+// mission's title and clock: the one live instruction outranks them for as long as it is up.
+// Measured, not guessed: its own place is tried first, every time.
+function fitStatus() {
+  const app = $("app"), box = $("status");
+  app.classList.remove("status-long", "status-free");
+  if (box.scrollHeight <= box.clientHeight + 1) return;
+  // Off the board (the lobby, a Party round's setup) there is no mission stage to borrow from:
+  // the line is given a row of its own, as long as it needs.
+  if ($("game").hidden) { app.classList.add("status-free"); return; }
+  app.classList.add("status-long");            // the strip leaves its place, so measure after
+  const frame = app.getBoundingClientRect(), head = document.querySelector(".mission-head").getBoundingClientRect(), stage = $("mission-stage").getBoundingClientRect();
+  app.style.setProperty("--status-top", `${Math.round(head.bottom - frame.top + 2)}px`);
+  app.style.setProperty("--status-height", `${Math.round(stage.bottom - head.bottom - 6)}px`);
+}
+addEventListener("resize", fitStatus);
+
 function drawStatus(g) {
-  const text = (g.me ? "" : "Watching · ") + statusText(g);
-  if ($("status").textContent !== text) $("status").textContent = text;
+  const news = latest(g);
+  // Who is winning the unfinished trick is the server's word (trick_leading). It is said after
+  // the news, so a screen reader hears it when it changes and not again with every card.
+  const ahead = g.trick_leading ? ` ${name(g.trick_leading)} is winning the trick.` : "";
+  say((g.me ? "" : "Watching · ") + statusText(g), (news.length ? ` Latest: ${news.join(". ")}.` : "") + ahead);
   $("status").classList.toggle("urgent", Boolean(g.proposal && mustAnswer(g)));
 }
 
-function drawHead(g) {
+// ---- what the server's events say, in words ----------------------------------------------------
+// One sentence per event that carries meaning, built from the event's own fields. The words are
+// on the board (and in the live region) whether or not anything moves, flashes or sounds.
+const ALLOCATION = {skip_captain:"Task selection skips the captain", free:"The crew agrees who takes each task", one:"One crew member takes every task",
+  captain_one:"The captain decides who takes every task", volunteer:"Volunteers take the tasks"};
+function sayEvent(e) {
+  switch (e.type) {
+    case "TRICK_RESOLVED": return `${name(e.winner)} won trick ${e.trick} with ${cardLabel(e.winning_card)}`;
+    case "COMMUNICATION_SENT": return `${name(e.seat)} radioed ${cardLabel(e.card)}${e.assertion ? ` as their ${e.assertion}` : ", meaning hidden"}${e.assertion && hiddenFromCrew(ST?.game, e.seat) ? ` (${HIDDEN})` : ""}`;
+    case "OBJECTIVE_COMPLETED": return e.scope === "task" ? `${name(e.owner)}’s task is complete` : "The mission objective held";
+    case "OBJECTIVE_FAILED": return e.scope === "task" ? `${name(e.owner)}’s task is lost` : "The mission objective is lost";
+    case "MISSION_SUCCESS": return "Mission complete";
+    case "MISSION_FAILURE": return "Mission failed";
+    case "PLAYER_RECONNECTED": return `${name(e.seat)} is back`;
+    case "MISSION_MODIFIER_ACTIVATED":
+      if (e.modifier === "communication") return `${(RADIO[e.value] || RADIO.normal)[1]}${e.drawn ? " for this attempt" : ""}`;
+      if (e.modifier === "allocation") return ALLOCATION[e.value] || null;
+      if (e.modifier === "objective") return "A shared objective is in force";
+      if (e.modifier === "distress") return e.value === "active" ? "Distress is active" : `Distress: everyone passes one card ${e.value}`;
+      if (e.modifier === "timer") return `Clock started: ${e.value} seconds`;
+      if (e.modifier === "sonar") return "Radio only before the first trick";
+      return null;
+    default: return null;      // a card played and a turn begun are the trick and the status line
+  }
+}
+// The newest two, newest first. Only what the view was sent: the latest trick and after.
+function latest(g) {
+  const out = [];
+  for (let i = (g.events || []).length - 1; i >= 0 && out.length < 2; i--) { const said = sayEvent(g.events[i]); if (said) out.push(said); }
+  return out;
+}
+
+// ---- zone A: the mission stage -------------------------------------------------------------------
+// Conditions and radio are the view's own facts. The stage's look follows them (data-env,
+// data-radio); the words say them.
+function envState(g) {
+  if (g.result) return g.result.status === "success" ? {key:"clear", text:"Mission complete"} : g.result.status === "failed" ? {key:"lost", text:"Mission failed"} : {key:"calm", text:"Table ended"};
+  if (g.expiry) return {key:"storm", text: clockOut(g) ? "Clock at zero" : "Clock running"};
+  if (g.distress) return {key:"distress", text:"Distress active"};
+  return {key:"calm", text:`Attempt ${g.attempts || 1}`};
+}
+function radioState(g) {
+  const [key, label, rule] = RADIO[g.communication] || RADIO.normal;
+  return {key, rule, label: g.shared_sonar !== null ? `${label} · ${g.shared_sonar} left` : label};
+}
+function chip(node, symbol, text, cls) {
+  node.className = "chip " + cls;
+  node.replaceChildren(icon(symbol), el("span", text), fx());
+}
+function drawMission(g) {
+  const env = envState(g), radio = radioState(g), stage = $("mission-stage");
+  stage.dataset.env = env.key; stage.dataset.radio = radio.key;
   $("mission-title").textContent = `Mission ${g.mission.id}`;
   $("mission-title").title = `Attempt ${g.attempts||1}`;
   $("trick-count").textContent = `Trick ${g.trick_number} / ${g.planned_tricks}`;
+  const done = g.tasks.filter(t => t.state === "COMPLETED").length;
+  $("mission-line").textContent = g.mission.objective ? OBJECTIVES[g.mission.objective]
+    : g.tasks.length ? `Complete all ${g.tasks.length} crew task${g.tasks.length === 1 ? "" : "s"} together · ${done} done` : "Complete every assigned task together.";
+  chip($("env-chip"), "expo-slot-hazard", env.text, env.key);
+  chip($("radio-chip"), "expo-slot-radio", radio.label, radio.key);
+  $("stage-news").textContent = latest(g).join(" · ");
 }
 
-function pill(status) {
-  const map = {failed:["× Failed","failed"], satisfied:["✓ Done","done"], pending:["○ Pending","pending"], unassigned:["Open","open"]};
-  const [text, cls] = map[status] || [status, "pending"];
+function pill(state) {
+  const [text, cls] = STATES[state] || [state, "pending"];
   return el("span", text, "pill " + cls);
 }
 
-// The two lines under the mission: what matters most first (a failure, then this player's own
-// tasks). The rest is one tap away in Tasks.
+// ---- zone D: the crew's objectives ----------------------------------------------------------------
+// Compact task cards: whose it is, what it asks, and the state the server gives it. What matters
+// most comes first (a failure, then this player's own open tasks); the rest is one tap away.
 function drawObjectives(g) {
   const box = $("objectives"); box.replaceChildren();
-  const rank = t => t.status === "failed" ? 0 : (g.me && t.owner === g.me.seat && t.status !== "satisfied") ? 1 : t.status === "pending" ? 2 : t.status === "unassigned" ? 3 : 4;
+  const rank = t => ["FAILED","IMPOSSIBLE"].includes(t.state) ? 0 : (g.me && t.owner === g.me.seat && t.state !== "COMPLETED") ? 1 : t.state === "ACTIVE" ? 2 : t.state === "PENDING" ? 3 : 4;
   const rows = [];
   if (g.mission.objective) {
-    const status = g.result ? (g.result.status === "success" ? "satisfied" : g.tasks.some(t => t.status === "failed") ? "pending" : "failed") : "pending";
-    rows.push({text: OBJECTIVES[g.mission.objective], status, who: null});
+    // The shared objective has no task state of its own: it holds with a success, and it is lost
+    // only when the server's cause names it.
+    const state = g.result?.status === "success" ? "COMPLETED" : g.cause?.kind === "mission_objective" ? g.cause.state : "ACTIVE";
+    rows.push({text: OBJECTIVES[g.mission.objective], state, who: null, id: g.mission.objective});
   }
-  for (const t of [...g.tasks].sort((a,b) => rank(a) - rank(b))) rows.push({text: t.text, status: t.status, who: t.owner});
-  if (!rows.length) rows.push({text: "Complete every assigned task together.", status: "pending", who: null});
+  for (const t of [...g.tasks].sort((a,b) => rank(a) - rank(b))) rows.push({text: t.text, state: t.state, who: t.owner, id: t.id});
+  if (!rows.length) rows.push({text: "Complete every assigned task together.", state: "ACTIVE", who: null, id: ""});
   // One target for the whole panel (a row alone is too thin for a thumb): it opens the tasks.
   const open = el("button", undefined, "objectives-open"); open.type = "button"; open.dataset.key = "objectives";
   open.onclick = e => openSheet("tasks", e.currentTarget);
+  const list = el("span", undefined, "objective-list");
   const said = [];
   for (const r of rows.slice(0, 2)) {
-    const row = el("span", undefined, "objective " + r.status);
+    const row = el("span", undefined, "objective " + (STATES[r.state] || ["","pending"])[1]); row.dataset.task = r.id;
     const text = el("span", undefined, "objective-text");
     if (r.who) text.append(el("b", name(r.who) + " · "));
     text.append(document.createTextNode(r.text));
-    row.append(text, pill(r.status));
-    said.push(`${r.who ? name(r.who) + ": " : ""}${r.text}, ${r.status}`);
-    open.append(row);
+    row.append(text, pill(r.state));
+    said.push(`${r.who ? name(r.who) + ": " : ""}${r.text}, ${r.state.toLowerCase()}`);
+    list.append(row);
   }
-  open.setAttribute("aria-label", `${said.join(". ")}.${rows.length > 2 ? ` And ${rows.length - 2} more.` : ""} Open tasks.`);
-  box.append(open);
+  open.append(list);
+  const done = g.tasks.filter(t => t.state === "COMPLETED").length;
+  if (g.tasks.length) { const count = el("span", undefined, "objective-count"); count.append(el("b", `${done}/${g.tasks.length}`), el("span", "done")); open.append(count); }
+  open.setAttribute("aria-label", `Crew objectives${g.tasks.length ? `, ${done} of ${g.tasks.length} done` : ""}. ${said.join(". ")}.${rows.length > 2 ? ` And ${rows.length - 2} more.` : ""} Open tasks.`);
+  box.append(open, fx());
 }
 
 function exposureOf(g, seat) { return g.exposures.find(e => e.seat === seat); }
 function exposureMark(e) {
   const [s,r] = e.card.split(":");
-  const meaning = {highest:"▲", lowest:"▼", only:"●"}[e.assertion] || "?";
-  return `${r}${symbols[s]}${meaning}`;
+  return `${r}${symbols[s]}${(MEANING[e.assertion] || ["?"])[0]}`;
+}
+// A seat's radio, from the view: a card it is showing, a transmission used or not, the shared
+// supply, or a mission without radio.
+function seatRadio(g, seat) {
+  if (seat === "tonoja") return null;
+  const e = exposureOf(g, seat);
+  if (e) return {key:"sent", text:exposureMark(e), said:`radioed ${cardLabel(e.card)}${e.assertion ? " as their " + e.assertion : ", meaning hidden"}${e.assertion && hiddenFromCrew(g, seat) ? ", " + HIDDEN : ""}`};
+  if (g.communication === "none") return {key:"off", text:"radio off", short:"off", said:"radio off"};
+  if (g.shared_sonar !== null) return {key:g.shared_sonar ? "ready" : "spent", text:`shared ${g.shared_sonar}`, said:`shared radio, ${g.shared_sonar} left`};
+  return g.sonar_spent.includes(seat) ? {key:"spent", text:"radio used", short:"used", said:"radio used"} : {key:"ready", text:"radio ready", short:"ready", said:"radio unused"};
 }
 
+// ---- zone B: the crew strip ------------------------------------------------------------------------
 function drawCrew(g) {
   const strip = $("seats"); strip.replaceChildren();
   strip.style.setProperty("--n", g.seats.length);
   strip.classList.toggle("tight", g.seats.length > 3);
-  const host = hostSeat(g);
+  const host = hostSeat(g), playing = !g.result && ["before_trick","in_trick"].includes(g.stage);
   for (const seat of g.seats) {
-    const tile = el("button", undefined, "seat" + (seat === g.turn && !g.result && ["before_trick","in_trick"].includes(g.stage) ? " active" : "")
-      + (g.me && seat === g.me.seat ? " me" : "") + (g.away.includes(seat) ? " away" : ""));
-    tile.type = "button"; tile.dataset.key = "seat:" + seat;
+    const turn = playing && seat === g.turn, away = g.away.includes(seat);
+    const tile = el("button", undefined, "seat" + (turn ? " active" : "") + (g.me && seat === g.me.seat ? " me" : "") + (away ? " away" : ""));
+    tile.type = "button"; tile.dataset.key = "seat:" + seat; tile.dataset.seat = seat;
     tile.onclick = e => openSheet("crew", e.currentTarget);
     const top = el("span", undefined, "seat-name");
+    if (turn) top.append(el("span", "▶", "turn-pip"));
     if (seat === g.captain) top.append(el("span", "♛", "crown"));
     top.append(el("b", name(seat)));
+    // The Party Host's tag never costs a tile its name: it is the letter H from three seats up
+    // (HOST with two), and with four or five seats it sits
+    // on the second line as the letter H (the tile's label, and the crew sheet, say Party Host).
+    const tight = g.seats.length > 3;
+    const tag = seat === host ? el("span", g.seats.length > 2 ? "H" : "HOST", "host-tag") : null;
+    if (tag) tag.title = "Party Host";
+    if (tag && !tight) top.append(tag);
     const roles = [seat === g.captain ? "Captain" : null, seat === host ? "Party Host" : null].filter(Boolean);
-    const cards = g.hand_counts[seat], tricks = g.trick_counts[seat];
-    const e = exposureOf(g, seat);
+    const cards = g.hand_counts[seat], tricks = g.trick_counts[seat], radio = seatRadio(g, seat);
     tile.append(top);
     if (roles.length && g.seats.length <= 3) tile.append(el("span", roles.join(" · "), "seat-role"));
-    tile.append(el("span", g.seats.length > 3 ? `${cards}c · ${tricks}t` : `${cards} cards · ${tricks} trick${tricks===1?"":"s"}`, "seat-count"));
-    if (e) tile.append(el("span", exposureMark(e), "seat-sonar"));
-    tile.setAttribute("aria-label", `${name(seat)}${roles.length ? ", " + roles.join(", ") : ""}: ${cards} cards, ${tricks} tricks${g.away.includes(seat) ? ", away" : ""}. Open crew.`);
+    const second = el("span", undefined, "seat-line");
+    second.append(away ? el("span", "Reconnecting…", "seat-count warn")
+      : el("span", tight ? `${cards}c · ${tricks}t` : `${cards} cards · ${tricks} trick${tricks===1?"":"s"}`, "seat-count"));
+    if (tag && tight) second.append(tag);
+    tile.append(second);
+    // Four or five tiles share a phone's width: the radio's icon stands for the word "radio".
+    const line = el("span", undefined, "seat-radio " + (radio ? radio.key : ""));
+    if (radio && g.seats.length > 3 && radio.short) line.append(icon("expo-slot-radio"), el("span", radio.short));
+    else line.textContent = radio ? radio.text : `by ${name(g.captain)}`;
+    tile.append(line);
+    tile.append(fx());
+    tile.setAttribute("aria-label", `${name(seat)}${roles.length ? ", " + roles.join(", ") : ""}: ${cards} cards, ${tricks} tricks${radio ? ", " + radio.said : ""}${turn ? ", their turn" : ""}${away ? ", away, reconnecting" : ""}. Open crew.`);
     strip.append(tile);
   }
 }
@@ -553,6 +769,7 @@ function drawStage(g) {
   const stage = $("stage"); stage.replaceChildren();
   let node;
   if (g.proposal && !g.result) node = decisionNode(g);
+  else if (ui.radio && g.me) node = radioNode(g);
   else if (g.result || ["before_trick","in_trick"].includes(g.stage)) node = trickNode(g);
   else if (g.stage === "allocation") node = allocationNode(g);
   else if (g.stage === "prediction") node = predictionNode(g);
@@ -561,28 +778,47 @@ function drawStage(g) {
   stage.append(node);
 }
 
-function decisionNode(g) {
+// A pending decision. In the trick's place it is the question and who it waits for, and the two
+// answers are in the dock, beside the hand, where they are whole at every size and can never be
+// scrolled out of reach. On the result (`inline`) the answers stay under the question.
+function answers(g) {
+  const row = el("div", undefined, "choice-row");
+  row.append(button(g.proposal.recipient ? "Accept" : "Agree", () => send("confirm",{yes:true}), "agree", false, "", "btn-primary"), button("Decline", () => send("confirm",{yes:false}), "decline"));
+  return row;
+}
+function decisionNode(g, inline=false) {
   const box = el("section", undefined, "decision"); box.setAttribute("aria-label", "Crew decision");
   const asked = g.proposal.recipient;
   if (asked) box.append(el("h2","Captain’s offer"), el("p",`${name(g.captain)} offers all tasks to ${name(asked)}.`), el("p",`Only ${name(asked)} can accept or decline.`,"muted"));
-  else box.append(el("h2","Crew decision"), el("p",question(g)), el("p",`${g.proposal.votes.length} / ${g.seats.filter(s=>s!=="tonoja").length} confirmed · everyone must agree`,"muted"));
-  if (mustAnswer(g)) {
-    const row = el("div",undefined,"choice-row");
-    row.append(button(asked?"Accept":"Agree",()=>send("confirm",{yes:true}),"agree",false,"","btn-primary"),button("Decline",()=>send("confirm",{yes:false}),"decline"));
-    box.append(row);
-  } else if (!g.away.length) box.append(why(`Waiting for ${names(stillAsked(g))}.`));
+  else {
+    // The count is for whoever still has to answer; someone waiting is told who is missing.
+    box.append(el("h2","Crew decision"), el("p",question(g)));
+    if (mustAnswer(g) || g.away.length) box.append(el("p",`${g.proposal.votes.length} / ${g.seats.filter(s=>s!=="tonoja").length} confirmed · everyone must agree`,"muted"));
+  }
+  if (mustAnswer(g)) { if (inline) box.append(answers(g)); else box.append(el("p", "Your answer is below, beside your hand.", "muted answer-below")); }
+  else if (!g.away.length) box.append(why(`Waiting for ${names(stillAsked(g))}.`));
   const begin = beginWhy(g);
   if (begin) box.append(begin);
   return box;
 }
 
-function slot(g, seat, card, cls, note) {
-  const s = el("div", undefined, "slot " + cls + (g.me && seat === g.me.seat ? " me" : ""));
-  s.append(el("span", name(seat), "slot-name"));
+// ---- zone C: the shared trick -----------------------------------------------------------------------
+// Every card stays with the seat that played it, in play order from the lead. The winner shown
+// is the one the server resolved, and the seat winning an unfinished trick is the one the server
+// names (trick_leading): nothing here looks at the cards to work either out.
+function slot(g, seat, card, cls, note, order, tag, ahead) {
+  const s = el("div", undefined, "slot " + cls + (g.me && seat === g.me.seat ? " me" : "")); s.dataset.seat = seat;
+  const top = el("span", undefined, "slot-top");
+  top.append(el("b", String(order), "slot-order"), el("span", name(seat), "slot-name"));
+  s.append(top);
   if (card) s.append(cardNode(card));
   else s.append(el("div", note || "", "card-empty"));
+  if (tag) s.append(el("span", tag, "slot-tag " + (tag === "WON" ? "won" : "lead")));
+  if (ahead) { s.classList.add("ahead"); s.append(el("span", "WINNING", "slot-ahead" + (tag ? " over" : ""))); }
+  s.append(fx());
   return s;
 }
+function suitWord(card) { const s = card.split(":")[0]; return `${s === "submarine" ? "submarines" : s} ${symbols[s]}`; }
 
 function trickNode(g) {
   const box = el("div", undefined, "trick-stage");
@@ -591,20 +827,60 @@ function trickNode(g) {
   const caption = el("div", undefined, "stage-caption");
   const order = from => g.seats.slice(g.seats.indexOf(from)).concat(g.seats.slice(0, g.seats.indexOf(from)));
   if (!g.trick.length && g.last_trick) {
-    // The trick that just ended stays on the table until the next card is played.
+    // The trick that just ended stays on the table until the next card is played: the winner
+    // forward, the rest tucked. While the server holds the table (resolving) it says so.
     const t = g.last_trick;
-    for (const p of t.plays) row.append(slot(g, p.seat, p.card, p.seat === t.winner ? "winner" : "done"));
-    caption.append(el("strong", `Trick ${t.index} · ${name(t.winner)} won`));
+    row.classList.add("resolved"); if (g.resolving) row.classList.add("resolving");
+    t.plays.forEach((p, i) => row.append(slot(g, p.seat, p.card, p.seat === t.winner ? "winner" : "tucked", "", i + 1, p.seat === t.winner ? "WON" : i === 0 ? "LEAD" : "")));
+    caption.append(el("strong", `Trick ${t.index} · ${name(t.winner)} won · lead ${suitWord(t.plays[0].card)}`));
     if (!g.result) caption.append(el("span", `${name(g.turn)} leads trick ${g.trick_number}`));
   } else if (!g.trick.length) {
-    for (const seat of order(g.leader)) row.append(slot(g, seat, null, seat === g.turn && !g.result ? "active" : "idle", seat === g.turn && !g.result ? "To lead" : ""));
+    order(g.leader).forEach((seat, i) => row.append(slot(g, seat, null, seat === g.turn && !g.result ? "active" : "idle", seat === g.turn && !g.result ? "To lead" : "", i + 1)));
     caption.append(el("strong", g.result ? "No trick was played" : "Awaiting the opening card"));
   } else {
     const played = new Map(g.trick.map(p => [p.seat, p.card]));
-    for (const seat of order(g.leader)) row.append(slot(g, seat, played.get(seat), played.has(seat) ? "done" : seat === g.turn ? "active" : "idle", seat === g.turn ? "To play" : ""));
-    caption.append(el("strong", "Current trick"), el("span", `Waiting for ${g.turn === "tonoja" ? `${name(g.captain)} (Tonoja)` : name(g.turn)}…`));
+    order(g.leader).forEach((seat, i) => row.append(slot(g, seat, played.get(seat), played.has(seat) ? "played" : seat === g.turn ? "active" : "idle", seat === g.turn ? "To play" : "", i + 1, i === 0 ? "LEAD" : "", seat === g.trick_leading)));
+    caption.append(el("strong", `Current trick · lead ${suitWord(g.trick[0].card)}`), el("span", `Waiting for ${g.turn === "tonoja" ? `${name(g.captain)} (Tonoja)` : name(g.turn)}…`));
   }
   box.append(row, caption);
+  return box;
+}
+
+// ---- the helmet radio: Burst Transmission, in place of the trick while it is open -----------------
+// Which cards may be sent, and as what, is the server's list (me.communication_options). The
+// page offers exactly that list and adds nothing to it.
+function radioOptions(g) { return g.me && !g.proposal ? g.me.communication_options : {}; }
+// The radio is about this player's own cards: open, it shows them (the switch to Tonoja's cards
+// is put away); closed, the hand goes back to whichever cards were showing.
+function openRadio() { ui.radioBack = ui.handView; ui.radio = true; ui.radioCard = null; ui.radioMeaning = null; ui.selected = null; ui.handView = "mine"; draw(); }
+function endRadio() {
+  if (ui.radio && ui.radioBack) ui.handView = ui.radioBack;
+  ui.radio = false; ui.radioBack = null; ui.radioCard = null; ui.radioMeaning = null;
+}
+function closeRadio() { endRadio(); draw(); focusRef('[data-key="radio"]', $("mission-title")); }
+function radioNode(g) {
+  const box = el("section", undefined, "prep radio-console"); box.setAttribute("aria-label", "Helmet radio");
+  const r = radioState(g), opts = radioOptions(g), keys = Object.keys(opts);
+  const head = el("div", undefined, "prep-head");
+  head.append(el("h2", "Burst Transmission"), el("span", r.label, "radio-state " + r.key));
+  box.append(head, why(r.rule));
+  if (ui.radioCard && !keys.includes(ui.radioCard)) { ui.radioCard = null; ui.radioMeaning = null; }
+  if (!keys.length) {
+    box.append(el("p", g.communication === "none" ? "Nothing can be transmitted in this mission."
+      : g.resolving ? g.me.play_reason
+      : "Nothing can be transmitted right now. The radio opens before a trick, once the tasks are assigned, if you have a transmission left and a color card that is your highest, lowest or only card of its color."));
+    if (g.shared_sonar === null && g.communication !== "none") box.append(why(g.sonar_spent.includes(g.me.seat) ? "Your transmission is used." : "Your transmission is unused."));
+  } else if (!ui.radioCard) box.append(el("p", "Choose a lit card in your hand. Only the cards the rules allow are lit."));
+  else {
+    if (!opts[ui.radioCard].includes(ui.radioMeaning)) ui.radioMeaning = opts[ui.radioCard].length === 1 ? opts[ui.radioCard][0] : null;
+    const row = el("div", undefined, "choice-row");
+    row.append(el("p", `${cardLabel(ui.radioCard)} is your:`, "radio-ask"));
+    for (const a of opts[ui.radioCard]) {
+      const b = button(`${(MEANING[a] || [""])[0]} ${a}`, () => { ui.radioMeaning = a; draw(); }, "radio-meaning:" + a, false, "", ui.radioMeaning === a ? "on" : "");
+      b.setAttribute("aria-pressed", String(ui.radioMeaning === a)); row.append(b);
+    }
+    box.append(row);
+  }
   return box;
 }
 
@@ -691,7 +967,7 @@ function predictionNode(g) {
 
 function assistanceNode(g) {
   const box = el("section", undefined, "prep"); box.setAttribute("aria-label", "Before the first trick");
-  box.append(el("h2", "Ready to dive"));
+  box.append(el("h2", "Ready to move out"));
   const begin = beginWhy(g);            // first, so a short screen shows it without scrolling
   if (begin) box.append(begin);
   const begins = !hostOwned(g) ? "Beginning needs the whole crew to agree."
@@ -714,19 +990,17 @@ function passingNode(g) {
   return box;
 }
 
-function drawTabs(g) {
-  const done = g.tasks.filter(t => t.status === "satisfied").length;
-  $("tab-tasks").textContent = g.tasks.length ? `Tasks ${done}/${g.tasks.length}` : "Tasks";
-  const can = g.me && Object.keys(g.me.communication_options).length > 0 && !g.proposal;
-  $("tab-sonar").textContent = "Sonar";
-  $("tab-sonar").parentElement.classList.toggle("ready", Boolean(can));
-  $("tab-sonar").parentElement.setAttribute("aria-label", can ? "Sonar: you can communicate now" : "Sonar");
-}
-
 // ---- the hand: always on screen ----------------------------------------------------------------
 function handState(g) {
   // Which cards are showing, and for each the server's reason it cannot be chosen now, if any
   // (AVR-263). A watcher has no reasons and can choose nothing.
+  if (ui.radio && g.me) {
+    // Radio open: the hand is a picker of what may be transmitted. The cards the server lists
+    // (me.communication_options) are lit; the rest are not offered, and the line above the hand
+    // says what to do. No request is refused here, so there is no refusal to word.
+    const opts = radioOptions(g);
+    return g.me.hand.map(c => ({card:c, enabled: Object.hasOwn(opts, c), reason:""}));
+  }
   const state = c => { const reason = g.me?.card_reasons[c] || ""; return {card:c, enabled:Boolean(g.me) && !reason, reason}; };
   if (ui.handView === "tonoja") return g.tonoja.map(c => c && state(c));
   return g.me ? g.me.hand.map(state) : [];
@@ -734,7 +1008,7 @@ function handState(g) {
 
 function drawHand(g) {
   const sw = $("hand-switch"); sw.replaceChildren();
-  sw.hidden = !(g.tonoja.length && g.me);
+  sw.hidden = !(g.tonoja.length && g.me) || ui.radio;
   if (!sw.hidden) {
     for (const [view, label, count] of [["mine","Yours",g.me.hand.length],["tonoja","Tonoja",g.tonoja.filter(Boolean).length]]) {
       const b = el("button", `${label} ${count}`, "switch" + (ui.handView === view ? " on" : "")); b.type = "button";
@@ -750,11 +1024,18 @@ function drawHand(g) {
   const n = cards.length;
   hand.style.setProperty("--cols", n <= 7 ? Math.max(n, 5) : Math.ceil(n / 2));
   hand.classList.toggle("two-rows", n > 7);
+  hand.classList.toggle("radio", ui.radio);
   if (ui.selected && !cards.some(c => c && c.card === ui.selected && c.enabled)) ui.selected = null;
+  const shown = g.me && ui.handView === "mine" ? exposureOf(g, g.me.seat) : null;
   for (const c of cards) {
     if (!c) { hand.append(el("div", "", "card-empty gone")); continue; }
-    const node = cardNode(c.card, () => { ui.selected = ui.selected === c.card ? null : c.card; draw(); }, c.enabled, c.reason);
-    node.setAttribute("aria-pressed", String(ui.selected === c.card));
+    // Every card that may be chosen is drawn the same way: nothing here knows, or shows, what a
+    // legal card will do.
+    const node = ui.radio
+      ? cardNode(c.card, () => { ui.radioCard = ui.radioCard === c.card ? null : c.card; ui.radioMeaning = null; draw(); }, c.enabled, c.reason)
+      : cardNode(c.card, () => { ui.selected = ui.selected === c.card ? null : c.card; draw(); }, c.enabled, c.reason);
+    node.setAttribute("aria-pressed", String((ui.radio ? ui.radioCard : ui.selected) === c.card));
+    if (shown && shown.card === c.card) mark(node, shown);
     hand.append(node);
   }
   if (!n) hand.append(el("p", g.me ? "No cards left." : "Spectators see no hands.", "muted"));
@@ -765,7 +1046,8 @@ function drawHand(g) {
     const lead = g.trick[0]?.card.split(":")[0];
     const shown = cards.filter(Boolean);
     const passing = g.stage === "passing" && ui.handView !== "tonoja";
-    if (shown.length && shown.every(c => c.reason && c.reason === shown[0].reason)) reason = shown[0].reason;
+    if (ui.radio) reason = !Object.keys(radioOptions(g)).length ? "Nothing to transmit now" : ui.radioCard ? `Transmit ${cardLabel(ui.radioCard)}` : "Choose a lit card to transmit";
+    else if (shown.length && shown.every(c => c.reason && c.reason === shown[0].reason)) reason = shown[0].reason;
     else if (!shown.length) reason = (passing ? "" : g.me.play_reason) || "";
     else if (passing) reason = "Choose one color card";
     else reason = lead ? `Follow ${lead === "submarine" ? "submarines" : lead} if you can` : "Lead any card";
@@ -807,16 +1089,44 @@ function tableZone(g) {
 }
 
 function actionZone(g) {
+  if (g.proposal && !g.result && mustAnswer(g)) {
+    // A decision this player must answer comes before a card: the two answers take the place
+    // of Radio and Play until it is answered.
+    const z = zone("Your answer", "decision"); z.id = "dock-action"; z.classList.add("answering");
+    z.append(answers(g));
+    return z;
+  }
   const tonoja = ui.handView === "tonoja";
-  const z = zone(!g.me ? "Watching" : g.me.seat === g.captain ? (tonoja ? "Captain · Tonoja" : "Captain") : "Crew member", g.me ? "your role in the game" : "no seat");
+  const z = zone(!g.me ? "Watching" : g.me.seat === g.captain ? (tonoja ? "For Tonoja" : "Captain") : "Crew member", g.me ? "game role" : "no seat");
   z.id = "dock-action";
-  const passing = g.stage === "passing" && !tonoja;
-  const card = ui.selected;
-  const text = card ? `${passing ? "Pass" : "Play"} ${cardLabel(card)}` : passing ? "Pass card" : "Play card";
-  const b = button(text, () => { const c = ui.selected; ui.selected = null; send(passing ? "pass_card" : "play_card", {card:c}); },
-    passing ? "pass" : "play", !card, card ? "" : "Choose a card first.", "btn-primary");
-  b.setAttribute("aria-label", text);
-  z.append(b);
+  const row = el("div", undefined, "action-row");
+  if (g.me) {
+    // The radio is always one thumb away from the hand. Open, it lights the cards that may be
+    // sent; when nothing may be sent it says why instead of going grey.
+    const can = Object.keys(radioOptions(g)).length > 0;
+    const r = button("", () => ui.radio ? closeRadio() : openRadio(), "radio", false, "", "radio-btn" + (ui.radio ? " on" : "") + (can ? " ready" : ""));
+    r.append(icon("expo-slot-radio"), el("span", ui.radio ? "Close" : "Radio"));
+    r.setAttribute("aria-pressed", String(ui.radio));
+    r.setAttribute("aria-label", ui.radio ? "Close the radio" : can ? "Radio: you can transmit now" : "Radio");
+    row.append(r);
+  }
+  if (ui.radio && g.me) {
+    const card = ui.radioCard, meaning = ui.radioMeaning, ready = Boolean(card && meaning);
+    const text = ready ? `Transmit ${cardLabel(card)} · ${meaning}` : card ? "Choose its meaning" : "Transmit";
+    const b = button(text, () => { send("communicate", {card, assertion: meaning}); endRadio(); draw(); focusRef('[data-key="radio"]', $("mission-title")); },
+      "transmit", !ready, ready ? "" : "Choose a lit card and its meaning first.", "btn-primary");
+    b.setAttribute("aria-label", text);
+    row.append(b);
+  } else {
+    const passing = g.stage === "passing" && !tonoja;
+    const card = ui.selected;
+    const text = card ? `${passing ? "Pass" : "Play"} ${cardLabel(card)}` : passing ? "Pass card" : "Play card";
+    const b = button(text, () => { const c = ui.selected; ui.selected = null; send(passing ? "pass_card" : "play_card", {card:c}); },
+      passing ? "pass" : "play", !card, card ? "" : "Choose a card first.", "btn-primary");
+    b.setAttribute("aria-label", text);
+    row.append(b);
+  }
+  z.append(row);
   return z;
 }
 
@@ -834,6 +1144,36 @@ function drawDock(g) {
 }
 
 // ---- mission result: takes over the screen ------------------------------------------------------
+// Why an attempt failed, from the server's `cause` and nothing else: what failed, the play it is
+// attributed to (where the server names one), and whose objective it was. The server names the
+// card that decided it, not a fault, and the page says so. No assist is ever invented.
+const FAILURE = {
+  violated: "Something it forbids happened.", unreachable: "What it needs can no longer happen.",
+  unmet_at_end: "The deal ended before it was met.", deadline: "The clock ran out.",
+  captain_left_with_comparison_tasks: "The captain was left with only tasks a captain may not take.",
+  ineligible_volunteer: "A volunteer may not take one of the tasks.",
+};
+// Placeholder copy for the fiction, keyed by the kind of failure. The facts beside it are the
+// server's; this line is only colour and is the writer's to replace (PRESENTATION.md).
+const FICTION = {
+  violated: "The line broke where it could not afford to.", unreachable: "The objective slipped out of reach in the dust.",
+  unmet_at_end: "The window closed before the crew got through.", deadline: "The storm front arrived first.",
+};
+function causeFacts(g) {
+  const c = g.cause;
+  if (!c || typeof c !== "object") return [];
+  const task = c.kind === "task" ? g.tasks.find(t => t.id === c.objective) : null;
+  const what = task ? task.text : c.kind === "mission_objective" ? (OBJECTIVES[c.objective] || "The mission objective")
+    : c.kind === "deadline" ? "The mission clock" : c.kind === "allocation" ? "Task selection" : "The mission’s objectives";
+  const facts = [["What failed", `${what}${FAILURE[c.failure] && c.kind !== "deadline" ? " " + FAILURE[c.failure] : ""}`]];
+  if (c.trigger_seat) {
+    const by = c.trigger_controller && c.trigger_controller !== c.trigger_seat ? `${name(c.trigger_seat)} (played by ${name(c.trigger_controller)})` : name(c.trigger_seat);
+    facts.push(["Deciding play", c.trigger_card ? `${by} · ${cardLabel(c.trigger_card)}${c.trick && c.kind !== "deadline" ? ` · trick ${c.trick}` : ""}` : `${by}${c.kind === "allocation" ? " · during task selection" : ""}`]);
+  } else facts.push(["Deciding play", "No single play decided it."]);
+  facts.push(["Fell on", !c.affected_seat ? "The whole crew" : c.affected_seat === c.trigger_seat ? `${name(c.affected_seat)}’s own ${task ? "task" : "objective"}` : `${name(c.affected_seat)}${task ? "’s task" : ""}`]);
+  return facts;
+}
+
 function focusResult() {
   const first = $("result").querySelector("button:not(:disabled), select") || $("result-title");
   if (first) first.focus({preventScroll:true});
@@ -852,28 +1192,35 @@ function drawResult(g, st) {
   const card = el("div", undefined, "result-card");
   const title = el("h2", ok ? "MISSION COMPLETE" : r.status === "failed" ? "MISSION FAILED" : "TABLE ENDED"); title.id = "result-title"; title.tabIndex = -1;
   const reason = el("p", r.reason, "result-reason"); reason.id = "result-reason";
-  card.append(el("div", ok ? "✓" : "×", "result-mark"), title, el("p", ok ? "Together, you did it." : r.status === "failed" ? "Dive again." : "", "result-sub"), reason);
-  // What the server's state says about how it ended. Nothing is inferred here: a failed task is
-  // one the server marked failed, and the trick is the last one it resolved (AVR-246 will add
-  // the triggering play; `cause` is shown as soon as the result carries it).
+  const sub = ok ? "Together, you did it." : r.status === "failed" ? (FICTION[g.cause?.failure] || "Regroup and go again.") : "";
+  card.append(el("div", ok ? "✓" : "×", "result-mark"), title, el("p", sub, "result-sub"), reason);
+  // What the server's state says about how it ended. Nothing is inferred here: the three lines
+  // are the server's cause (AVR-246), a failed task is one the server marked failed, and the
+  // trick is the last one it resolved, the only one a viewer is sent.
   const facts = el("div", undefined, "result-facts");
-  for (const t of g.tasks.filter(t => t.status === "failed")) {
+  const cause = r.status === "failed" ? causeFacts(g) : [];
+  for (const [label, text] of cause) { const fact = el("p", undefined, "fact cause"); fact.append(el("b", label + ": "), document.createTextNode(text)); facts.append(fact); }
+  if (cause.length && g.cause.trigger_seat) facts.append(el("p", "Every play was legal. This names the card that decided it, not a fault.", "fact note"));
+  if (!cause.length) for (const t of g.tasks.filter(t => t.status === "failed")) {
     const fact = el("p", undefined, "fact");
     fact.append(el("b", `${name(t.owner)}’s task failed`));
     if (t.text !== r.reason) fact.append(document.createTextNode(` · ${t.text}`));
     facts.append(fact);
   }
-  if (typeof r.cause === "string") facts.append(el("p", r.cause, "fact"));
   if (g.last_trick) {
-    const t = g.last_trick;
+    const t = g.last_trick, about = g.cause && g.cause.kind !== "deadline" && g.cause.trick === t.index ? g.cause : null;
     facts.append(el("p", `Ended after trick ${t.index} of ${g.planned_tricks}, won by ${name(t.winner)}.`, "fact"));
     const row = el("div", undefined, "result-trick");
-    for (const p of t.plays) { const cell = el("div", undefined, "mini" + (p.seat === t.winner ? " winner" : "")); cell.append(cardNode(p.card), el("span", name(p.seat))); row.append(cell); }
+    for (const p of t.plays) {
+      const decided = Boolean(about && about.trigger_card === p.card), named = Boolean(about && about.cards.includes(p.card));
+      const cell = el("div", undefined, "mini" + (p.seat === t.winner ? " winner" : "") + (named ? " about" : ""));
+      cell.append(cardNode(p.card), el("span", decided ? `${name(p.seat)} · deciding` : name(p.seat))); row.append(cell);
+    }
     facts.append(row);
   }
   if (facts.children.length) card.append(facts);
   const controls = el("div", undefined, "result-actions");
-  if (g.proposal) controls.append(decisionNode(g));
+  if (g.proposal) controls.append(decisionNode(g, true));
   else if (mayMoveOn(g)) {
     // Retry and Next are closed exactly while the server gives a reason, and say it in words.
     if (hostOwned(g)) controls.append(el("p", "You are the Party Host: you choose what happens next.", "result-who"));
@@ -900,7 +1247,7 @@ function drawResult(g, st) {
   if (ok && window.Brag && g.me) controls.append(Brag.button(() => ({title:"EXPO",icon:"🌊",winner:{name:"The crew",avatar:"🌊"},headline:`Mission ${g.mission.id} completed together`,beaten:[]})));
   controls.append(button("Look at the table", () => { ui.resultHidden = true; draw(); focusRef('[data-key="show-result"]', $("mission-title")); }, "review", false, "", "quiet"));
   card.append(controls);
-  box.append(card);
+  box.append(card, fx());
   if (fresh) focusResult();
 }
 
@@ -911,13 +1258,14 @@ function drawSheet(g, st) {
   sheet.hidden = !ui.sheet;
   for (const tab of document.querySelectorAll(".tab")) tab.setAttribute("aria-expanded", String(ui.sheet === tab.dataset.sheet));
   if (!ui.sheet) return;
-  $("sheet-title").textContent = ui.sheet === "sonar" && g ? `Sonar · ${g.communication}` : SHEETS[ui.sheet];
+  $("sheet-title").textContent = SHEETS[ui.sheet];
   const body = $("sheet-body"); body.replaceChildren();
-  ({crew:crewSheet, tasks:tasksSheet, sonar:sonarSheet, history:historySheet, menu:menuSheet, help:helpSheet})[ui.sheet](body, g, st);
+  ({crew:crewSheet, tasks:tasksSheet, history:historySheet, menu:menuSheet, help:helpSheet})[ui.sheet](body, g, st);
 }
 
 function crewSheet(body, g) {
   const host = hostSeat(g), hostNamed = hostName();
+  body.append(why(`${radioState(g).label}. ${radioState(g).rule}`));
   for (const seat of g.seats) {
     const row = el("article", undefined, "crew-row" + (seat === g.turn ? " active" : ""));
     const roles = [g.me && seat === g.me.seat ? "You" : null, seat === g.captain ? "Captain" : null,
@@ -927,8 +1275,9 @@ function crewSheet(body, g) {
     const owned = g.tasks.filter(t => t.owner === seat);
     row.append(head, el("p", `${g.hand_counts[seat]} cards · ${g.trick_counts[seat]} tricks · ${owned.length} task${owned.length===1?"":"s"}`));
     const e = exposureOf(g, seat);
-    if (e) row.append(el("p", `Sonar: ${cardLabel(e.card)} · ${e.assertion || "meaning hidden"}`, "exposure"));
-    else if (seat !== "tonoja") row.append(el("p", g.shared_sonar !== null ? "Shares the crew’s sonar tokens" : g.sonar_spent.includes(seat) ? "Sonar spent" : "Sonar unused", "muted"));
+    if (e) row.append(el("p", `Radio: ${cardLabel(e.card)} · ${e.assertion || "meaning hidden"}${e.assertion && hiddenFromCrew(g, seat) ? ` (${HIDDEN})` : ""}`, "exposure"));
+    else if (seat !== "tonoja") row.append(el("p", g.communication === "none" ? "Radio off" : g.shared_sonar !== null ? "Shares the crew’s transmissions" : g.sonar_spent.includes(seat) ? "Radio used" : "Radio unused", "muted"));
+    if (g.away.includes(seat)) row.append(el("p", "Reconnecting: the table waits, and nothing is played for them.", "muted"));
     body.append(row);
   }
   if (hostNamed && !host) body.append(why(g.seats.some(s => s !== "tonoja" && name(s) === hostNamed)
@@ -940,42 +1289,12 @@ function tasksSheet(body, g) {
   body.append(el("p", g.mission.fixed ? "4 fixed tasks" : `Difficulty ${g.mission.target} · attempt ${g.attempts||1}`, "muted"));
   for (const task of g.tasks) {
     const n = el("article", undefined, "task " + task.status), meta = el("div", undefined, "meta");
-    meta.append(el("span", `${name(task.owner)} · ${task.difficulty} difficulty`), pill(task.status));
+    meta.append(el("span", `${name(task.owner)} · ${task.difficulty} difficulty`), pill(task.state));
     n.append(meta, el("div", task.text));
     if (task.prediction_committed) n.append(el("div", `Prediction: ${task.prediction ?? "sealed"}`, "muted"));
     body.append(n);
   }
   if (!g.tasks.length) body.append(el("p", "This mission uses the shared objective instead of task cards.", "muted"));
-}
-
-function sonarSheet(body, g) {
-  const tokens = g.shared_sonar !== null ? `${g.shared_sonar} shared token${g.shared_sonar===1?"":"s"} left` : !g.me ? "" : g.sonar_spent.includes(g.me.seat) ? "Your token is spent" : "Your token is unused";
-  if (tokens) body.append(el("p", tokens, "muted"));
-  for (const e of g.exposures) body.append(el("div", `${name(e.seat)} · ${cardLabel(e.card)} · ${e.assertion || "sonar meaning hidden"}`, "exposure"));
-  if (!g.me) return;
-  const opts = g.me.communication_options, keys = Object.keys(opts);
-  if (!keys.length || g.proposal) {
-    body.append(why("Sonar is available only before a trick, after task allocation, with an unused token and an eligible color card."));
-    return;
-  }
-  if (!keys.includes(ui.sonarCard)) ui.sonarCard = keys[0];
-  if (!opts[ui.sonarCard].includes(ui.sonarMeaning)) ui.sonarMeaning = opts[ui.sonarCard][0];
-  body.append(el("h3", "Choose a card to reveal"));
-  const cards = el("div", undefined, "hand sonar-cards");
-  for (const c of keys) {
-    const node = cardNode(c, () => { ui.sonarCard = c; draw(); }, true);
-    node.dataset.key = "sonar-card:" + c; node.setAttribute("aria-pressed", String(ui.sonarCard === c));
-    cards.append(node);
-  }
-  body.append(cards, el("h3", "It is your…"));
-  const row = el("div", undefined, "choice-row");
-  for (const a of opts[ui.sonarCard]) {
-    const b = button(a, () => { ui.sonarMeaning = a; draw(); }, "sonar-meaning:" + a, false, "", ui.sonarMeaning === a ? "on" : "");
-    b.setAttribute("aria-pressed", String(ui.sonarMeaning === a)); row.append(b);
-  }
-  body.append(row);
-  if (g.communication === "currents") body.append(why("Your card is revealed, but the token’s meaning stays hidden."));
-  body.append(button(`Communicate ${cardLabel(ui.sonarCard)} · ${ui.sonarMeaning}`, () => { send("communicate",{card:ui.sonarCard,assertion:ui.sonarMeaning}); closeSheet(); }, "communicate", false, "", "btn-primary wide"));
 }
 
 function historySheet(body, g) {
@@ -1018,6 +1337,7 @@ function menuSheet(body, g) {
     }
     if (amHost()) body.append(endButton("End EXPO for everyone", "menu-end", "wide"), why("Everyone goes back to Party Home."));
     else body.append(why(`Only ${theHost()} can end EXPO or take the Party somewhere else.`));
+    effectsRow(body);
     return;
   }
   if (integration && integration.integrated) {
@@ -1030,6 +1350,24 @@ function menuSheet(body, g) {
     body.append(why("Ending the table needs the whole crew to agree."));
   }
   if (!body.children.length) body.append(why("Nothing to do here yet."));
+  effectsRow(body);
+}
+
+// How much the page moves is this browser's own choice and changes nothing about the game.
+function effectsRow(body) {
+  const row = el("article", undefined, "crew-row"), now = director && !director.stats.disabled ? director.fidelity : "off";
+  row.append(el("strong", "Effects"));
+  if (now === "off") { row.append(el("p", "Effects are off in this browser. The game is the same.", "muted")); body.append(row); return; }
+  row.append(el("p", Hub.prefs.reducedFx ? "Reduced motion is on for this browser, so the board stays still and this choice is off. The game is the same."
+    : "Only how much the board moves. The game is the same at every level.", "muted"));
+  const choice = el("div", undefined, "choice-row");
+  for (const [value, label] of [["high","Full"],["medium","Light"],["low","Still"]]) {
+    // With reduced motion on, the choice would change nothing: it is disabled, and the line
+    // above says why.
+    const b = button(label, () => { try { localStorage.setItem(FX_KEY, value); } catch { /* private mode */ } draw(); }, "fx:" + value, Boolean(Hub.prefs.reducedFx), "Reduced motion is on for this browser.", now === value ? "on" : "");
+    b.setAttribute("aria-pressed", String(now === value)); choice.append(b);
+  }
+  row.append(choice); body.append(row);
 }
 
 function helpSheet(body) { for (const text of HELP) body.append(el("p", text)); }
@@ -1038,12 +1376,18 @@ function helpSheet(body) { for (const text of HELP) body.append(el("p", text)); 
 function updateTimer() {
   const expiry = ST?.game?.expiry; $("timer").hidden = !expiry;
   if (expiry) { const remaining = Math.max(0, Math.ceil(expiry - conn.now()/1000)); $("timer").textContent = `${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,"0")}`; }
+  // The moment the deadline passes, the chip and the status line stop saying the clock runs.
+  const out = clockOut(ST?.game);
+  if (out !== ui.clockOut) { ui.clockOut = out; if (ST?.game && !$("game").hidden) { drawMission(ST.game); drawStatus(ST.game); fitStatus(); } }
 }
 function updateConnection() {
   const up = Boolean(conn.ws && conn.ws.readyState === 1);
   const text = up ? "Connected" : "Reconnecting…";
   if ($("conn").textContent !== text) $("conn").textContent = text;
   $("conn-dot").classList.toggle("down", !up);
+  $("conn").classList.toggle("down", !up);        // a lost connection is always said in words
+  // On a short screen the words share the status line's place and narrow it: fit it again.
+  if (up !== ui.connUp) { ui.connUp = up; fitStatus(); }
 }
 setInterval(() => {
   updateTimer(); updateConnection();
@@ -1054,7 +1398,7 @@ setInterval(() => {
   const moved = sig !== ui.partySig; ui.partySig = sig;
   const ticked = Boolean(ST?.game && !$("game").hidden && graceLeft(ST.game) !== ui.grace);
   if (ST && moved) draw();
-  else if (ticked && modalTop()) { ui.grace = graceLeft(ST.game); drawStatus(ST.game); drawDock(ST.game); }   // leave what is on top alone
+  else if (ticked && modalTop()) { ui.grace = graceLeft(ST.game); drawStatus(ST.game); drawDock(ST.game); fitStatus(); }   // leave what is on top alone
   else if (ticked) draw();
   if (ST?.phase === "countdown") $("cd").textContent = String(Math.max(1, Math.ceil((ST.deadline - conn.now())/1000)));
 }, 250);

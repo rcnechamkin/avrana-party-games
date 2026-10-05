@@ -51,3 +51,35 @@ exported as a static, square, self-contained SVG for Avrana Party's game library
 
 The shared game shell (join/lobby controls and rule lists) uses 20 Lucide icons (lucide-static
 1.48.0, ISC) embedded in `hubnet.js`; see its comment for the list.
+
+## EXPO presentation slots: `games/expo/web/slots.js`
+
+**No final art and no audio ship with EXPO.** AVR-267 built the board and named the places where
+human-made or licensed work will go. Every slot below is filled by a neutral placeholder drawn in
+CSS or inline SVG by this repository's own code (nothing downloaded, nothing generated as
+artwork), or is empty. Filling a slot means adding a file under `games/expo/web/`, pointing the
+slot at it, and adding a row here with its author, source and licence, as for the assets above.
+`node tests/expo_director_test.mjs` fails if a slot is used but not listed here, if any audio slot
+is filled (the test changes with the asset), or if anything in that directory names a URL outside the
+appliance.
+
+| Slot | Where | Placeholder now | Final |
+|---|---|---|---|
+| `stage.sky` | `--slot-stage-sky` (`expo.css`) | CSS gradient | not made |
+| `stage.ridge` | `#expo-slot-ridge` (`index.html`) | one inline SVG polygon | not made |
+| `stage.haze` | `--slot-stage-haze` | CSS gradient bands; drift at the high tier only | not made |
+| `stage.glow` | `--slot-stage-glow` | CSS radial gradient, tinted by the mission's state | not made |
+| `board.ground` | `--slot-board-ground` | CSS gradient | not made |
+| `card.face` | `--slot-card-face` | CSS gradient; rank, symbol and suit are text | not made |
+| `radio.icon` | `#expo-slot-radio` | inline SVG arcs | not made |
+| `hazard.icon` | `#expo-slot-hazard` | inline SVG circles | not made |
+| `result.failure` | `--slot-result-failure` | CSS gradient | not made |
+| `result.success` | `--slot-result-success` | CSS gradient | not made |
+| `crew.portrait` | none | names only on the board | not made |
+
+Audio slots, all empty (silent): `card.play`, `trick.resolve`, `turn.mine`, `radio.send`,
+`radio.receive`, `objective.complete`, `objective.fail`, `mission.brief`, `mission.success`,
+`mission.failure`, `ambient.wasteland`. Haptic slots hold short vibration patterns in
+milliseconds and are code, not assets. Words on the board that belong to the fiction (the radio
+states, one line per kind of failure) are placeholder copy in `client.js`; see
+[PRESENTATION](../games/expo/docs/PRESENTATION.md).

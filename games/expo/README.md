@@ -24,9 +24,10 @@ specification, deferred) and an issue.
 | Which sources were used, what came from the reference implementation, what is unresolved? | [VTT_REFERENCE](docs/VTT_REFERENCE.md) (pins, reuse and rewrite, conflict register C01 to C20, task catalog) |
 | Is the code right? Where is it wrong? What does the owner still have to decide? | [RECONCILIATION](docs/RECONCILIATION.md) |
 | Which tests prove each rule, and what should be built next? | [IMPLEMENTATION_PLAN](docs/IMPLEMENTATION_PLAN.md) |
+| What does the phone board show, how are events presented, where does final art go? | [PRESENTATION](docs/PRESENTATION.md) |
 | What was the product intent for presentation? (**non-canonical** drafts: reference only, the documents above and the code win) | [STATE_DRIVEN_GAMEPLAY_BEHAVIOR_SPEC](docs/STATE_DRIVEN_GAMEPLAY_BEHAVIOR_SPEC.md), [MISSION_GAMEPLAY_UI_UX_SPEC](docs/MISSION_GAMEPLAY_UI_UX_SPEC.md) |
 
-## Status on 2026-10-04
+## Status on 2026-10-05
 
 **Playable.** Two to five humans; two humans play with a captain-controlled dummy hand (Tonoja).
 24 of the 32 numbered missions and a continuation (33 to 50) are enabled for three to five
@@ -105,19 +106,37 @@ tricks until the server settles it. A timed mission gains no time from that hold
 through it and its deadline never moves (owner decision, 2026-10-05); a deadline that passes
 during a hold ends the attempt when the hold ends, before anyone is given a turn. No other rule
 changed and no legal card is ever warned about. Each
-viewer is sent only the latest resolved trick's events and what followed. **The client does not
-use any of it yet**: [GAME_STATE](docs/GAME_STATE.md#semantic-events-failure-causality-and-the-resolving-phase).
+viewer is sent only the latest resolved trick's events and what followed: [GAME_STATE](docs/GAME_STATE.md#semantic-events-failure-causality-and-the-resolving-phase).
+
+**Mission board and presentation (AVR-267): architecture and placeholders built; final assets and
+real-phone acceptance outstanding.** The phone board is five zones that are always on screen
+(mission stage, crew strip, shared trick, crew objectives, private hand and controls).
+Communication is the helmet radio (Burst Transmission), opened in place beside the hand. A
+separate presentation director consumes the events by sequence number and adds effects in three
+fidelity tiers; it is handed a frozen copy of the view and no connection, and the board is drawn
+from the view alone, so the game is the same with it off, at the lowest tier or with reduced
+motion. A failed attempt is explained from the server's cause: what failed, the deciding play,
+whose objective it was. **Every visual is a neutral placeholder in a named slot and every audio
+slot is empty: no final artwork or sound exists, and no real phone has shown any of it.** The
+seat winning an unfinished trick is the server's own public field (`trick_leading`, given by the
+function that resolves a trick) and the page shows it as a word; the client computes no rule.
+While a decision needs this player's answer, Agree and Decline take the place of Radio and Play
+in the dock, and those return when it is answered (owner decision, 2026-10-05).
+**The direction is provisional by the owner's note of 2026-10-05 and is not complete: final
+human-made or licensed art and audio, real phones, Safari, a screen reader and accessibility
+validation are all outstanding, and a real-phone review is the gate.**
+[PRESENTATION](docs/PRESENTATION.md).
 
 **Still open.** Recovery from an away seat (AVR-240; the Party Host can always end EXPO):
 see the AVR-275 report in RECONCILIATION.
-Wasteland presentation, including anything drawn from the events: AVR-267, on top of this board.
+Final art, audio and real-phone acceptance of the wasteland board: AVR-267, still open.
 
 **Blocked on source material.** Missions 3, 4, 12, 14, 15, 19, 20, 26 and tasks
 `moreRedThanGreen`, `moreYellowThanBlue`, `4with8`, `6with6`: AVR-244. With two
 players, distress, volunteer missions and shared-sonar or terrain missions are refused.
 
 **Not done.** No deployment, no appliance key, no real-phone acceptance. No TV view or bots; no
-presentation of the events.
+final art or audio.
 
 ## Code map
 
@@ -129,7 +148,9 @@ presentation of the events.
 | `engine.py` | authoritative state, command validation, transitions, per-viewer views, snapshots, the event log, failure causality, the resolving mark |
 | `game.py` | platform adapter: seats, lobby settings, timer tick, presence, optional snapshot file, Party outcome, who moves the table on (Party Host or crew), how long a resolved trick is held |
 | `storage.py` | atomic single-file snapshot store |
-| `web/` | client: one-viewport board (stage, sheets, hand, dock, result takeover); draws the view it is sent and sends intentions |
+| `web/client.js`, `web/expo.css`, `web/index.html` | client: one-viewport board in five zones (mission stage, crew strip, trick, objectives, hand and dock), sheets, the helmet radio, the result takeover; draws the view it is sent and sends intentions |
+| `web/director.js` | presentation director: events by sequence number to transient effects in three fidelity tiers; reads only, sends nothing, never needed to play |
+| `web/slots.js` | the named asset slots (placeholders; no final art or audio) |
 
 Shared files EXPO touches: `games/registry.py` (its entry), `core/party_session.py` (`expo` in
 `GAMES`), `ops/export_avrana_catalog.py` (`FIRST_PARTY`), `provider/` (catalog and contract). No
@@ -160,9 +181,11 @@ are owner operations.
 
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_docs.py -q
+node tests/expo_director_test.mjs         # the presentation director, no browser
 $env:EXPO_HUMANS='3'   # 2 to 5
 node tests/playtest_expo.mjs http://127.0.0.1:8196
 node tests/playtest_expo_party.mjs        # starts its own server and plays the Party's part
+$env:EXPO_FX='low'     # also medium, off; or $env:EXPO_MOTION='reduced': the same playtests at each tier
 ```
 
 | File | What it proves |
@@ -174,9 +197,10 @@ node tests/playtest_expo_party.mjs        # starts its own server and plays the 
 | `tests/test_expo_docs.py` | the mission table, task catalog, conflict codes and cited tests in `docs/` equal the code |
 | `tests/test_expo_events.py` | semantic events (order, sequence, determinism, bound), what each viewer is sent and never sent, failure causality and objective states, no signal before a legal losing card, the resolving phase in the engine and the adapter, snapshots with and without the log |
 | `tests/test_expo_authority.py` | Party Host and captain as separate authorities: host-only Begin, Retry and Next and nothing else, prerequisites the host cannot skip, the crew's moment to ask for distress, a watching host, succession, a former host's kept tickets, a Party that does not answer, reconnect, an away seat, a Party without the host claim; and a Party round's setup before the first deal (AVR-245): the same table as before for what is offered, the lobby's own checks, nothing dealt and nothing private, snapshots, an away seat, reloads, who may confirm; and Tonoja's seat as the two players' decision: the host cannot set it, the Deal waits for it, no default, change before the deal, decline, replays, an older Party, three to five humans unchanged |
-| `tests/playtest_expo.mjs` | browser playtest of a standalone table, run by hand: the rules flow plus the one-viewport contract on five phone sizes and the result takeover |
+| `tests/playtest_expo.mjs` | browser playtest of a standalone table, run by hand: the rules flow plus the one-viewport contract on five phone sizes and the result takeover; the radio flow, the resolving hold and the director's timing against it, reconnects, the three shapes of a failure's cause, at any fidelity tier |
 | `tests/playtest_expo_party.mjs` | browser playtest of a Party round against a simulated Party, run by hand: host and non-host controls and refusals, authority labels, captain who is not host, the distress moment, succession with kept tickets, reloads during a decision, a partly played trick and a result, focus and touch targets, Party-owned end, no route to the LAN Games hub; `EXPO_PARTY=old` runs the transitional fallback |
-| `tests/_expo_phone.mjs` | the measured assertions both playtests use: one viewport, the fullest board, touch targets, focus held by a sheet or the result |
+| `tests/_expo_phone.mjs` | the measured assertions both playtests use: one viewport, the five zones in order and the mission stage's share of the screen, the fullest board, touch targets, focus held by a sheet or the result, the crew strip, the trick, card states, and that the director sent no frame |
+| `tests/expo_director_test.mjs` | the presentation director without a browser, run by hand: settling on a first view, a gap, a duplicate, a rewind, a hidden tab and a new attempt; tiers and durations; a resolution inside the hold; the fidelity tiers; no sender in its source; the sound and haptics gate; the asset slots |
 
 The rule-to-test matrix, with what is still thin, is in
 [IMPLEMENTATION_PLAN](docs/IMPLEMENTATION_PLAN.md#deterministic-test-matrix). The exact runs

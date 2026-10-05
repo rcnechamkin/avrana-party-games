@@ -6,12 +6,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>EXPO</title>
   <link rel="stylesheet" href="/shared/shared.css">
-  <link rel="stylesheet" href="expo.css?v=3">
+  <link rel="stylesheet" href="expo.css?v=4">
 </head>
 <body>
-  <!-- One viewport: the app never scrolls as a page (AVR-275). EXPO draws the Party Host's
-       controls itself (data-avrana-party-shell), so the Party adds no bar of its own. There is
-       no link to "/": the old LAN Games hub is not a place this game sends anyone. -->
+  <!-- Asset slots drawn as inline SVG: neutral geometric placeholders, not final art
+       (slots.js, docs/ASSETS.md). -->
+  <svg width="0" height="0" class="slot-defs" aria-hidden="true" focusable="false">
+    <symbol id="expo-slot-ridge" viewBox="0 0 400 60" preserveAspectRatio="none">
+      <polygon points="0,60 0,38 26,30 44,36 70,18 84,22 96,12 104,12 104,34 132,28 160,40 196,24 214,30 240,14 252,14 252,26 286,34 318,20 344,30 372,22 400,34 400,60"/>
+    </symbol>
+    <symbol id="expo-slot-radio" viewBox="0 0 24 24">
+      <circle cx="12" cy="16" r="2.2"/><path d="M7.2 12.2a6.8 6.8 0 0 1 9.6 0M4.2 9.2a11 11 0 0 1 15.6 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="expo-slot-hazard" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="2"/><circle cx="12" cy="5.5" r="3"/><circle cx="6.4" cy="15.3" r="3"/><circle cx="17.6" cy="15.3" r="3"/>
+    </symbol>
+  </svg>
+  <!-- One viewport: the app never scrolls as a page (AVR-275). Five zones (AVR-267): mission
+       stage, crew strip, shared trick, crew objectives, private hand and controls. EXPO draws
+       the Party Host's controls itself (data-avrana-party-shell), so the Party adds no bar of
+       its own. There is no link to "/": the old LAN Games hub is not a place this game sends
+       anyone. -->
   <div id="app" class="app" data-avrana-viewport data-avrana-party-shell>
     <header class="topbar">
       <button id="menu-toggle" class="icon-btn" type="button" aria-label="Table menu" aria-haspopup="dialog">
@@ -22,14 +37,16 @@
     </header>
     <div class="status-strip">
       <span id="conn-dot" class="dot" aria-hidden="true"></span>
-      <span id="status" class="status" role="status" aria-live="polite">Connecting to the crew…</span>
+      <!-- The one live region: what is asked of this player now, then (for a screen reader) the
+           latest thing that happened, in words. -->
+      <span id="status" class="status" role="status" aria-live="polite"><span id="status-now">Connecting to the crew…</span><span id="status-news" class="sr"></span></span>
       <span id="conn" class="conn"></span>
     </div>
 
     <section id="lobby" class="lobby-scroll" hidden>
       <div class="lobby panel">
         <div class="eyebrow">COOPERATIVE · 2–5 PLAYERS</div>
-        <h1>Into the deep.</h1>
+        <h1>Into the waste.</h1>
         <p class="intro">Every card matters. Every mission belongs to the whole crew.</p>
         <div id="lobby-form">
           <label for="name">Your name</label><input data-avrana-profile-name id="name" maxlength="14" autocomplete="nickname">
@@ -47,20 +64,38 @@
     </section>
 
     <section id="game" class="board" hidden>
-      <div class="mission-head">
-        <h1 id="mission-title"></h1>
-        <span id="timer" class="pill timer" hidden></span>
-        <span id="trick-count" class="pill"></span>
-      </div>
-      <div id="objectives" class="objectives"></div>
+      <!-- Zone A, the mission stage: mission, objective, conditions, radio, the latest change.
+           The art layer is placeholders only. -->
+      <section id="mission-stage" class="mstage" aria-label="Mission">
+        <div class="mstage-art" aria-hidden="true">
+          <i class="glow"></i><i class="haze h1"></i><i class="haze h2"></i>
+          <svg class="ridge" viewBox="0 0 400 60" preserveAspectRatio="none" focusable="false"><use href="#expo-slot-ridge"/></svg>
+        </div>
+        <div class="mstage-body">
+          <div class="mission-head">
+            <h1 id="mission-title" tabindex="-1"></h1>
+            <span id="timer" class="pill timer" hidden></span>
+            <span id="trick-count" class="pill"></span>
+          </div>
+          <p id="mission-line" class="mission-line"></p>
+          <div class="chips">
+            <span id="env-chip" class="chip"></span>
+            <span id="radio-chip" class="chip"></span>
+          </div>
+          <p id="stage-news" class="stage-news"></p>
+        </div>
+        <div id="briefing" class="briefing" aria-hidden="true" hidden></div>
+        <i class="fx" aria-hidden="true"></i>
+      </section>
+      <!-- Zone B, the crew. Zone C, the shared trick (or the one thing waiting to be decided). -->
       <div id="seats" class="crew-strip"></div>
       <div id="stage" class="stage"></div>
-      <nav class="tabs" aria-label="More about this mission">
-        <button type="button" class="tab" data-sheet="crew" aria-haspopup="dialog"><span class="tab-ic" aria-hidden="true">◍</span><span>Crew</span></button>
-        <button type="button" class="tab" data-sheet="tasks" aria-haspopup="dialog"><span class="tab-ic" aria-hidden="true">☰</span><span id="tab-tasks">Tasks</span></button>
-        <button type="button" class="tab" data-sheet="sonar" aria-haspopup="dialog"><span class="tab-ic" aria-hidden="true">◎</span><span id="tab-sonar">Sonar</span></button>
-        <button type="button" class="tab" data-sheet="history" aria-haspopup="dialog"><span class="tab-ic" aria-hidden="true">◷</span><span>History</span></button>
-      </nav>
+      <!-- Zone D, the crew's objectives; the log of the latest trick beside it. -->
+      <div class="ops">
+        <div id="objectives" class="objectives"></div>
+        <button type="button" class="tab" data-sheet="history" aria-haspopup="dialog"><span class="tab-ic" aria-hidden="true">◷</span><span>Log</span></button>
+      </div>
+      <!-- Zone E, the private hand and this player's controls (the dock). -->
       <section id="hand-panel" class="hand-panel" aria-label="Your hand">
         <div class="hand-head">
           <h2 id="hand-title">Your hand</h2>
@@ -68,6 +103,7 @@
           <span id="hand-reason" class="hand-reason"></span>
         </div>
         <div id="hand" class="hand"></div>
+        <i class="fx" aria-hidden="true"></i>
       </section>
       <div id="dock" class="dock"></div>
     </section>
@@ -86,6 +122,10 @@
   <canvas id="confetti"></canvas>
   <script src="/shared/hubnet.js?v=avrana2"></script>
   <script src="/shared/brag.js"></script>
-  <script src="client.js?v=3"></script>
+  <!-- slots.js names the asset slots; director.js presents the server's events and is never
+       needed to play (client.js draws the whole board from the view alone). -->
+  <script src="slots.js?v=1"></script>
+  <script src="director.js?v=1"></script>
+  <script src="client.js?v=4"></script>
 </body>
 </html>

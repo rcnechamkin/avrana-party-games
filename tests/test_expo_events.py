@@ -1525,3 +1525,116 @@ def test_real_phones_are_held_after_a_trick_and_released_by_the_servers_own_time
     winner.send('play_card', card=winner.game['me']['legal_cards'][0])
     winner.catch_up(revision + 1)
     assert len(engine.s['trick']) == 1 and winner.game['stage'] == 'in_trick'
+
+
+# ---- AVR-267: the seat winning the unfinished trick, public and derived -------------------------
+
+def leading_by_hand(plays):
+    """Who is winning these plays, counted here and not by the engine: a submarine beats every
+    color and the higher submarine wins; otherwise the highest card of the color that was led."""
+    best = None
+    for p in plays:
+        color, _, number = p['card'].partition(':')
+        number = int(number)
+        if best is None:
+            best, led = (p['seat'], color, number), color
+        elif color == 'submarine' and (best[1] != 'submarine' or number > best[2]):
+            best = (p['seat'], color, number)
+        elif color == led and best[1] == led and number > best[2]:
+            best = (p['seat'], color, number)
+    return best[0]
+
+
+@pytest.mark.parametrize('n', (2, 3, 4, 5))
+def test_the_seat_leading_an_unfinished_trick_is_what_an_independent_count_gives_in_many_games(n):
+    partial = submarines = dummy = 0
+    for seed in range(12):
+        e, rng = open_table(n, seed), random.Random(seed)
+        assert e.view(None)['trick_leading'] is None                 # nothing on the table yet
+        while not e.s['result']:
+            q = e.s['turn']
+            play(e, q, rng.choice(legal_cards(e.playable(q), e.s['trick'])))
+            views = [e.view(v) for v in list(e.s['humans']) + [None]]
+            assert len({v['trick_leading'] for v in views}) == 1     # the same for every viewer
+            told = views[0]['trick_leading']
+            if e.s['trick'] and not e.s['result']:
+                assert told == leading_by_hand(e.s['trick']) and told in e.s['seats']
+                partial += 1
+                submarines += any(suit(p['card']) == 'submarine' for p in e.s['trick'])
+                dummy += told == 'tonoja'
+            else:                                                    # resolved: the hold, or a result
+                assert told is None
+                done = e.s['history'][-1]
+                assert done['winner'] == leading_by_hand(done['plays'])
+                # the last card either left the seat that was leading in front, or took the trick
+                assert done['winner'] in (leading_by_hand(done['plays'][:-1]), done['plays'][-1]['seat'])
+            e.settle()
+            assert e.view(None)['trick_leading'] == (leading_by_hand(e.s['trick']) if e.s['trick'] and not e.s['result'] else None)
+    assert partial > 50 and submarines > 0 and (dummy > 0) == (n == 2)
+
+
+def test_the_leading_seat_is_given_by_the_function_that_resolves_the_trick(monkeypatch):
+    from games.expo import engine as module
+    e = open_table(3)
+    play(e, *first_legal(e))
+    asked = []
+    real = module.winner
+    monkeypatch.setattr(module, 'winner', lambda plays: asked.append(len(plays)) or real(plays))
+    assert e.view(None)['trick_leading'] == real(e.s['trick']) and asked == [1]
+    monkeypatch.setattr(module, 'winner', lambda plays: asked.append(len(plays)) or 'p2')
+    assert e.view(None)['trick_leading'] == 'p2'                     # whatever that function says
+    play(e, *first_legal(e))
+    play(e, *first_legal(e))                                         # and the resolution asks the same one
+    assert 3 in asked and e.s['history'][-1]['winner'] == 'p2' == e.s['turn']
+
+
+def test_no_seat_is_named_as_leading_when_no_unfinished_trick_is_on_the_table():
+    for phase in PHASES:
+        e = at_phase(3, phase)
+        told = e.view(None)['trick_leading']
+        assert (told is not None) == (phase == 'in_trick'), phase
+    e = open_table(3)
+    assert e.view('p0')['trick_leading'] is None                     # before the opening card
+    trick(e, settle=False)
+    assert e.s['resolving'] and e.view('p0')['trick_leading'] is None   # the hold: last_trick says who won
+    e.settle()
+    assert e.view('p0')['trick_leading'] is None
+    e = open_table(3)
+    play(e, *first_legal(e))
+    e.s['result'] = {'status': 'failed', 'reason': 'x'}              # a result with cards still on the table
+    assert e.view(None)['trick_leading'] is None
+
+
+@pytest.mark.parametrize('n', (2, 3, 4, 5))
+@pytest.mark.parametrize('currents', (False, True))
+def test_the_leading_seat_depends_on_no_hand_and_no_covered_card(n, currents):
+    e = at_phase(n, 'in_trick', currents)
+    told = e.view(None)['trick_leading']
+    assert told is not None
+    for viewer in list(e.s['humans']) + [None]:
+        for seed in range(4):
+            other = with_other_secrets(e, viewer, seed)
+            assert other.view(viewer)['trick_leading'] == told
+            assert other.view(viewer)['trick'] == e.view(viewer)['trick']
+    empty = Engine.restore(deepcopy(e.snapshot()))                   # with no hands at all
+    for q in empty.s['humans']:
+        empty.s['hands'][q] = []
+    assert empty.trick_leading() == told
+
+
+def test_the_leading_seat_is_derived_and_never_stored():
+    e = open_table(3)
+    before = set(e.snapshot())
+    play(e, *first_legal(e))
+    assert 'trick_leading' not in json.dumps(e.snapshot()) and set(e.snapshot()) == before
+    assert Engine.restore(deepcopy(e.snapshot())).view(None)['trick_leading'] == e.view(None)['trick_leading'] is not None
+
+
+@pytest.mark.parametrize('n', (2, 3, 5))
+def test_before_a_deal_the_setup_view_carries_the_leading_seat_as_none_for_every_viewer(n):
+    e = Engine([f'p{i}' for i in range(n)], random.Random(5), setup=True)
+    for viewer in list(e.s['humans']) + [None]:
+        view = e.view(viewer)
+        assert view['stage'] == 'setup' and 'trick_leading' in view and view['trick_leading'] is None
+    assert 'trick_leading' not in json.dumps(e.snapshot())
+

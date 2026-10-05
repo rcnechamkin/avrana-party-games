@@ -661,6 +661,19 @@ class Engine:
                 self._emit('TURN_STARTED', trick=number, seat=s['turn'],
                            controller=self.controller(s['turn']), lead=False)
 
+    def trick_leading(self):
+        """The seat whose card is winning the unfinished trick on the table, or None when there
+        is none to name: no card played yet, a trick that is resolved (the hold; `last_trick`
+        names its winner), an attempt with a result, or a table not in play. It is `winner()`,
+        the one function that resolves a completed trick, asked about the cards played so far.
+        Every card on the table is face up for everyone in every mission, so this is public table
+        state: it reads no hand and no covered card, is the same for every viewer, and is
+        derived, never stored."""
+        s = self.s
+        if not s['trick'] or s['result'] or s['resolving'] or s['phase'] != 'in_trick':
+            return None
+        return winner(s['trick'])
+
     def communication_options(self, actor):
         s = self.s
         if (actor not in s['humans'] or s['away'] or s['phase'] != 'before_trick' or s['resolving']
@@ -1174,6 +1187,8 @@ class Engine:
         seat_waiting = (PAUSED if s['away'] else ANSWER_FIRST if s['proposal'] else None) if two else None
         asked = s['proposal'] if s['proposal'] and s['proposal']['payload']['kind'] == 'tonoja_seat' else None
         return {'kind': 'expo', 'attempt': s['attempt'], 'revision': s['revision'], 'stage': 'setup',
+                # No card is on the table before a deal: nobody is leading a trick (AVR-267).
+                'trick_leading': None,
                 'mission': None, 'seats': list(s['seats']), 'away': list(s['away']),
                 'proposal': deepcopy(s['proposal']), 'result': None, 'expiry': None,
                 'log': deepcopy(s['log']),
@@ -1340,7 +1355,7 @@ class Engine:
                 'captain': s['captain'], 'leader': s['leader'], 'turn': s['turn'],
                 'selector': self.selector() if s['phase'] == 'allocation' else None,
                 'controller': self.controller(self.selector()) if s['phase'] == 'allocation' else None,
-                'trick': deepcopy(s['trick']), 'last_trick': deepcopy(s['history'][-1]) if s['history'] else None,
+                'trick': deepcopy(s['trick']), 'trick_leading': self.trick_leading(), 'last_trick': deepcopy(s['history'][-1]) if s['history'] else None,
                 'trick_number': min(len(s['history']) + 1, s['planned']), 'planned_tricks': s['planned'],
                 'hand_counts': counts, 'trick_counts': {q: sum(h['winner'] == q for h in s['history']) for q in s['seats']},
                 'tasks': task_views, 'communication': s['communication'], 'exposures': active,

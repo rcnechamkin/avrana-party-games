@@ -24,7 +24,7 @@ from games.expo import content
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / 'games' / 'expo' / 'docs'
 REQUIRED = ('RULES_SPEC.md', 'GAME_STATE.md', 'ACTIONS.md', 'MISSION_MODEL.md', 'VTT_REFERENCE.md',
-            'IMPLEMENTATION_PLAN.md', 'RECONCILIATION.md')
+            'IMPLEMENTATION_PLAN.md', 'RECONCILIATION.md', 'PRESENTATION.md')
 TEST_FILES = ('test_expo.py', 'test_expo_party.py', 'test_expo_contract.py', 'test_expo_coverage.py',
               'test_expo_persistence.py', 'test_expo_input.py', 'test_expo_deck.py',
               'test_expo_authority.py', 'test_expo_repair.py', 'test_expo_events.py')

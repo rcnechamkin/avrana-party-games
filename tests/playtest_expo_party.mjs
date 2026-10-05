@@ -5,6 +5,7 @@
 //     EXPO_HOST=spectator   the Party Host watches instead of playing
 //     EXPO_PARTY=old     a Party from before the host claim: the transitional crew fallback
 //     EXPO_PYTHON=...    the interpreter that runs server.py (default: python3, python on Windows)
+//     EXPO_FX=high|medium|low|off, EXPO_MOTION=reduced   the presentation tier (AVR-267)
 //
 // The script is the Party. It starts its own game server with a party key, launches a signed
 // roster the way Party Core does, answers each page's ticket request with a ticket that says
@@ -19,7 +20,9 @@
 // in the page and at the server; the crew's moment to ask for distress before Begin; host
 // succession (a former host is refused at once, whatever tickets it kept); reloads during a
 // pending decision, a partly played trick and a result; focus held by what is on top; full
-// touch targets; no route to the LAN Games hub.
+// touch targets; no route to the LAN Games hub. AVR-267: the five zones, the crew strip with
+// Captain and Party Host on different seats, the shared trick, card states, a result met on a
+// reload shown statically, and a director that sends nothing at whatever tier the run asks for.
 // A simulated Party and a desktop Chrome are not a real phone (avrana-party docs/TESTING.md).
 import os from "os";
 import fs from "fs";
@@ -31,7 +34,8 @@ import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import assert from "node:assert/strict";
 import { puppeteer, CHROME_PATH } from "./_resolve.mjs";
-import { PHONES, oneViewport, onScreen, has, clickKey, playCard, resultOwnsTheScreen, withLongText, touchTargets, modalHolds, focused } from "./_expo_phone.mjs";
+import { PHONES, oneViewport, onScreen, has, clickKey, playCard, resultOwnsTheScreen, withLongText, touchTargets, modalHolds, focused,
+  FX, EXPECT_FX, presentation, directorSentNothing, crewLegible, trickShows, legalCardsLookAlike, criticalTextWhole, longestStatusesFit, setupStatusesFit } from "./_expo_phone.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = process.argv[2] || path.join(os.tmpdir(), "expo-party-playtest");
@@ -144,7 +148,7 @@ async function labels(member, g) {
     tiles: [...document.querySelectorAll("#seats .seat")].map(n => ({seat: n.dataset.key.slice(5), said: n.getAttribute("aria-label")})), me: ST.you?.pid || null, seat: ST.game.me?.seat || null}));
   if (g.lifecycle === "host") assert.match(s.host, /^Party Host \(table control\)/, `${member.name}: table control is the Party Host's`);
   else assert.match(s.host, /^Crew \(decides (for now|together)\)/);
-  if (s.action) assert.match(s.action, !s.seat ? /^Watching \(no seat\)/ : s.seat === g.captain ? /^Captain( · Tonoja)? \(your role in the game\)/ : /^Crew member \(your role in the game\)/, `${member.name}: the in-game role is named as one`);
+  if (s.action) assert.match(s.action, !s.seat ? /^Watching \(no seat\)/ : s.seat === g.captain ? /^(Captain|For Tonoja) \(game role\)/ : /^Crew member \(game role\)/, `${member.name}: the in-game role is named as one`);
   const hostSeat = (await state(party.members.find(m => m.pid === party.host).page)).you?.pid ?? null;
   for (const tile of s.tiles) {
     assert.equal(/Captain/.test(tile.said), tile.seat === g.captain, "only the captain's tile says Captain");
@@ -163,6 +167,7 @@ async function openPage(member, viewport) {
   await pg.setViewport({...viewport, deviceScaleFactor:1, isMobile:true, hasTouch:true});
   pg.on("pageerror", e => errors.push(e.message));
   pg.on("framenavigated", f => { if (f === pg.mainFrame() && f.url().startsWith("http")) visited.add(new URL(f.url()).pathname); });
+  await presentation(pg);
   await pg.setRequestInterception(true);
   pg.on("request", req => {
     const url = new URL(req.url());
@@ -200,6 +205,9 @@ try {
     assert.deepEqual([open.setup.mission, open.setup.timed, open.setup.tonoja_position, open.setup.tonoja, open.setup.tonoja_seat], [1, false, 2, HUMANS === 2, null]);
     assert.equal(open.setup.waiting, HUMANS === 2 ? SEAT_FIRST : null, "two players: no seat is agreed by default");
     const chooser = OLD_PARTY ? seated()[0] : party.members.find(m => m.pid === party.host);
+    // AVR-267 on the setup screen: every status sentence it can show is whole, with long names,
+    // at five sizes, for a player and for whoever watches or hosts.
+    for (const m of new Set([seated()[0], party.members.at(-1)])) { const said = await setupStatusesFit(m.page, `${m.name} at setup`); assert.ok(said.length >= 3, `${m.name}: several setup sentences were drawn`); }
     for (const m of party.members) {
       const s = await state(m.page), may = OLD_PARTY ? m.role === "player" : m === chooser;
       assert.deepEqual(s.game.me, m.role === "player" ? {seat: s.you.pid} : null, `${m.name}: a seat and nothing else, no hand before the deal`);
@@ -377,7 +385,7 @@ try {
       for (const size of m === seated().find(x => x !== asker) ? PHONES : [m.page.viewport()]) {
         await m.page.setViewport({...m.page.viewport(), ...size}); await pause(60);
         for (const k of ["agree","decline"]) await onScreen(m.page, k, `${m.name}: the distress decision`);
-        await oneViewport(m.page, `${m.name}: the distress decision`);
+        await oneViewport(m.page, `${m.name}: the distress decision`); await criticalTextWhole(m.page, `${m.name}: the distress decision`);
       }
       assert.match(await m.page.evaluate(() => document.getElementById("status").textContent), /^Your answer is needed: Activate distress/);
       assert.match(await m.page.evaluate(() => document.getElementById("stage").innerText), /Activate distress and pass one color card left/);
@@ -389,7 +397,7 @@ try {
       assert.deepEqual(after.proposal, before.proposal);
       for (const k of ["agree","decline"]) await onScreen(answering.page, k, `${answering.name}: the decision after a reload`);
       assert.match(await answering.page.evaluate(() => document.getElementById("status").textContent), /^Your answer is needed: Activate distress/);
-      await oneViewport(answering.page, "a pending decision after a reload"); await touchTargets(answering.page, "a pending decision");
+      await oneViewport(answering.page, "a pending decision after a reload"); await criticalTextWhole(answering.page, "a pending decision after a reload"); await touchTargets(answering.page, "a pending decision");
     }
     {
       // Begin waits for the crew's answer, and the reason on it is the view's: the sentence the
@@ -417,15 +425,28 @@ try {
     const began = (await settle()).game;
     assert.equal(began.stage, "before_trick"); assert.equal(began.proposal, null, "nobody voted");
     assert.equal(began.captain, first.captain); assert.equal(began.turn, first.captain, "the captain still opens the first trick");
+    // The fullest tile there is: one seat that is the Captain, the Party Host and the seat whose
+    // turn it is, at once. The Party says who its host is, so the page is told the captain is
+    // (then told the truth again); every phone, 360 px wide ones among them, keeps the name whole.
+    await makeHost(captain);
+    for (const m of party.members) { await crewLegible(m.page, `${m.name}: the captain as Party Host, ${HUMANS} seats at ${m.page.viewport().width} px`, first.captain); await oneViewport(m.page, `${m.name}: the captain as Party Host`); }
+    await party.members[0].page.screenshot({path: path.join(OUT, `crew-captain-host-${HUMANS}.png`)});
+    await makeHost(host);
   }
 
   // ---- ordinary trick play, on one screen ----
-  let plays = 0, succession = false, reconnected = false;
+  let plays = 0, succession = false, reconnected = false; const statuses = [];
   for (let i = 0; i < 90; i++) {
     const s = await settle(); if (s.game.result) break;
     const actor = await byPid(s.game.turn === "tonoja" ? s.game.captain : s.game.turn), g = (await state(actor.page)).game;
     if (plays < 2 * s.game.seats.length) {
-      for (const m of party.members) { await oneViewport(m.page, `${m.name} during trick play`); if (plays < 2) { await touchTargets(m.page, `${m.name} during trick play`); await labels(m, s.game); } }
+      // The seat the Party Host sits in, if the host is seated: the crew strip tags it for everyone.
+      const hostSeat = seated().includes(host) ? (await state(host.page)).you.pid : null;
+      for (const m of party.members) {
+        await oneViewport(m.page, `${m.name} during trick play`); await crewLegible(m.page, `${m.name} during trick play`, hostSeat); await trickShows(m.page, `${m.name} during trick play`);
+        if (plays < 2) { await touchTargets(m.page, `${m.name} during trick play`); await labels(m, s.game); }
+      }
+      if (s.game.turn !== "tonoja") await legalCardsLookAlike(actor.page, `${actor.name} to play`);
       assert.match(await actor.page.evaluate(() => document.getElementById("status").textContent), /^Your turn/);
       const waiting = party.members.find(m => m !== actor);
       assert.match(await waiting.page.evaluate(() => document.getElementById("status").textContent), /to (play|lead)/);
@@ -439,6 +460,8 @@ try {
         await oneViewport(other.page, "looking at Tonoja's cards"); await clickKey(other.page, "hand-mine");
       }
     }
+    // The longest status sentences, long names, five sizes: for a player, and for whoever watches.
+    if (plays === 1) for (const m of [actor, party.members.at(-1)]) statuses.push(...await longestStatusesFit(m.page, `${m.name}: the longest statuses`));
     if (plays === 1) for (const size of PHONES) { await actor.page.setViewport({...actor.page.viewport(), ...size}); await pause(60); await oneViewport(actor.page, "mid-trick"); await withLongText(actor.page, async () => { await oneViewport(actor.page, "mid-trick at its fullest"); await touchTargets(actor.page, "mid-trick at its fullest"); }); await actor.page.screenshot({path:path.join(OUT, `play-${size.width}x${size.height}.png`)}); }
     // tapping a card chooses it; nothing is played until the dock's button
     await clickKey(actor.page, "card:" + g.me.legal_cards[0]);
@@ -495,6 +518,9 @@ try {
     for (const m of [host, crew]) {
       await reload(m);
       const keys = (await resultOwnsTheScreen(m.page, `${m.name}: the result after a reload`)).keys.map(k => k.key);
+      // AVR-267: a result met on a reload is the state, not news: no cinematic beat is replayed.
+      assert.equal(await m.page.evaluate(() => document.getAnimations().filter(a => String(a.id).startsWith("expo-fx:cine") && a.playState === "running").length), 0, `${m.name}: nothing is replayed after a reload`);
+      if (FX !== "off") assert.deepEqual(await m.page.evaluate(() => director.stats.performed.map(p => p.effect).filter(e => e !== "reconnect")), [], `${m.name}: the director showed nothing stale`);
       assert.deepEqual(NEXT.filter(k => keys.includes(k)), m === host ? NEXT : [], `${m.name} after a reload`);
     }
     // "Look at the table": the way back is the whole dock, it says what it leads to, and for the
@@ -563,6 +589,8 @@ try {
     if (m !== host) { await m.page.click("#sheet-close"); assert.equal(await m.page.evaluate(() => document.activeElement.id), "menu-toggle", "focus returns to the menu button"); }
   }
   assert.match(await refused(seated().find(m => m !== host).page, SEND_SEAT({kind:"end"})), /the Party Host ends EXPO/);
+  // AVR-267: the presentation never sent a frame, and ran at the tier this run asked for.
+  for (const m of party.members) await directorSentNothing(m.page, m.name);
   await clickKey(host.page, "menu-end");
   assert.equal(await host.page.evaluate(() => window.__party.ended), 0, "one tap does not end the game");
   await clickKey(host.page, "menu-end");
@@ -574,7 +602,7 @@ try {
   assert.deepEqual(errors, []);
   finished = true;
   console.log(`PASS: EXPO Party round, ${HUMANS} seated${WATCHING_HOST ? " + a watching host" : ""}${HUMANS === 2 ? " + Tonoja" : ""}: one-viewport play on ${PHONES.length} phone sizes, ` +
-    `result takeover (${ended.game.result.status}), host-only lifecycle${graceSeen ? ", distress moment before Begin" : ""}, captain is not host${succession ? ", succession with kept tickets refused" : ""}${reconnected ? ", reloads mid-trick" : ""}, reloads on a decision and a result, focus and touch targets, Party-owned end, no hub route`, OUT);
+    `result takeover (${ended.game.result.status}), presentation ${EXPECT_FX || "off"}${process.env.EXPO_MOTION === "reduced" ? " (reduced motion)" : ""} with a silent director, host-only lifecycle${graceSeen ? ", distress moment before Begin" : ""}, captain is not host${succession ? ", succession with kept tickets refused" : ""}${reconnected ? ", reloads mid-trick" : ""}, reloads on a decision and a result, focus and touch targets, Party-owned end, no hub route`, OUT);
   }
 } catch (e) {
   for (const m of party.members) if (m.page) await m.page.screenshot({path:path.join(OUT, `failed-${m.name}.png`)}).catch(() => {});

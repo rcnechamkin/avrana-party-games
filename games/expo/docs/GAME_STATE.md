@@ -15,7 +15,7 @@ in [ACTIONS](ACTIONS.md).
 | Engine | `games/expo/engine.py` | the whole table state, command validation, transitions, per-viewer views, snapshots | touch sockets, files, wall clock (time and randomness are passed in) |
 | Adapter | `games/expo/game.py` (`ExpoSession`) | mapping platform tokens to seats, lobby and settings, the timer tick, presence, the optional snapshot file, the outcome report | decide any rule |
 | Store | `games/expo/storage.py` | atomic write of one JSON file | be imported by the engine |
-| Client | `games/expo/web/` | drawing the view it is sent, sending intentions | decide legality, winner, task status or result |
+| Client | `games/expo/web/` | drawing the view it is sent, sending intentions; presenting the events ([PRESENTATION](PRESENTATION.md)) | decide legality, winner, task status or result |
 | Platform | `core/session.py`, `core/net.py` | sockets, one lock around every mutation, per-viewer pushes, Party tickets | know EXPO's rules |
 
 Every mutation runs under the binding's lock, one at a time. The client is never trusted: the
@@ -65,6 +65,7 @@ Per attempt (reset by every preparation):
 | `before_first_only` | sonar allowed only before the first trick (delegated all-tasks missions) |
 | `pass_choices`, `direction` | sealed distress choices and the agreed direction |
 | `trick`, `history` | plays of the trick in progress; every resolved trick `{index, leader, winner, plays}` |
+| `trick_leading` (view only, never stored) | the seat whose card is winning the trick in progress, or none: see [The seat leading an unfinished trick](#the-seat-leading-an-unfinished-trick) |
 | `expiry` | real-time deadline, or none: seconds on the clock the adapter passes in, which is the monotonic clock. The view the adapter sends carries the same moment as wall-clock seconds for the browser's countdown |
 | `resolving` | none, or `{trick}`: the trick just resolved, while no seat may act (AVR-246); see [The resolving phase](#the-resolving-phase) |
 | `cause`, `failures` | what a failed attempt is attributed to, and the kind of each task failure (AVR-246); see [Failure causality](#failure-causality) |
@@ -148,7 +149,7 @@ it. See [The resolving phase](#the-resolving-phase).
 | Public | Private to its owner | Never sent |
 |---|---|---|
 | mission definition, seats, captain, leader, turn | own hand | other hands |
-| trick in progress, the most recent resolved trick only | own legal cards and, for each of the viewer's own controls that is unavailable, the server's reason ([ACTIONS](ACTIONS.md#conventions): `play_reason`, `card_reasons`, `task_reasons`, `pass_task_reason`, `volunteer_reasons`, `offer_reason`, `offer_owner_reasons`, `predict_reasons`) | Tonoja's covered cards |
+| trick in progress and `trick_leading`, the seat winning it; the most recent resolved trick only | own legal cards and, for each of the viewer's own controls that is unavailable, the server's reason ([ACTIONS](ACTIONS.md#conventions): `play_reason`, `card_reasons`, `task_reasons`, `pass_task_reason`, `volunteer_reasons`, `offer_reason`, `offer_owner_reasons`, `predict_reasons`) | Tonoja's covered cards |
 | per-seat hand counts and trick counts | own communication options | resolved tricks before the latest |
 | tasks: text, difficulty, owner, status, eligible owners | own secret prediction, until the mission result | task deck order, used pile |
 | predictions that are public; whether one is committed | whether own distress choice is locked | sealed distress choices |
@@ -328,6 +329,35 @@ A timed mission and the clock (AVR-242, was E-D7):
   `test_a_table_saved_while_the_seat_is_being_agreed_restores_and_then_deals_the_same_table`). No Party round writes
   one, so this is reached only through the snapshot interface.
 
+## The seat leading an unfinished trick
+
+`trick_leading` (AVR-267, owner direction 2026-10-05) is in every view, the same for every
+viewer including one with no seat: the seat whose card is winning the trick on the table.
+
+- **One rule, one function.** It is `rules.winner`, the function that resolves a completed trick,
+  asked about the cards played so far (`Engine.trick_leading`). No second copy of the rule
+  exists, in the engine or in the client; the code that resolves a trick was not touched.
+- **Public by construction.** It reads `trick`, `result`, `resolving` and `phase`, all of them
+  public, and nothing else: no hand and no covered card. Every card on the table is face
+  up for everyone in every mission (currents hides a declaration, never a played card; no mission
+  hides a played card or its strength), so no mission needs it withheld. If a mission ever hides
+  a played card, this field must be none there.
+- **None** when no card has been played to the trick, while a resolved trick is held
+  (`resolving`; `last_trick.winner` says who won), once the attempt has a result, and outside
+  play.
+- **Derived.** It is not in the snapshot; the snapshot format is unchanged.
+- **Not a hint.** It says who is ahead now. It says nothing about any card still in a hand,
+  including the viewer's own, and `legal_cards` and `play_reason` are what they were.
+
+Tests: `test_the_seat_leading_an_unfinished_trick_is_what_an_independent_count_gives_in_many_games`
+(every partial trick of 12 seeded games at each of 2 to 5 players, Tonoja and submarines among
+them, against a count written in the test; the same for every viewer; the resolved winner too),
+`test_the_leading_seat_is_given_by_the_function_that_resolves_the_trick`,
+`test_no_seat_is_named_as_leading_when_no_unfinished_trick_is_on_the_table`,
+`test_the_leading_seat_depends_on_no_hand_and_no_covered_card` (the privacy differential: every
+hand and covered card a viewer may not see is changed, with and without currents),
+`test_the_leading_seat_is_derived_and_never_stored`.
+
 ## Semantic events, failure causality and the resolving phase
 
 Added 2026-10-04 (AVR-246; was deferred entry E-X1). The product intent is in two
@@ -345,7 +375,7 @@ lost and when a mission ends are exactly what they were; the engine now also rep
 The engine keeps a log of what happened, as meaning (`Engine.s['events']`). An event is written in
 the same transaction as the change it reports, so a rejected command writes none. An event never
 says how to show, sound, vibrate or time anything and carries no fiction: that is the client's
-business (AVR-267). Nothing in the engine reads the log to decide a rule
+business ([PRESENTATION](PRESENTATION.md), AVR-267). Nothing in the engine reads the log to decide a rule
 (`test_the_engine_never_reads_the_log_to_decide_a_rule`).
 
 Every event has `seq`, `type`, `attempt`, `mission` (the mission's number) and `trick`. `seq`
