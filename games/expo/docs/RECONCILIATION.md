@@ -26,7 +26,7 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 - The card rules, deal, captain, trick resolution, communication truth and timing, selection and
   pass rule, task evaluators, mission targets and modifiers of the 24 enabled missions match R
   and L.
-- Ten defects were recorded (E-D1 to E-D7 by the reconciliation, E-D8 by AVR-247, E-D9 and E-D10 by probing during its review). Seven are fixed: E-D10, a task dealt twice after mission 32 (AVR-265), E-D9, the table freeze from one malformed crew decision (AVR-264), E-D1, the selection stall
+- Eleven defects were recorded (E-D1 to E-D7 by the reconciliation, E-D8 by AVR-247, E-D9 and E-D10 by probing during its review, E-D11 by the review of AVR-264). Eight are fixed: E-D11, a request id that stopped a stored table (AVR-268), E-D10, a task dealt twice after mission 32 (AVR-265), E-D9, the table freeze from one malformed crew decision (AVR-264), E-D1, the selection stall
   (AVR-239), E-D3 and E-D4, late completion of the window tasks and currents visibility
   (AVR-241), and E-D5 and E-D7, the content hash scope and the timed clock (AVR-242). E-D6 was
   settled by amending the contract (AVR-242). Of the two that remain, one affects play and needs
@@ -116,6 +116,7 @@ updated.
 | E-D8 | The reason shown on an unavailable control is not the server's rejection in six places. Two state something untrue: a color card in the distress exchange after the player's own choice is sealed reads "Submarines cannot be passed", and a card that follows suit reads "You must follow the opening suit." while a crew decision is pending (the captain's off-suit Tonoja card reads "Only the captain plays for Tonoja."). Four are a second wording of the same fact: a card before the crew begins, "Take this task" for another seat and for the captain on a comparison task, "Offer all tasks" for a non-captain. The server refuses every one of these requests and nothing changes | action contract ("the client can disable it with the right reason") | `test_defect_the_reason_shown_before_play_begins_is_the_servers_rejection`; the playtest asserts the refusals | AVR-263 |
 | E-D9 | **Fixed 2026-10-04.** Was: a crew decision was checked for its keys but not for the type of every value. In missions 6, 10 and 13 the `task` of an `assign` decision was never read, so any JSON value was stored in the pending decision and sent to every viewer; a value nested about 500 lists deep (one socket message) then made every view, snapshot and command raise, and one seated player could freeze the table. Now: every field of a crew decision must be a plain value of its own type and, where all tasks go together, `task` must be `all`; anything else is rejected before it is stored or remembered | action contract (a rejected request changes nothing) | `test_an_assign_field_of_the_wrong_type_is_refused_in_every_allocation_mode`, `test_every_other_decision_field_of_the_wrong_type_is_refused`, `test_where_all_tasks_go_together_the_task_field_is_the_word_all`, `test_the_request_that_froze_the_table_is_refused_and_the_table_plays_on` | AVR-264 |
 | E-D10 | **Fixed 2026-10-04.** Was: mission 32 took its four named tasks without removing them from the task deck; after it ended they were in the used pile too, and once the deck was refilled from the used pile a later mission could deal the same task twice. Assigning the second copy overwrote the first copy's owner, so one task disappeared and the mission was easier than its difficulty. Now: a fixed mission takes its tasks out of the deck and the used pile, and the engine's invariant refuses any state with a task id twice in a pile or in two piles | no source involved: a task card cannot be in two piles | `test_no_task_is_dealt_twice_in_the_missions_after_mission_thirty_two`, `test_no_task_is_dealt_twice_for_any_crew_size`, `test_retries_before_and_after_mission_thirty_two_keep_every_task_in_one_place`, `test_mission_thirty_two_takes_its_four_tasks_out_of_the_deck_and_the_used_pile`, `test_a_table_that_opens_on_mission_thirty_two_deals_its_four_tasks`, `test_the_reported_table_reaches_mission_forty_seven_with_distinct_tasks`, `test_a_snapshot_with_a_task_in_two_places_is_refused` | AVR-265 |
+| E-D11 | **Fixed 2026-10-04.** Was: a request id was checked only for its length; one that cannot be written as UTF-8 (a lone surrogate) on an otherwise legal command was accepted and remembered, the snapshot write then raised, and every later command on a table with a snapshot file raised too. Now: a request id is 1 to 80 printable ASCII characters, and a snapshot that cannot be written as text is a failed write: the command is rolled back and answered `storage` | action contract (a rejected request changes nothing); state contract (a failed write rolls back) | `test_a_request_id_that_is_not_plain_printable_text_is_refused`, `test_a_plain_request_id_is_still_accepted`, `test_an_unstorable_request_id_leaves_a_stored_table_saving_and_answering`, `test_a_snapshot_that_cannot_be_written_as_text_is_a_storage_failure_not_a_crash`, `test_the_store_reports_any_snapshot_it_cannot_write_as_a_failed_write` | AVR-268 |
 
 Not a defect, recorded so nobody "fixes" it by guessing: other reversible tasks could be proven
 safe early from public cards (a "win no pink" task after all nine pink cards are gone). The
@@ -793,7 +794,8 @@ The independent review passed the change with two findings. Its hostile run (43,
 requests over every action, field and allocation mode) found nothing against the fix, and each
 of five faults put back into the engine was caught by the new tests. It found one more request
 of the same class in another field, not fixed here: a request ID that cannot be written as UTF-8
-stops a standalone table with a snapshot file from saving or answering (AVR-268). E-D9 is
+stops a standalone table with a snapshot file from saving or answering (AVR-268, since fixed
+as E-D11). E-D9 is
 therefore fixed for crew decisions; it does not claim that no single request can stop a table.
 The other finding was a wording error in ACTIONS, corrected.
 
@@ -844,6 +846,59 @@ findings the invariant now also covers the pool and refuses a disabled task in a
 note on old snapshots above was corrected. It found one defect that is older than this change
 and not fixed here: a next mission or a retry with new tasks is sometimes refused because a
 replacement task is looked for in the deck only (AVR-270).
+
+### AVR-268, 2026-10-04
+
+A request id that could not be written to the snapshot file stopped a standalone table (E-D11).
+Changed: `games/expo/engine.py`, `games/expo/storage.py`, `tests/test_expo_input.py`,
+`tests/test_expo_docs.py` and these documents. No client, adapter, shared session, protocol or
+provider file changed.
+
+- **Cause.** A request id was checked only for being 1 to 80 characters. An accepted id is kept
+  in the request memory, which is part of the snapshot. An id with a lone surrogate (a half of a character pair,
+  which JSON can carry) was accepted and remembered; writing the snapshot as UTF-8 then raised, and so did
+  every later command, after changing the table in memory. `ExpoSession.game_action` handles a
+  failed write only as `OSError`.
+- **Fix, in two places.** The engine accepts a request id of printable ASCII only (the client
+  sends a UUID); anything else is `payload` and nothing is stored. The snapshot store reports a
+  snapshot it cannot write as text as a failed write, so the command is rolled back and answered
+  `storage`, whatever value caused it. A player name comes from the platform, not from EXPO; the
+  second test covers a name the file cannot hold.
+- **Scope.** A Party round and a table without a snapshot file were never affected.
+
+Each new test was run against the code before the fix: 17 of 21 failed (the four that passed
+check that ordinary ids are still accepted). With the engine check alone, the storage test still
+failed. After both:
+
+| Check | Result (Windows 11) |
+|---|---|
+| `pytest tests/test_expo.py tests/test_expo_party.py tests/test_expo_contract.py tests/test_expo_coverage.py tests/test_expo_persistence.py tests/test_expo_input.py tests/test_expo_deck.py tests/test_expo_docs.py` | 1,024 passed, 2 skipped, 2 expected failures (E-D2, E-D8) |
+| `pytest` (whole repository, with a sibling Party checkout present) | 2,548 passed, 4 skipped, 2 expected failures, 0 failed |
+| `ops/check_docs.py`, `tests/test_no_private_data.py`, `ops/export_avrana_catalog.py --check provider/catalog.json` | all passed |
+| `tests/playtest_expo.mjs`, headless Chrome | passed once each at 2, 3, 4 and 5 humans (default mission) |
+
+The independent review passed the change with findings, none Important. Its hostile run (4,696
+requests on a stored table and 617 tables with hostile names, settings and tokens) left every
+table saving, answering and restarting. One finding was inside this change, an untested arm of
+the store's failure handling; it has a test now. Recorded and not fixed here:
+
+- Two cooperating seats can still make a snapshot too large to read back, with about 7,000
+  accepted commands whose request ids are all quotation marks (each is escaped twice in the
+  file). The table keeps playing and is lost only at a restart. No issue is filed yet.
+- An integer of more than 4,300 digits raises out of `Engine.apply`. A socket cannot deliver one
+  (the JSON reader refuses it); state and file are unchanged.
+
+The counts below include `main` and the later AVR-242 commit merged in. The playtest was run
+before that merge and not repeated.
+
+Not covered: a live socket carrying the request (the tests call the adapter), real phones, the
+appliance, a Party-launched round, the playtest on Linux.
+
+Later the same day the branch was brought up to `main` with the one-viewport and Party Host
+work (AVR-275, AVR-252, AVR-266). The fix did not change. The new tests were run again without
+it: with the engine check taken out 16 of the 27 failed, with the store's handling taken out 6
+did. With both in place, `pytest tests/test_expo_*.py` gave 926 passed, 2 skipped, 2 expected
+failures (Windows 11). The whole repository and the playtests were not run again.
 
 ### AVR-275, AVR-252 and AVR-266, 2026-10-04
 
@@ -986,10 +1041,10 @@ and is built.
   `status`.
 - The resolving phase: a mark in the state, a refusal for every seat, a server settle that the
   adapter calls after 0.8 s, on a late command, or at once on a restore. A timed mission's clock
-  stands during it and the hold is credited to the deadline, so the crew has the seconds it had
-  before; the attempt is longer on the wall clock by 0.8 s a trick. This is the one place the
-  change touches a number the rules care about, and it was chosen so that the hold takes
-  nothing from the crew.
+  runs through it and its deadline does not move (owner decision, 2026-10-05; see "Owner
+  decision" below). As first written this entry did the opposite: the clock stood and the hold
+  was credited to the deadline. This is the one place the change touches a number the rules
+  care about: the attempt is 150 seconds on the clock, and the holds are inside them.
 - `tasks.judge`, which labels a failure the evaluator already found. Two comparisons were made
   **by hand; neither is in the repository** and neither can be rerun from it. The author
   compared it with the evaluator before the change on 5.7 million judgements of all 96 task
@@ -1030,14 +1085,63 @@ and performance tiers were not implemented and are not planned by this entry.
 1. May a client be sent the whole attempt's events once the mission has a result (a debrief or a
    replay)? Now: no, the latest trick only.
 2. `RESOLVE_HOLD` is 0.8 s, from the draft's "under one second". It is one constant in
-   `games/expo/game.py`; changing it changes no rule. In timed mission 16 the clock stands for
-   the hold; the alternative, letting it run, would cost the crew about ten of its 150 seconds.
+   `games/expo/game.py`; changing it changes no rule. Its length is still the owner's to
+   confirm. What a timed mission's clock does during it is **decided** (2026-10-05, below): it
+   runs, so in timed mission 16 the holds take up to about ten of the crew's 150 seconds.
 3. The triggering seat is the trick's winner. That is an attribution of the deciding card, not
    of fault; a presentation that blames a player on it should know that.
 4. The drafts as committed: the example players' first names were replaced by the repository's
    stand-in names (Alice, Bob, Carol), 30 and 7 occurrences, and a banner was added. The title
    "The Team II" was left as written; it is the reference tabletop's name, which
    [VTT_REFERENCE](VTT_REFERENCE.md) already uses, not the publisher's.
+
+**Owner decision, 2026-10-05 (recorded on AVR-246).** "Timed missions do **not** gain time
+during the 0.8 s resolving hold. The mission clock continues to run on monotonic elapsed time
+while presentation/resolving temporarily prevents the next action. Implementation should
+preserve a clean trick-resolution boundary, but that boundary must not extend the mission
+deadline. If a deadline expires during resolving, finish resolving the already-committed trick,
+then evaluate expiry before opening another actionable turn."
+
+What changed for it, in `games/expo/engine.py` and `games/expo/game.py`:
+
+- `Engine.settle(credit)` is `Engine.settle(now)`. It never changes `expiry`. With the caller's
+  clock at or past the deadline it clears the resolving mark and ends the attempt by time
+  (`Engine.expire`, the same result and cause as every timeout) and emits no `TURN_STARTED`;
+  otherwise it opens the winner's turn as before. The engine still keeps no clock: `now` is
+  the adapter's monotonic reading, as it is for `observe_time`.
+- `Engine.observe_time` still records nothing while a trick is resolving, now for a different
+  reason: the committed trick is settled first, and `settle(now)` judges the deadline.
+- The adapter no longer computes a credit; it passes its clock to `settle`. The session's one
+  timer still waits for the end of the hold, where the deadline is judged in the same step.
+  The view's `expiry` is the deadline itself during a hold: the adjustment of commit 1abc97d
+  (deadline plus hold) is removed, and with it the limit it documented.
+- A restore settles with the clock when the clock can be trusted, and ends the timed attempt
+  before settling when it cannot, so neither path opens a turn on a table that has run out.
+- Untimed tables: no value differs. `settle` reads `now` only when there is a deadline.
+
+Not changed, and still the owner's: whether a client may be sent the whole attempt's events
+after a result (1), the length of the hold (2), the attribution of the triggering seat (3), the
+drafts' example names (4).
+
+A consequence to know: the hold is not cut short by the deadline. A timeout that falls inside
+a hold is recorded when the hold ends, up to 0.8 s after the deadline (the decision's "finish
+resolving the already-committed trick, then evaluate expiry"). No seat can act in that time,
+and a client's countdown reads zero while `resolving` is still set.
+
+Tests: the timed and resolving cases in `tests/test_expo_events.py` were rewritten. Four tests
+were removed outright with the behaviour they asserted (they are in the history at 1abc97d and
+are not cited by name here, because no such test exists now): the clock standing during a hold
+with the hold credited, the hold and the deadline sharing one timer with the hold credited, the
+view never showing a deadline the hold would move, and a hold spanning the old deadline never
+shown as expired. Two were replaced by named counterparts: the one on what a settle may credit
+by `test_a_settle_with_no_usable_clock_settles_the_trick_and_judges_no_deadline`, and the one
+on what a lost timer credits by `test_a_lost_timer_gives_a_timed_table_no_time`.
+Seventeen of the new cases fail on the code before this decision (checked by running the file
+against the engine and the adapter of commit 1abc97d). The engine-level case
+`test_the_deadline_of_a_timed_mission_is_the_same_after_any_number_of_holds` does not, because
+the old `settle` ignored a credit over 60 seconds; the adapter-level
+`test_a_timed_mission_lasts_exactly_its_configured_seconds_however_many_tricks_were_held`
+covers the same claim and does fail on it. Neither browser playtest was run for this change.
 
 **Not verified.** The author did not run the two browser playtests (the orchestrator did,
 afterwards: see the table), and no phone has shown the hold. Both scripts read whose turn it is and then expect a legal card, which
@@ -1057,6 +1161,7 @@ timer path itself is tested through real sockets
 | `pytest tests/test_expo.py tests/test_expo_*.py` (every EXPO test file) | 1113 passed, 2 skipped (distress with two players, C11), 2 expected failures (E-D2, E-D8) at 84e179b; the review repairs add five tests |
 | `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check | OK |
 | `pytest -q` (whole repository), the cross-repository tests, the two browser playtests, a real phone | not run for this change |
+| after the owner decision of 2026-10-05, on `main` at 9f9aa41 merged in: `pytest tests/test_expo.py tests/test_expo_*.py` | 1168 passed, 2 skipped, 2 expected failures; `tests/test_expo_events.py` 100 passed (with the early-timer repair and its two tests); the four checks of the row above OK; browser playtests and the whole repository not run |
 
 ### AVR-267, 2026-10-05
 

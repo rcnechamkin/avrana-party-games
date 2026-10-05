@@ -56,7 +56,9 @@ timed mission runs on the monotonic clock and never gains time across a restart 
 E-D9, a malformed crew decision that froze the table: every field of a crew decision is now
 checked for its type before anything is stored (AVR-264, 2026-10-04). E-D10, a task dealt twice
 in a mission played after mission 32: a task card is now in one place at a time (AVR-265,
-2026-10-04).
+2026-10-04). E-D11, a request id that could not be written to the snapshot file and stopped the
+table: a request id is plain printable text, and a snapshot that cannot be written is a failed
+write like any other (AVR-268, 2026-10-04).
 
 **Owner decisions, built.** The owner answered the open policy questions on 2026-10-04 under a
 "fidelity first" principle (AVR-243). The four answers that change behaviour are built: a single
@@ -79,9 +81,11 @@ log of what happened as meaning (a card, a resolved trick, a communication, an o
 progress and outcome, a modifier, the mission's result, a returning player), says what a failed
 attempt is attributed to (objective, triggering and affected seat, cards, trick), gives each task
 a state (PENDING, ACTIVE, COMPLETED, FAILED, IMPOSSIBLE), and holds the table for 0.8 s between
-tricks until the server settles it. No rule changed and no legal card is ever warned about. Each
-viewer is sent only the latest resolved trick's events and what followed:
-[GAME_STATE](docs/GAME_STATE.md#semantic-events-failure-causality-and-the-resolving-phase).
+tricks until the server settles it. A timed mission gains no time from that hold: its clock runs
+through it and its deadline never moves (owner decision, 2026-10-05); a deadline that passes
+during a hold ends the attempt when the hold ends, before anyone is given a turn. No other rule
+changed and no legal card is ever warned about. Each
+viewer is sent only the latest resolved trick's events and what followed: [GAME_STATE](docs/GAME_STATE.md#semantic-events-failure-causality-and-the-resolving-phase).
 
 **Mission board and presentation (AVR-267): architecture and placeholders built; final assets and
 real-phone acceptance outstanding.** The phone board is five zones that are always on screen

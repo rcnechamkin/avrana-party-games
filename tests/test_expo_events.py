@@ -24,9 +24,9 @@ from games.expo.tasks import evaluate, judge
 
 from test_expo import act, allocated, command, decide, place, playing, session
 from test_expo_contract import misplayed, with_single_task
-from test_expo_coverage import (PHASES, at_phase, by_pid, phone_of, send, table, together,   # noqa: F401
-                                with_other_secrets)                                       # (`table` is a fixture)
-from test_expo_persistence import Clock as BothClocks, timed_table
+from test_expo_coverage import (PHASES, agree, at_phase, by_pid, phone_of, send, table,    # noqa: F401
+                                together, with_other_secrets)                             # (`table` is a fixture)
+from test_expo_persistence import Clock as BothClocks
 
 SEATS = ('p0', 'p1', 'p2')
 
@@ -68,7 +68,11 @@ def playout(e, rng=None):
 def dealt(hands, leader, task=None, owner=None, mission=1, mode=None):
     """Three humans before the first trick, each holding the named cards (and others), with
     `leader` to lead and, if given, one task for `owner`."""
-    e = playing(3, seed=5, mid=mission)
+    return rig(playing(3, seed=5, mid=mission), hands, leader, task, owner, mode)
+
+
+def rig(e, hands, leader, task=None, owner=None, mode=None):
+    """Lay the named cards into a three-human table that has not played a card yet."""
     named = [c for cards in hands.values() for c in cards]
     assert len(set(named)) == len(named)
     rest = [c for c in DECK if c not in named]
@@ -266,10 +270,12 @@ def test_a_trick_that_ends_the_mission_goes_to_the_result_and_is_never_resolving
     assert e.s['attempt'] == 2 and e.s['resolving'] is None
 
 
-def timed_and_resolving():
-    """Timed mission 16 with its first trick resolved and not settled; the deadline is 250."""
+def timed_begun(n=3):
+    """Timed mission 16 for `n` humans, begun at 100: its 150 seconds end at 250. Its one task
+    is judged only when the deal ends, so no trick before the last can end the mission."""
+    humans = [f'p{i}' for i in range(n)]
     for seed in range(40):
-        e = Engine(list(SEATS), random.Random(seed), 16, timed=True)
+        e = Engine(humans, random.Random(seed), 16, timed=True)
         act(e, e.controller(e.selector()), 'volunteer', yes=True)
         for k, q in list(e.s['assignments'].items()):
             if TASKS[k]['params'].get('predict'):
@@ -277,34 +283,165 @@ def timed_and_resolving():
         if e.s['phase'] != 'assistance':
             continue
         decide(e, 'p0', 'begin')                                    # at 100: 150 seconds
-        trick(e, settle=False)
-        if not e.s['result']:
-            assert e.s['resolving'] == {'trick': 1} and e.s['expiry'] == 250
-            return e
+        assert e.s['mission']['seconds'] == 150 and e.s['expiry'] == 250
+        return with_single_task(e, 'moreTricksThanOthers', 'p0')
     pytest.fail('no timed fixture')
 
 
-def test_a_missions_clock_stands_while_a_trick_is_resolving_and_the_hold_is_credited():
-    e = timed_and_resolving()
-    assert e.observe_time(10_000) is False and e.s['result'] is None    # nobody may act: no time passes
-    with pytest.raises(Invalid) as refused:
-        play(e, e.s['turn'], e.playable(e.s['turn'])[0], now=10_000)
-    assert refused.value.code == 'resolving' and e.s['result'] is None
-    assert e.settle(credit=0.8) is True
-    assert e.s['expiry'] == pytest.approx(250.8)                    # the hold cost the crew nothing
-    assert e.observe_time(250.5) is False
-    assert e.observe_time(250.8) is True and e.s['result'] == {'status': 'failed', 'reason': 'Time has run out.'}
+def timed_and_resolving(n=3, now=100):
+    """Timed mission 16 with its first trick resolved at `now` and not settled; the deadline is 250."""
+    e = timed_begun(n)
+    for _ in e.s['seats']:
+        play(e, *first_legal(e), now=now)
+    assert e.s['resolving'] == {'trick': 1} and e.s['expiry'] == 250 and e.s['result'] is None
+    return e
+
+
+TIMEOUT = {'status': 'failed', 'reason': 'Time has run out.'}
+
+
+def timed_out(e, trick_number):
+    """The table ended by time, in the shape every timeout has."""
     cause = e.s['cause']
-    assert (cause['kind'], cause['failure'], cause['trigger_seat'], cause['affected_seat'],
-            cause['action'], cause['trick']) == ('deadline', 'deadline', None, None, None, 2)
-    assert types(e.s['events'])[-1] == 'MISSION_FAILURE'
     e.check()
+    return (e.s['result'] == TIMEOUT and e.s['phase'] == 'mission_result' and e.s['expiry'] is None
+            and e.s['resolving'] is None
+            and (cause['kind'], cause['failure'], cause['trigger_seat'], cause['affected_seat'],
+                 cause['action'], cause['trick']) == ('deadline', 'deadline', None, None, None, trick_number)
+            and types(e.s['events'])[-1] == 'MISSION_FAILURE')
 
 
-@pytest.mark.parametrize('credit', [0, -5, 61, 1e9, True, None, 'long'])
-def test_a_settle_credits_only_a_short_plain_number_of_seconds(credit):
+# Owner decision 2026-10-05: a timed mission gains no time during the resolving hold. The clock
+# runs on, the deadline is fixed for the attempt, the committed trick is settled first, and the
+# deadline is judged before another turn opens.
+
+@pytest.mark.parametrize('n', [3, 4, 5])
+def test_the_deadline_of_a_timed_mission_is_the_same_after_any_number_of_holds(n):
+    e = timed_begun(n)
+    now, holds = 100.0, 0
+    while holds < 6:
+        for _ in e.s['seats']:
+            now += 0.25
+            play(e, *first_legal(e), now=now)
+        assert e.s['resolving'] and e.s['expiry'] == 250            # held: the deadline has not moved
+        now += 0.8
+        assert e.settle(now) is True and e.s['expiry'] == 250       # settled: nor has it now
+        holds += 1
+    assert e.s['result'] is None and now < 250
+    assert e.observe_time(249.999) is False and e.s['result'] is None
+    assert e.observe_time(250) is True and timed_out(e, holds + 1)  # exactly the configured 150 s
+
+
+def test_a_deadline_that_passes_during_a_hold_ends_the_attempt_when_the_trick_settles_and_opens_no_turn():
+    e = timed_and_resolving(now=249.7)                              # committed before the deadline
+    log, revision = deepcopy(e.s['events']), e.s['revision']
+    assert types(log)[-1] == 'TRICK_RESOLVED'
+    assert e.observe_time(250.2) is False and e.s['result'] is None     # the trick is settled first
+    assert e.s['resolving'] == {'trick': 1} and e.s['expiry'] == 250 and e.s['revision'] == revision
+    assert e.settle(250.5) is True                                  # the hold is over, past the deadline
+    assert timed_out(e, 2)
+    assert e.s['events'][:len(log)] == log                          # the trick and all it reported stand
+    assert types(e.s['events'][len(log):]) == ['MISSION_FAILURE']   # and nobody's turn was opened
+    assert len(e.s['history']) == 1 and e.s['trick'] == [] and e.s['revision'] == revision + 1
+    assert e.settle(250.6) is False
+
+
+@pytest.mark.parametrize('now,expired', [(249.999, False), (250, True), (250.0, True)])
+def test_a_hold_that_ends_exactly_at_the_deadline_ends_the_attempt(now, expired):
+    e = timed_and_resolving(now=249.2)
+    seq = e.s['event_seq']
+    assert e.settle(now) is True
+    after = types([x for x in e.s['events'] if x['seq'] > seq])
+    if expired:
+        assert timed_out(e, 2) and after == ['MISSION_FAILURE']
+    else:
+        assert e.s['result'] is None and after == ['TURN_STARTED'] and e.s['expiry'] == 250
+        assert e.observe_time(250) is True and timed_out(e, 2)
+
+
+def test_a_command_during_a_hold_is_refused_before_and_after_the_deadline_and_changes_nothing():
+    e = timed_and_resolving(now=249.7)
+    q = e.s['turn']
+    hand = list(e.playable(q))
+    for now in (249.8, 250.0, 250.4, 10_000):
+        before = deepcopy(e.s)
+        with pytest.raises(Invalid) as refused:
+            play(e, q, hand[0], now=now)
+        assert refused.value.code == 'resolving' and e.s == before  # no card, no result, no event
+    assert e.settle(250.5) is True and timed_out(e, 2) and e.playable(q) == hand
+
+
+def test_a_card_sent_after_the_deadline_is_not_played_whether_or_not_the_hold_was_settled():
+    e = timed_and_resolving(now=249.7)
+    q = e.s['turn']
+    hand = list(e.playable(q))
+    late = command(e, e.controller(q), 'play_card', card=hand[0])
+    assert e.settle(250.5) is True                                  # what the adapter does first
+    with pytest.raises(Invalid) as refused:
+        e.apply(e.controller(q), late, 250.5)
+    assert refused.value.code == 'stale' and timed_out(e, 2) and e.playable(q) == hand
+    # A caller that settles with no clock opens the turn; the next command still finds the deadline.
+    e = timed_and_resolving(now=249.7)
+    assert e.settle() is True and e.s['result'] is None
+    q = e.s['turn']
+    hand = list(e.playable(q))
+    with pytest.raises(Invalid) as refused:
+        play(e, q, hand[0], now=250)
+    assert refused.value.code == 'stale' and timed_out(e, 2)
+    assert e.playable(q) == hand and e.s['trick'] == []
+
+
+def winning_trick():
+    """A timed table whose first trick completes its only task if p2 does not overtake."""
+    e = timed_begun()
+    return rig(e, {'p0': ['blue:1'], 'p1': ['blue:4'], 'p2': ['blue:9', 'blue:2']}, 'p0', 'blue4', 'p1')
+
+
+def test_a_trick_committed_before_the_deadline_that_completes_the_mission_succeeds():
+    e = winning_trick()
+    play(e, 'p0', 'blue:1', now=249.7)
+    play(e, 'p1', 'blue:4', now=249.8)
+    play(e, 'p2', 'blue:2', now=249.9)                              # 0.1 s left: any hold would cross it
+    assert e.s['result'] == {'status': 'success', 'reason': 'All mission objectives completed.'}
+    assert e.s['resolving'] is None and e.s['expiry'] is None and e.s['cause'] is None
+    done = deepcopy(e.s)
+    assert e.observe_time(250.7) is False and e.settle(250.7) is False and e.expire() is False
+    assert e.s == done                                              # the result is not undone by the clock
+    assert types(e.s['events'])[-3:] == ['TRICK_RESOLVED', 'OBJECTIVE_COMPLETED', 'MISSION_SUCCESS']
+
+
+def test_the_same_trick_whose_last_card_comes_after_the_deadline_is_refused_and_times_out():
+    e = winning_trick()
+    play(e, 'p0', 'blue:1', now=249.7)
+    play(e, 'p1', 'blue:4', now=249.8)
+    with pytest.raises(Invalid) as refused:
+        play(e, 'p2', 'blue:2', now=250)
+    assert refused.value.code == 'stale' and timed_out(e, 1)
+    assert 'blue:2' in e.s['hands']['p2'] and len(e.s['trick']) == 2 and e.s['history'] == []
+    assert 'TRICK_RESOLVED' not in types(e.s['events'])
+
+
+@pytest.mark.parametrize('n', [2, 3, 4, 5])
+def test_an_untimed_table_is_the_same_whatever_clock_its_tricks_are_settled_with(n):
+    plain, clocked = playing(n, seed=6), playing(n, seed=6)
+    assert plain.s['expiry'] is None and plain.snapshot() == clocked.snapshot()
+    now = 100
+    while not plain.s['result']:
+        card = first_legal(plain)
+        play(plain, *card)
+        now += 10_000_000
+        play(clocked, *card, now=now)
+        assert plain.settle() == clocked.settle(now + 10_000_000)
+        assert plain.observe_time(0) is False and clocked.observe_time(now * 2) is False
+        assert json.dumps(plain.snapshot(), sort_keys=True) == json.dumps(clocked.snapshot(), sort_keys=True)
+        assert plain.view('p0') == clocked.view('p0') and plain.view('p0')['expiry'] is None
+
+
+@pytest.mark.parametrize('now', [None, True, 'late', [300]])
+def test_a_settle_with_no_usable_clock_settles_the_trick_and_judges_no_deadline(now):
     e = timed_and_resolving()
-    assert e.settle(credit) is True and e.s['expiry'] == 250
+    assert e.settle(now) is True and e.s['expiry'] == 250 and e.s['result'] is None
+    assert types(e.s['events'])[-1] == 'TURN_STARTED'
 
 
 def test_a_forced_end_of_a_timed_attempt_clears_a_resolving_trick():
@@ -1020,46 +1157,32 @@ def test_a_restart_during_a_resolving_trick_restores_a_table_that_is_not_held(tm
     assert raw_card(again, seats) == []                             # and the crew plays on
 
 
-def test_the_hold_and_a_mission_deadline_share_the_one_timer_and_the_hold_is_credited(tmp_path, monkeypatch):
-    clock = BothClocks(monkeypatch, wall=5_000_000.0, mono=1000.0)
-    s, tokens = timed_table(tmp_path / 'expo.json', clock)
-    e, seat = s.engine, by_pid(s, tokens)
-    expiry = e.s['expiry']
-    assert s.deadline == pytest.approx(clock.wall + (expiry - clock.mono))
-    for _ in e.s['seats']:
-        raw_card(s, seat)
-    if e.s['result']:
-        pytest.skip('the fixture ended in one trick')
-    assert e.s['resolving'] == {'trick': 1}
-    assert s.deadline == pytest.approx(clock.wall + game.RESOLVE_HOLD)      # the hold is what is armed
-    clock.pass_time(game.RESOLVE_HOLD)
-    s.tick(s.gen)
-    assert e.s['resolving'] is None and e.s['result'] is None
-    assert e.s['expiry'] == pytest.approx(expiry + game.RESOLVE_HOLD)       # the hold is not the crew's time
-    expiry = e.s['expiry']
-    assert s.deadline == pytest.approx(clock.wall + (expiry - clock.mono))  # then the mission's again
-    clock.pass_time(expiry - clock.mono - 0.5)
-    s.tick(s.gen)
-    assert e.s['result'] is None
-    clock.pass_time(0.5)
-    s.tick(s.gen)
-    assert e.s['result'] == {'status': 'failed', 'reason': 'Time has run out.'}
-    assert e.s['cause']['kind'] == 'deadline' and e.s['cause']['trigger_seat'] is None
-
-
-def test_a_lost_timer_credits_the_hold_and_not_the_time_it_was_late(tmp_path, monkeypatch):
-    clock = BothClocks(monkeypatch, wall=5_000_000.0, mono=1000.0)
-    s, tokens = timed_table(tmp_path / 'expo.json', clock)
-    e, seat = s.engine, by_pid(s, tokens)
-    expiry = e.s['expiry']
-    for _ in e.s['seats']:
-        raw_card(s, seat)
-    if e.s['result']:
-        pytest.skip('the fixture ended in one trick')
-    clock.pass_time(game.RESOLVE_HOLD + 5)                          # the timer never fired
-    assert [f['code'] for f in raw_card(s, seat)] == ['stale']      # this command settles the trick
-    assert e.s['resolving'] is None and e.s['result'] is None
-    assert e.s['expiry'] == pytest.approx(expiry + game.RESOLVE_HOLD)   # five seconds late are the crew's
+def timed_session(path, clock, n=3):
+    """A stored, timed mission 16 table for `n` humans, begun at the clock's now, whose one task
+    is judged only when the deal ends."""
+    for seed in range(40):
+        s = ExpoSession(random.Random(seed), snapshot_path=path)
+        tokens = [f'human-{i}' for i in range(n)]
+        for t in tokens:
+            s.join(t, t)
+            s.set_ready(t, True)
+        s.set_settings(tokens[0], {'timed': True})
+        s.set_settings(tokens[0], {'mission': 16})
+        s.start(tokens[0])
+        s.tick(s.gen)
+        e, seat = s.engine, by_pid(s, tokens)
+        send(s, seat[e.controller(e.selector())], 'volunteer', yes=True)
+        for k, q in list(e.s['assignments'].items()):
+            if TASKS[k]['params'].get('predict'):
+                send(s, seat[q], 'predict', task=k, count=0)
+        if e.s['phase'] == 'assistance':
+            agree(s, tokens, 'begin')
+            assert e.s['expiry'] == clock.mono + 150
+            with_single_task(e, 'moreTricksThanOthers', e.s['humans'][0])
+            s._save()
+            return s, tokens, seat
+        s.store.clear()
+    pytest.fail('no timed fixture')
 
 
 def shown_deadline(s, clock):
@@ -1069,52 +1192,213 @@ def shown_deadline(s, clock):
     return views[0] - clock.wall
 
 
-@pytest.mark.parametrize('late', [0.0, 5.0])
-def test_the_view_of_a_timed_table_never_shows_a_deadline_that_the_hold_will_move(tmp_path, monkeypatch, late):
-    clock = BothClocks(monkeypatch, wall=5_000_000.0, mono=1000.0)
-    s, tokens = timed_table(tmp_path / 'expo.json', clock)
-    e, seat = s.engine, by_pid(s, tokens)
+def held_near_the_deadline(path, clock, left):
+    """A timed table whose first trick was completed `left` seconds before its deadline."""
+    s, tokens, seat = timed_session(path, clock)
+    e = s.engine
     for _ in e.s['seats'][:-1]:
-        raw_card(s, seat)
-    left = e.s['expiry'] - clock.mono
-    assert shown_deadline(s, clock) == pytest.approx(left)          # no hold: the deadline itself
-    raw_card(s, seat)
-    if e.s['result']:
-        pytest.skip('the fixture ended in one trick')
-    assert e.s['resolving'] and e.s['expiry'] - clock.mono == pytest.approx(left)   # the engine's is unmoved
-    promised = s.game_state(tokens[0])['expiry']
-    assert shown_deadline(s, clock) == pytest.approx(left + game.RESOLVE_HOLD)
-    readings = []
-    for _ in range(4):                                              # the countdown through the hold
-        readings.append(shown_deadline(s, clock))
-        clock.pass_time(game.RESOLVE_HOLD / 4)
-    assert readings == sorted(readings, reverse=True) and readings[-1] > left   # falling, never below
-    assert shown_deadline(s, clock) == pytest.approx(left)          # the hold cost the crew nothing
-    clock.pass_time(late)                                           # the timer, on time or late
+        assert raw_card(s, seat) == []
+    clock.pass_time(e.s['expiry'] - clock.mono - left)
+    assert raw_card(s, seat) == []                                  # committed before the deadline
+    assert e.s['resolving'] == {'trick': 1} and e.s['result'] is None
+    return s, tokens, seat
+
+
+@pytest.mark.parametrize('n', [3, 4, 5])
+def test_a_timed_mission_lasts_exactly_its_configured_seconds_however_many_tricks_were_held(tmp_path, monkeypatch, n):
+    clock = BothClocks(monkeypatch, wall=5_000_000.0, mono=1000.0)
+    s, tokens, seat = timed_session(tmp_path / 'expo.json', clock, n)
+    e = s.engine
+    begun_at, expiry, moment = clock.mono, e.s['expiry'], s.game_state(tokens[0])['expiry']
+    assert expiry == begun_at + 150 and moment == pytest.approx(clock.wall + 150)
+    assert s.deadline == pytest.approx(moment)                      # the mission's timer is armed
+    for held in range(1, 5):
+        for _ in e.s['seats']:
+            clock.pass_time(0.5)
+            assert raw_card(s, seat) == []
+        assert e.s['resolving'] == {'trick': held} and e.s['expiry'] == expiry
+        assert s.deadline == pytest.approx(clock.wall + game.RESOLVE_HOLD)      # the hold is what is armed
+        for t in list(tokens) + [None]:                             # every viewer: the same fixed moment
+            assert s.game_state(t)['expiry'] == pytest.approx(moment)
+        clock.pass_time(game.RESOLVE_HOLD)
+        assert s.tick(s.gen) == []
+        assert e.s['resolving'] is None and e.s['result'] is None and e.s['expiry'] == expiry
+        assert s.deadline == pytest.approx(moment)                  # then the mission's again, unmoved
+        assert s.game_state(tokens[0])['expiry'] == pytest.approx(moment)
+    clock.pass_time(begun_at + 150 - clock.mono - 0.01)
     s.tick(s.gen)
-    assert e.s['resolving'] is None and e.s['result'] is None
-    assert s.game_state(tokens[0])['expiry'] == pytest.approx(promised)     # the moment it was told
-    assert e.s['expiry'] - clock.mono == pytest.approx(left - late)         # a late timer credits the hold only
+    assert e.s['result'] is None                                    # 149.99 s after Begin
+    clock.pass_time(0.01)
+    s.tick(s.gen)
+    assert clock.mono == pytest.approx(begun_at + 150)              # 150 s, four holds or none
+    assert e.s['result'] == TIMEOUT and e.s['cause']['kind'] == 'deadline'
+    assert e.s['cause']['trigger_seat'] is None and e.s['cause']['trick'] == 5
 
 
-def test_a_hold_that_spans_the_old_deadline_is_never_shown_as_expired(tmp_path, monkeypatch):
+def test_a_deadline_that_passes_during_the_hold_ends_the_attempt_at_the_end_of_the_hold(tmp_path, monkeypatch):
     clock = BothClocks(monkeypatch, wall=5_000_000.0, mono=1000.0)
-    s, tokens = timed_table(tmp_path / 'expo.json', clock)
-    e, seat = s.engine, by_pid(s, tokens)
-    for _ in e.s['seats'][:-1]:
-        raw_card(s, seat)
-    clock.pass_time(e.s['expiry'] - clock.mono - 0.3)               # 0.3 s are left
-    raw_card(s, seat)
-    if e.s['result']:
-        pytest.skip('the fixture ended in one trick')
-    clock.pass_time(0.5)                                            # past the deadline as it was
-    assert shown_deadline(s, clock) > 0 and e.s['result'] is None   # the phones do not show 0:00
+    s, tokens, seat = held_near_the_deadline(tmp_path / 'expo.json', clock, left=0.3)
+    e = s.engine
+    log, expiry, until = deepcopy(e.s['events']), e.s['expiry'], s.game_state(tokens[0])['resolving']['until']
+    assert types(log)[-1] == 'TRICK_RESOLVED' and shown_deadline(s, clock) == pytest.approx(0.3)
+    assert until == pytest.approx(clock.wall + game.RESOLVE_HOLD)
+    # The one timer is armed for the end of the hold, not for the deadline that comes sooner.
+    assert s.deadline == pytest.approx(until) and s.deadline > clock.wall + 0.3 + 0.4
+    clock.pass_time(0.5)                                            # 0.2 s past the deadline, still held
+    assert s.tick(s.gen) == []                                      # a timer that fires now settles nothing
+    assert e.s['resolving'] == {'trick': 1} and e.s['result'] is None and e.s['expiry'] == expiry
+    assert s.deadline == pytest.approx(until)                       # and it is still the hold's end
+    assert shown_deadline(s, clock) == pytest.approx(-0.2)          # the countdown was not stepped up
+    assert s.game_state(tokens[0])['resolving']['until'] == pytest.approx(until)
+    refused = raw_card(s, seat)                                     # a card now is not a play
+    assert [(f['kind'], f['code']) for f in refused] == [('invalid', 'resolving')]
+    assert e.s['trick'] == [] and e.s['result'] is None and e.s['events'] == log
     clock.pass_time(game.RESOLVE_HOLD - 0.5)
+    assert s.tick(s.gen) == []                                      # the hold ends: settle, then time
+    assert e.s['result'] == TIMEOUT and e.s['resolving'] is None and s._hold is None
+    assert e.s['cause']['kind'] == 'deadline' and e.s['cause']['trick'] == 2
+    assert e.s['events'][:len(log)] == log
+    assert types(e.s['events'][len(log):]) == ['MISSION_FAILURE']   # no TURN_STARTED: no turn was opened
+    view = s.game_state(tokens[0])
+    assert view['resolving'] is None and view['expiry'] is None and view['events'][-1]['type'] == 'MISSION_FAILURE'
+    assert s.deadline is None                                       # nothing is left to wait for
+    again = ExpoSession(random.Random(1), snapshot_path=tmp_path / 'expo.json')
+    assert again.engine.s['result'] == TIMEOUT                      # and the end was saved
+
+
+def test_a_hold_that_ends_exactly_at_the_deadline_times_out_without_a_turn(tmp_path, monkeypatch):
+    monkeypatch.setattr(game, 'RESOLVE_HOLD', 0.5)                  # exact in binary: 1149.5 + 0.5 == 1150.0
+    clock = BothClocks(monkeypatch, wall=5_000_000.0, mono=1000.0)
+    s, tokens, seat = held_near_the_deadline(tmp_path / 'expo.json', clock, left=0.5)
+    e = s.engine
+    seq = e.s['event_seq']
+    assert s._hold[1] == e.s['expiry'] == 1150.0
+    clock.pass_time(0.5)
+    assert clock.mono == 1150.0
     s.tick(s.gen)
-    assert e.s['result'] is None and shown_deadline(s, clock) == pytest.approx(0.3)
-    clock.pass_time(0.3)
+    assert e.s['result'] == TIMEOUT
+    assert types([x for x in e.s['events'] if x['seq'] > seq]) == ['MISSION_FAILURE']
+
+
+def test_a_timer_that_wakes_early_does_not_open_a_turn_before_a_deadline_inside_the_hold(tmp_path, monkeypatch):
+    clock = BothClocks(monkeypatch, wall=5_000_000.0, mono=1000.0)
+    s, tokens, seat = held_near_the_deadline(tmp_path / 'expo.json', clock, left=game.RESOLVE_HOLD - 0.010)
+    e = s.engine
+    log, ends = deepcopy(e.s['events']), s._hold[1]
+    assert e.s['expiry'] == pytest.approx(ends - 0.010) and e.s['expiry'] < ends
+    clock.pass_time(game.RESOLVE_HOLD - 0.015)                      # within HOLD_SLACK of the end
+    assert clock.mono < e.s['expiry'] < ends and ends - clock.mono < game.HOLD_SLACK
+    s.tick(s.gen)                                                   # the hold's own end, 15 ms early
+    assert e.s['result'] == TIMEOUT and e.s['resolving'] is None and s._hold is None
+    assert types(e.s['events'][len(log):]) == ['MISSION_FAILURE']   # no turn for the last 5 ms
+
+
+def test_a_timer_that_wakes_early_opens_the_turn_when_the_deadline_is_after_the_hold(tmp_path, monkeypatch):
+    clock = BothClocks(monkeypatch, wall=5_000_000.0, mono=1000.0)
+    s, tokens, seat = held_near_the_deadline(tmp_path / 'expo.json', clock, left=game.RESOLVE_HOLD + 0.010)
+    e = s.engine
+    expiry = e.s['expiry']
+    clock.pass_time(game.RESOLVE_HOLD - 0.015)
     s.tick(s.gen)
-    assert e.s['result'] == {'status': 'failed', 'reason': 'Time has run out.'}
+    assert e.s['result'] is None and e.s['resolving'] is None and e.s['expiry'] == expiry
+    assert types(e.s['events'])[-1] == 'TURN_STARTED'
+    assert s.deadline == pytest.approx(clock.wall + 0.025)          # the mission's deadline, unmoved
+
+
+def test_a_hold_that_ends_just_before_the_deadline_opens_the_turn_and_the_deadline_still_stands(tmp_path, monkeypatch):
+    clock = BothClocks(monkeypatch, wall=5_000_000.0, mono=1000.0)
+    s, tokens, seat = held_near_the_deadline(tmp_path / 'expo.json', clock, left=game.RESOLVE_HOLD + 0.25)
+    e = s.engine
+    expiry = e.s['expiry']
+    clock.pass_time(game.RESOLVE_HOLD)
+    s.tick(s.gen)
+    assert e.s['resolving'] is None and e.s['result'] is None and e.s['expiry'] == expiry
+    assert types(e.s['events'])[-1] == 'TURN_STARTED'
+    assert s.deadline == pytest.approx(clock.wall + 0.25) and shown_deadline(s, clock) == pytest.approx(0.25)
+    clock.pass_time(0.25)
+    s.tick(s.gen)
+    assert e.s['result'] == TIMEOUT
+
+
+@pytest.mark.parametrize('late', [0.0, 5.0, 3600.0])
+def test_a_card_sent_after_a_hold_that_crossed_the_deadline_is_refused_even_if_the_timer_never_fired(tmp_path, monkeypatch, late):
+    clock = BothClocks(monkeypatch, wall=5_000_000.0, mono=1000.0)
+    s, tokens, seat = held_near_the_deadline(tmp_path / 'expo.json', clock, left=0.3)
+    e = s.engine
+    log = deepcopy(e.s['events'])
+    q = e.s['turn']
+    hand = list(e.playable(q))
+    clock.pass_time(game.RESOLVE_HOLD + late)                       # no tick: the timer was lost
+    refused = raw_card(s, seat)                                     # this command settles the trick
+    assert [(f['kind'], f['code']) for f in refused] == [('invalid', 'stale')]
+    assert e.s['result'] == TIMEOUT and e.s['resolving'] is None
+    assert e.playable(q) == hand and e.s['trick'] == [] and len(e.s['history']) == 1
+    assert types(e.s['events'][len(log):]) == ['MISSION_FAILURE']
+
+
+def test_a_lost_timer_gives_a_timed_table_no_time(tmp_path, monkeypatch):
+    clock = BothClocks(monkeypatch, wall=5_000_000.0, mono=1000.0)
+    s, tokens, seat = timed_session(tmp_path / 'expo.json', clock)
+    e = s.engine
+    expiry = e.s['expiry']
+    for _ in e.s['seats']:
+        assert raw_card(s, seat) == []
+    clock.pass_time(game.RESOLVE_HOLD + 5)                          # the timer never fired
+    assert [f['code'] for f in raw_card(s, seat)] == ['stale']      # this command settles the trick
+    assert e.s['resolving'] is None and e.s['result'] is None
+    assert e.s['expiry'] == expiry and shown_deadline(s, clock) == pytest.approx(150 - game.RESOLVE_HOLD - 5)
+
+
+@pytest.mark.parametrize('down,ended', [(0.1, False), (0.5, True), (30.0, True)])
+def test_a_restart_during_a_hold_judges_the_fixed_deadline_before_any_turn(tmp_path, monkeypatch, down, ended):
+    clock = BothClocks(monkeypatch, wall=5_000_000.0, mono=1000.0)
+    path = tmp_path / 'expo.json'
+    s, tokens, seat = held_near_the_deadline(path, clock, left=0.3)
+    saved = json.loads(path.read_text(encoding='utf-8'))['engine']['state']
+    assert saved['resolving'] == {'trick': 1} and saved['expiry'] == s.engine.s['expiry']
+    log, expiry = deepcopy(s.engine.s['events']), s.engine.s['expiry']
+    clock.pass_time(down)                                           # the same boot, clocks in step
+    again = ExpoSession(random.Random(99), snapshot_path=path)
+    e = again.engine
+    assert again.recovery_error is None and e.s['resolving'] is None and again._hold is None
+    assert e.s['events'][:len(log)] == log
+    if ended:
+        assert e.s['result'] == TIMEOUT and e.s['cause']['kind'] == 'deadline'
+        assert types(e.s['events'][len(log):]) == ['MISSION_FAILURE']   # settled, then time: no turn
+        for t in tokens:
+            again.join(t, t)
+        refused = raw_card(again, by_pid(again, tokens))
+        assert [f['kind'] for f in refused] == ['invalid'] and e.s['trick'] == [] and len(e.s['history']) == 1
+    else:
+        assert e.s['result'] is None and e.s['expiry'] == expiry    # no time credited, none taken
+        assert types(e.s['events'][len(log):]) == ['TURN_STARTED']
+
+
+def test_a_restart_during_a_hold_under_a_clock_that_cannot_be_trusted_opens_no_turn(tmp_path, monkeypatch):
+    clock = BothClocks(monkeypatch, wall=5_000_000.0, mono=1000.0)
+    path = tmp_path / 'expo.json'
+    s, tokens, seat = held_near_the_deadline(path, clock, left=60)
+    log = deepcopy(s.engine.s['events'])
+    clock.boot = 'boot-b'                                           # a reboot: the deadline means nothing
+    again = ExpoSession(random.Random(99), snapshot_path=path)
+    e = again.engine
+    assert e.s['result'] == {'status': 'failed', 'reason': game.UNTRUSTED_CLOCK}
+    assert e.s['resolving'] is None and types(e.s['events'][len(log):]) == ['MISSION_FAILURE']
+
+
+def test_an_untimed_table_through_the_adapter_is_untouched_by_the_clock_during_a_hold(tmp_path, monkeypatch):
+    clock = BothClocks(monkeypatch, wall=5_000_000.0, mono=1000.0)
+    s, tokens, seat = begun(tmp_path / 'expo.json')
+    e = s.engine
+    for _ in e.s['seats']:
+        assert raw_card(s, seat) == []
+    assert e.s['resolving'] == {'trick': 1} and e.s['expiry'] is None
+    assert s.game_state(tokens[0])['expiry'] is None
+    clock.pass_time(10_000_000)                                     # any amount of time
+    s.tick(s.gen)
+    assert e.s['resolving'] is None and e.s['result'] is None and e.s['expiry'] is None
+    assert types(e.s['events'])[-1] == 'TURN_STARTED' and s.deadline is None
+    assert raw_card(s, seat) == []
 
 
 def test_a_return_is_given_the_trick_of_its_phase_and_always_reaches_the_viewers():

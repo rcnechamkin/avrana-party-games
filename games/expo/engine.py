@@ -160,22 +160,24 @@ class Engine:
                        cards=list(cause['cards']))
         self._finish('failed', reason, cause)
 
-    def settle(self, credit=0):
+    def settle(self, now=None):
         """The server's word that a resolved trick has been taken in: the table leaves
         `resolving` and the winner's turn begins. Not a player's action: no seat can send it, it
         does not wait for anyone who is away, and it is never refused. Who calls it, and when,
         is the adapter's business; the engine holds no clock for it. False if there was nothing
         to settle.
 
-        `credit` is how long the server held the table, in seconds. A real-time mission's clock
-        does not run while nobody may act (observe_time), so its deadline moves by that much:
-        the hold costs the crew no time."""
+        A real-time mission's clock runs through the hold and its deadline never moves (owner
+        decision 2026-10-05). `now` is the caller's clock at the settle, as for observe_time: if
+        the deadline has passed by then, the trick is settled, its events and results stand, and
+        the attempt ends by time here, before any turn is opened. A caller with no clock leaves
+        `now` out; the deadline is then judged at the next observe_time."""
         s = self.s
         if not s['resolving']:
             return False
         s['resolving'] = None
-        if s['expiry'] is not None and type(credit) in (int, float) and 0 < credit <= 60:
-            s['expiry'] += credit
+        if s['expiry'] is not None and type(now) in (int, float) and now >= s['expiry']:
+            return self.expire()
         self._emit('TURN_STARTED', seat=s['turn'], controller=self.controller(s['turn']), lead=True)
         s['revision'] += 1
         return True
@@ -474,7 +476,9 @@ class Engine:
 
     def observe_time(self, now):
         # `now` and `expiry` are seconds on whatever clock the caller keeps; the engine has none.
-        # While a trick is resolving nobody may act, and the mission's clock stands (settle()).
+        # While a trick is resolving the clock still runs and the deadline stands where it was
+        # (owner decision 2026-10-05), but the committed trick is settled first: a deadline that
+        # passes during the hold is judged by settle(now), before any turn opens.
         if self.s['resolving']:
             return False
         if self.s['expiry'] is not None and now >= self.s['expiry']:
@@ -855,7 +859,10 @@ class Engine:
         require(set(msg) == allowed and all(type(msg[k]) is typ for k, typ in fields[t].items()),
                 'payload', 'Invalid action fields or types.')
         require(type(msg['attempt']) is int and type(msg['revision']) is int and
-                isinstance(msg['request'], str) and 1 <= len(msg['request']) <= 80,
+                isinstance(msg['request'], str) and 1 <= len(msg['request']) <= 80
+                # An accepted id is kept in the request memory and written to the snapshot
+                # (AVR-268): plain printable text only.
+                and msg['request'].isascii() and msg['request'].isprintable(),
                 'payload', 'Invalid action scope.')
         if t == 'propose':
             self._decision_shape(msg['proposal'])

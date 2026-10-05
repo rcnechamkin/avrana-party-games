@@ -162,9 +162,10 @@ declaration is sent to its author only.
 Every command carries the attempt number, the revision it was built against, and a request id
 chosen by the client. In order:
 
-1. An expired deadline is recorded first, whatever the command is. The one exception: while a
-   trick is resolving the mission's clock stands and no expiry is recorded
-   ([The resolving phase](#the-resolving-phase)).
+1. An expired deadline is recorded first, whatever the command is. While a trick is resolving
+   the deadline is not recorded by a command: the clock still runs and the deadline does not
+   move, the command is refused as `resolving`, and the deadline is judged when the trick is
+   settled, before any turn opens ([The resolving phase](#the-resolving-phase)).
 2. The sender must be a seated human; nobody may be away.
 3. The verb and its fields must be exactly the expected names and types.
 4. A request id already accepted in this attempt: the identical message is a silent no-op; a
@@ -433,16 +434,18 @@ decided and in the state (winner, task statuses, the next leader); what waits is
   resolved." and changes nothing. The view says so: `resolving` is set, `me.legal_cards` and
   `me.communication_options` are empty and `me.play_reason` is that sentence. `phase` stays
   `before_trick` and the view's `stage` with it.
-- It ends by `Engine.settle()`, a server event like expiry: no seat can send it, it does not wait
-  for a seat that is away, and it is never refused. It clears the mark, emits the winner's
-  `TURN_STARTED` and raises `revision`.
+- It ends by `Engine.settle(now)`, a server event like expiry: no seat can send it, it does not
+  wait for a seat that is away, and it is never refused. It clears the mark, emits the winner's
+  `TURN_STARTED` and raises `revision`. On a timed table whose deadline has passed it ends the
+  attempt by time instead and emits no `TURN_STARTED` (below).
 - The engine holds no clock for it. **The adapter decides when**: it holds the trick for
   `game.RESOLVE_HOLD` (0.8 s) on the monotonic clock, arms the session's one timer for that
-  moment (a mission deadline waits behind it), and settles when the timer fires. The view the adapter
-  sends adds `resolving.until`, the wall-clock moment the next trick opens, for a client that
-  wants to time its presentation to it. During a hold the view's `expiry` is the deadline as it
-  will stand after the settle, so a countdown never shows a moment at which nothing will happen
-  (`test_the_view_of_a_timed_table_never_shows_a_deadline_that_the_hold_will_move`).
+  moment (a mission deadline is judged at that moment too), and settles when the timer fires,
+  passing its monotonic clock as `now`. The view the adapter sends adds `resolving.until`, the
+  wall-clock moment the hold ends, for a client that wants to time its presentation to it. The
+  view's `expiry` is the mission's deadline and nothing else: it is the same moment from Begin
+  to the result, with or without a hold
+  (`test_a_timed_mission_lasts_exactly_its_configured_seconds_however_many_tricks_were_held`).
 - **It cannot strand a table.** A command that arrives after the hold settles the trick first,
   timer or no timer (the command itself is then stale, and the next one is accepted). A restore
   settles at once: the hold is not saved, and nobody is watching a table that has just been
@@ -452,14 +455,59 @@ decided and in the state (winner, task statuses, the next leader); what waits is
   `test_a_restart_during_a_resolving_trick_restores_a_table_that_is_not_held`).
 - A trick that ends the mission is never resolving: the result is its own boundary, and nothing
   delays Retry, Next or End.
-- **A real-time mission's clock stands while a trick is resolving.** Nobody may act, so no time
-  is the crew's: `Engine.observe_time` records no expiry meanwhile, and `Engine.settle(credit)`
-  moves the deadline by the time the adapter held the table (at most `RESOLVE_HOLD`, never the
-  extra time a lost timer added). The crew has the same seconds to act as before the hold
-  existed; the attempt lasts 0.8 s longer on the wall clock for each trick. A restore credits
-  nothing: what downtime costs a timed attempt is decided by the clock rules above
-  (`test_a_missions_clock_stands_while_a_trick_is_resolving_and_the_hold_is_credited`,
-  `test_the_hold_and_a_mission_deadline_share_the_one_timer_and_the_hold_is_credited`).
+- **A real-time mission gains no time during the hold** (owner decision, 2026-10-05, on
+  AVR-246). In the owner's words: "Timed missions do **not** gain time during the 0.8 s resolving
+  hold. The mission clock continues to run on monotonic elapsed time while presentation/resolving
+  temporarily prevents the next action. Implementation should preserve a clean trick-resolution
+  boundary, but that boundary must not extend the mission deadline. If a deadline expires during
+  resolving, finish resolving the already-committed trick, then evaluate expiry before opening
+  another actionable turn." What that is here:
+  - The deadline is set once, at Begin, and nothing moves it. A timed mission 16 attempt lasts
+    exactly its 150 seconds on the monotonic clock at three, four and five players, however many
+    tricks were held
+    (`test_the_deadline_of_a_timed_mission_is_the_same_after_any_number_of_holds`,
+    `test_a_timed_mission_lasts_exactly_its_configured_seconds_however_many_tricks_were_held`).
+  - **Where expiry is judged.** Outside a hold, as before: `Engine.observe_time(now)`, on every
+    command and on the adapter's timer. During a hold `observe_time` records nothing, because
+    the committed trick is settled first. `Engine.settle(now)` then clears the mark and, if
+    `now` has reached the deadline, ends the attempt exactly as any timeout does (result
+    "Time has run out.", cause `deadline`, no triggering or affected seat) **without emitting
+    `TURN_STARTED`**: no seat is ever given a turn after the deadline. The trick, its events and
+    whatever it decided for the tasks stand. The comparison is the one `observe_time` uses, so a
+    hold that ends exactly at the deadline ends the attempt
+    (`test_a_deadline_that_passes_during_a_hold_ends_the_attempt_when_the_trick_settles_and_opens_no_turn`,
+    `test_a_hold_that_ends_exactly_at_the_deadline_ends_the_attempt`,
+    `test_a_deadline_that_passes_during_the_hold_ends_the_attempt_at_the_end_of_the_hold`).
+  - The hold runs to its end even when the deadline passes inside it, so a timeout that falls
+    in a hold is recorded up to 0.8 s after the deadline (later only if the timer is lost, and
+    then by the next command). Nothing can be done in that time: every command is refused as
+    `resolving`, and a command that arrives after the hold settles the trick, finds the
+    deadline passed and is refused as `stale`; its card is not played
+    (`test_a_command_during_a_hold_is_refused_before_and_after_the_deadline_and_changes_nothing`,
+    `test_a_card_sent_after_a_hold_that_crossed_the_deadline_is_refused_even_if_the_timer_never_fired`).
+  - A trick that decides the mission is never resolving, so a mission won by a trick whose last
+    card was accepted before the deadline is won, however little time was left; the same card
+    sent at or after the deadline is refused and the attempt fails by time
+    (`test_a_trick_committed_before_the_deadline_that_completes_the_mission_succeeds`,
+    `test_the_same_trick_whose_last_card_comes_after_the_deadline_is_refused_and_times_out`).
+  - A restore settles at once and judges the deadline in the same step, by the clock rules
+    above: a service restart on the same boot past the deadline ends the attempt with no
+    `TURN_STARTED`, and so does a clock that cannot be trusted
+    (`test_a_restart_during_a_hold_judges_the_fixed_deadline_before_any_turn`,
+    `test_a_restart_during_a_hold_under_a_clock_that_cannot_be_trusted_opens_no_turn`).
+  - An untimed table has no deadline and is the same whatever clock its tricks are settled with
+    (`test_an_untimed_table_is_the_same_whatever_clock_its_tricks_are_settled_with`).
+  - The adapter's timer may wake up to 20 ms early (`HOLD_SLACK`). The settle it causes is
+    judged at the hold's own end, so a deadline anywhere inside the hold ends the attempt and
+    no turn is open for the milliseconds between
+    (`test_a_timer_that_wakes_early_does_not_open_a_turn_before_a_deadline_inside_the_hold`).
+    The session's one timer is armed for the end of the hold, never for a deadline that comes
+    sooner.
+  - For a client: during a hold that crosses the deadline the countdown drawn from `expiry`
+    reaches zero while `resolving` is still set, and the result follows when the hold ends.
+  - A limit, unchanged from before the hold existed: outside a hold, a view requested between
+    the deadline and the timer firing still shows a turn and legal cards, and every command
+    sent then is refused.
 
 Why this design, and what was rejected:
 

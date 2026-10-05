@@ -12,7 +12,8 @@ disable a control; the engine rejects the same thing independently. A test that 
 client's restriction must still see a rejection.
 
 **Envelope.** Every game command is a JSON object with exactly `t` (the verb), `attempt`,
-`revision`, `request` (1 to 80 characters, chosen by the client) and the verb's own fields. Extra
+`revision`, `request` (1 to 80 printable ASCII characters, chosen by the client; the client sends
+a UUID) and the verb's own fields. Extra
 or missing fields, wrong types (a boolean is not an integer) and unknown verbs are rejected.
 
 **Common checks, in order.** These apply to every command below and are not repeated per action.
@@ -353,7 +354,9 @@ is reached (`GameBinding._party_host_confirm`, then `_party_host_action`; AVR-25
   phase becomes `mission_result` if the mission is decided.
 - **After a completed trick** (AVR-246): if the mission is not decided the table is resolving and
   check 6a refuses every seat's command until the server settles it, about 0.8 s later
-  ([GAME_STATE](GAME_STATE.md#the-resolving-phase)). The winner then leads. A failed attempt
+  ([GAME_STATE](GAME_STATE.md#the-resolving-phase)). The winner then leads, unless a timed
+  mission's deadline passed meanwhile: the hold gives no time (owner decision, 2026-10-05), the
+  deadline is judged at the settle, and the attempt ends by time with no turn opened. A failed attempt
   carries its `cause` ([GAME_STATE](GAME_STATE.md#failure-causality)); it is reported only after
   the card that caused it was accepted.
 - **Knowable before**: legality yes (`me.legal_cards`, `me.play_reason`). Outcome no: a legal card
@@ -390,7 +393,10 @@ for a redeal. Unknown verbs are rejected by common check 3.
   its hold is over, by its timer or at the next command, and at once on a restore. No verb
   reaches it: `settle` sent by a client is an unknown action.
 - Real-time expiry: checked on every command and on the adapter's timer tick, so it fails the
-  mission with no traffic at all. It is measured on the monotonic clock; a restored timed attempt
+  mission with no traffic at all. The deadline is fixed at Begin and a resolving hold does not
+  move it (owner decision, 2026-10-05). While a trick is resolving the check waits for the
+  settle: the committed trick is settled, then the deadline is judged, before any turn opens.
+  It is measured on the monotonic clock; a restored timed attempt
   whose elapsed time cannot be proven ends at once ([GAME_STATE](GAME_STATE.md#restoration-after-a-server-restart)).
 - Presence changes.
 - Restore from a snapshot.
