@@ -661,9 +661,12 @@ def test_nothing_in_any_view_tells_a_player_what_a_legal_card_will_do_before_it_
         assert losing == winning
     me = e.view('p2')['me']
     assert me['legal_cards'] == legal_cards(e.playable('p2'), e.s['trick']) == ['blue:2', 'blue:9']
+    # The reasons (AVR-263) say why a control is refused now, never what an accepted card will do.
     assert set(me) == {'seat', 'hand', 'legal_cards', 'play_reason', 'communication_options',
-                       'may_pass_task', 'may_decline_volunteer', 'pass_locked'}
-    assert me['play_reason'] is None
+                       'may_pass_task', 'may_decline_volunteer', 'pass_locked',
+                       'card_reasons', 'task_reasons', 'pass_task_reason', 'volunteer_reasons',
+                       'offer_reason', 'offer_owner_reasons', 'predict_reasons'}
+    assert me['play_reason'] is None and not {'blue:2', 'blue:9'} & set(me['card_reasons'])
     before = e.s['event_seq']
     play(e, 'p2', 'blue:9')                                         # accepted like any other card
     after = [x for x in e.s['events'] if x['seq'] > before]

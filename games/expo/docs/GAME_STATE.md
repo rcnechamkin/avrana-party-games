@@ -148,7 +148,7 @@ it. See [The resolving phase](#the-resolving-phase).
 | Public | Private to its owner | Never sent |
 |---|---|---|
 | mission definition, seats, captain, leader, turn | own hand | other hands |
-| trick in progress, the most recent resolved trick only | own legal cards and the reason play is unavailable | Tonoja's covered cards |
+| trick in progress, the most recent resolved trick only | own legal cards and, for each of the viewer's own controls that is unavailable, the server's reason ([ACTIONS](ACTIONS.md#conventions): `play_reason`, `card_reasons`, `task_reasons`, `pass_task_reason`, `volunteer_reasons`, `offer_reason`, `offer_owner_reasons`, `predict_reasons`) | Tonoja's covered cards |
 | per-seat hand counts and trick counts | own communication options | resolved tricks before the latest |
 | tasks: text, difficulty, owner, status, eligible owners | own secret prediction, until the mission result | task deck order, used pile |
 | predictions that are public; whether one is committed | whether own distress choice is locked | sealed distress choices |
@@ -159,6 +159,7 @@ it. See [The resolving phase](#the-resolving-phase).
 | the pending crew decision and who confirmed | | |
 | `lifecycle`: who moves the table on, `host` or `crew` (added by the adapter) | | who the Party Host is: the game is never told |
 | `begin_at`: the wall-clock moment the host's Begin opens, or null (adapter) | | |
+| `lifecycle_reasons` `{begin, retry, next}`: for each step the sentence the server refuses it with now, or null (adapter and engine; [ACTIONS](ACTIONS.md#conventions)). The same for every viewer: it reads who is away, whether a decision is pending, the phase, the result, a resolving trick and the crew's moment, and no hand | | |
 | `lifecycle_transitional`: true only under a Party that does not name its host yet (adapter) | | |
 | `events`, `event_seq`: the events of the latest resolved trick and after (AVR-246) | own declaration in a currents `COMMUNICATION_SENT` | events of earlier tricks and earlier attempts; the rest of the log |
 | `resolving`: the trick being resolved, with `until` (adapter); `cause` of a failed attempt | | |
@@ -177,7 +178,11 @@ is the same for a player, the Party Host and a watcher, but for `me`: a seated h
 `{seat}` and nothing more; everyone else's is null. No hand, task or captain exists to send
 (`test_the_setup_view_is_public_and_holds_nothing_of_a_deal`). The keys every view carries for
 the events are there in the only state they can have before a deal: `resolving` and `cause`
-none, `events` empty, `event_seq` 0. Nothing is emitted in `setup`, a seat's return included,
+none, `events` empty, `event_seq` 0. `lifecycle_reasons` is there too (AVR-263): Begin, Retry
+and Next are each refused in `setup`, in the sentence that step is refused with; why the setup
+itself cannot be confirmed is `setup.waiting`
+(`test_in_setup_every_viewer_is_sent_the_step_reasons_and_they_are_the_tables_answers`).
+Nothing is emitted in `setup`, a seat's return included,
 nothing resolves and no hold is kept
 (`test_the_setup_view_carries_the_event_keys_every_view_has`,
 `test_a_seat_that_reconnects_during_setup_is_recorded_and_emits_nothing`,
@@ -639,7 +644,14 @@ When Party launches EXPO (`core/party_session.py`, Party ADR 0006 and 0010):
 - **The crew's moment before Begin.** Where distress is available the host's Begin opens
   `DISTRESS_GRACE` seconds after the tasks are settled (`begin_at`), once per attempt. The
   moment is the adapter's (`ExpoSession._grace`, monotonic clock), not engine state: it is not
-  saved, and a restored table gives the crew the moment again.
+  saved, and a restored table gives the crew the moment again. While it is open
+  `lifecycle_reasons.begin` is its sentence, and the table's one timer (otherwise a resolving
+  trick's hold or the mission's deadline, neither of which runs before play) is set for its end: the tick pushes a state in which
+  the reason is gone, so no page opens Begin from its own clock (AVR-263).
+- **Why a step is unavailable** is the server's to say: `lifecycle_reasons` gives every viewer
+  the sentence Begin, Retry and Next are each refused with at that moment, from the same ordered
+  checks that refuse them (`Engine._lifecycle_refusals`, `ExpoSession._host_refusal`; for a table
+  the crew moves on, `Engine.apply`'s refusal of the proposal).
 - **An away seat** still stops the setup, the seat agreement, Begin, Retry and Next (AVR-240 owns recovery). It never strands
   the Party: the host's end is the Party's and does not pass through the table.
 - No seat ends a Party round from inside the game. The host ends it from the Party, whose signed

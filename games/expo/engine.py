@@ -26,6 +26,18 @@ SEAT_NOT_SETUP = ('The two players decide where Tonoja sits. '
 # What a request id is made of (AVR-273). The client sends a UUID. None of these characters is
 # escaped in the snapshot file, so the request memory of a full attempt has a known size.
 REQUEST_CHARS = frozenset('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-')
+# What a lifecycle step needs of the table first, in the words it is refused with when that is
+# missing. One copy: a seat's proposal (`_proposal`), the host's commit (`lifecycle`) and the
+# reason shown beside the control (`lifecycle_reasons`) all read it here.
+STEP_NEEDS = {'setup': 'The mission is already set up.',
+              'begin': 'Finish task allocation and predictions first.',
+              'retry': 'Retry is available after a failed mission.',
+              'next': 'Complete this mission first.'}
+assert set(STEP_NEEDS) == set(LIFECYCLE)
+# The steps a dealt table moves on by. Their reasons are `lifecycle_reasons` in every view, the
+# setup view included (there each is refused: nothing is dealt). Why the setup itself cannot be
+# confirmed is `setup.waiting`, in the setup view only.
+STEPS = tuple(kind for kind in LIFECYCLE if kind != 'setup')
 
 # Semantic events (AVR-246). The newest EVENT_LIMIT are kept, across attempts. A whole deal
 # measured 94 to 100 events with one task at two to five players and up to 113 with a mission's
@@ -228,12 +240,11 @@ class Engine:
             return False
         if away:
             s['away'].append(seat)
-        elif s['phase'] == 'setup':
-            # Before the first deal there is no trick, mission or attempt to report it under: the
-            # return is recorded and no event is emitted.
-            s['away'].remove(seat)
         else:
             s['away'].remove(seat)
+        if not away and s['phase'] != 'setup':
+            # (Before the first deal there is no trick, mission or attempt to report a return
+            # under: it is recorded above and no event is emitted.)
             # The trick it belongs to: 0 before play; the trick in progress or about to be led;
             # after a result, the last trick that was played or begun.
             played = len(s['history'])
@@ -666,9 +677,9 @@ class Engine:
     def _proposal(self, actor, payload, now):
         s = self.s
         kind = payload['kind']
-        if kind == 'begin':
-            require(s['phase'] == 'assistance', 'phase', 'Finish task allocation and predictions first.')
-        elif kind == 'distress':
+        if kind in LIFECYCLE:
+            require(self._step_open(kind), 'phase', STEP_NEEDS[kind])
+        if kind == 'distress':
             require(s['phase'] == 'assistance' and len(s['humans']) > 2, 'distress',
                     'Distress is available before play; the Tonoja exchange is not yet verified.')
             require(payload.get('direction') in ('left', 'right'), 'direction', 'Choose left or right.')
@@ -687,12 +698,8 @@ class Engine:
             require(all(isinstance(k, str) and k in s['pool'] and self.eligible(k, owner) for k in keys),
                     'task', 'Every task needs an eligible owner.')
         elif kind == 'retry':
-            require(s['phase'] == 'mission_result' and s['result']['status'] == 'failed',
-                    'phase', 'Retry is available after a failed mission.')
             require(type(payload.get('keep')) is bool, 'payload', 'Choose whether to keep the tasks.')
         elif kind == 'next':
-            require(s['phase'] == 'mission_result' and s['result']['status'] == 'success',
-                    'phase', 'Complete this mission first.')
             try:
                 mission(payload.get('mission'), s['timed'])
             except ValueError as e:
@@ -701,8 +708,8 @@ class Engine:
             # What a standalone table's lobby lets its players choose, by the same check: a
             # mission this crew may play. Tonoja's seat is not in it: with two humans the two
             # of them must have agreed one (`tonoja_seat`) before anything is dealt.
-            require(s['phase'] == 'setup', 'phase', 'The mission is already set up.')
-            require(len(s['humans']) != 2 or s['setup']['tonoja_seat'] is not None, 'seat', SEAT_FIRST)
+            # (That the table is in `setup` was checked above, as for every lifecycle step.)
+            require(not self._seat_missing(), 'seat', SEAT_FIRST)
             reason = unavailable(payload['mission'], len(s['humans']), payload['timed'])
             require(reason is None, 'mission', reason)
         elif kind == 'tonoja_seat':
@@ -714,7 +721,7 @@ class Engine:
         elif kind == 'end':
             # Before the first deal there is no table to end. (A Party round's end is the Party's.)
             require(s['phase'] != 'setup', 'phase', 'Set up the mission first.')
-        else:
+        elif kind != 'begin':
             raise Invalid('action', 'Unknown crew decision.')
         s['proposal'] = {'payload': payload, 'votes': [actor]}
         if kind == 'assign' and s['mission']['allocation'] == 'captain_one':
@@ -725,6 +732,52 @@ class Engine:
                 self._commit_proposal(now)
             else:
                 s['proposal']['recipient'] = payload['owner']
+
+    def _step_open(self, kind):
+        # Whether the table is where this lifecycle step starts from: tasks allocated and
+        # predictions made before Begin, a failure before Retry, a success before Next.
+        s = self.s
+        status = s['result']['status'] if s['phase'] == 'mission_result' else None
+        return {'setup': s['phase'] == 'setup', 'begin': s['phase'] == 'assistance',
+                'retry': status == 'failed', 'next': status == 'success'}[kind]
+
+    def _seat_missing(self):
+        # Before the first deal, with two humans who have not agreed where Tonoja sits (AVR-245).
+        s = self.s
+        return s['phase'] == 'setup' and len(s['humans']) == 2 and s['setup']['tonoja_seat'] is None
+
+    def _lifecycle_refusals(self, kind, stale=False):
+        """Everything about the table that refuses the lifecycle authority's Begin, Retry or Next,
+        in the order it is checked, as (refused, code, sentence). `lifecycle` refuses with the
+        first that holds and `lifecycle_reasons` shows the first that holds, so the two cannot
+        disagree, and a refusal added here is one line (as AVR-246's `resolving` was). `stale` is
+        the one that depends on the message."""
+        s = self.s
+        return ((bool(s['away']), 'paused', 'Waiting for the crew to reconnect.'),
+                (stale, 'stale', 'That moment has passed. Use the latest table state.'),
+                (s['phase'] == 'closed', 'phase', 'This table is closed.'),
+                (bool(s['resolving']), 'resolving', RESOLVING),
+                (s['proposal'] is not None, 'vote', 'The crew is deciding something. Wait for their answer.'),
+                (not self._step_open(kind), 'phase', STEP_NEEDS[kind]),
+                # Setup alone: nothing is dealt for two until they have agreed Tonoja's seat.
+                (kind == 'setup' and self._seat_missing(), 'seat', SEAT_FIRST))
+
+    def lifecycle_reasons(self, host):
+        """Why Begin, Retry and Next are unavailable now: for each, the sentence the table refuses
+        it with at this moment, or None when it would be taken (AVR-263). Where the steps are
+        the host's (`host` true) that is `lifecycle`'s refusal; where the crew proposes them it
+        is `apply`'s refusal of a seated crew member's proposal. For Next, None is about a
+        mission that exists and is open to this crew. Only who is away, whether a decision is
+        pending, the phase, the result and whether a trick is being resolved are read: the same
+        for every viewer, seated or not."""
+        if host:
+            return {kind: self._step_refusal(kind) for kind in STEPS}
+        gate = self._gate()
+        return {kind: gate or (None if self._step_open(kind) else STEP_NEEDS[kind]) for kind in STEPS}
+
+    def _step_refusal(self, kind):
+        # The sentence `lifecycle` refuses this step with at this moment, or None.
+        return next((sentence for refused, _, sentence in self._lifecycle_refusals(kind) if refused), None)
 
     def _voters(self):
         # Who must answer the pending decision: every seated human, or the one recipient
@@ -906,12 +959,9 @@ class Engine:
         payload = msg['decision']
         self._decision_shape(payload)
         require(payload['kind'] in LIFECYCLE, 'strategic', 'The crew decides that together.')
-        require(not s['away'], 'paused', PAUSED)
-        require(msg['attempt'] == s['attempt'] and msg['revision'] == s['revision'],
-                'stale', 'That moment has passed. Use the latest table state.')
-        require(s['phase'] != 'closed', 'phase', 'This table is closed.')
-        require(not s['resolving'], 'resolving', RESOLVING)
-        require(s['proposal'] is None, 'vote', DECIDING)
+        stale = msg['attempt'] != s['attempt'] or msg['revision'] != s['revision']
+        for refused, code, sentence in self._lifecycle_refusals(payload['kind'], stale):
+            require(not refused, code, sentence)
         old, rng_state = deepcopy(s), self.rng.getstate()
         try:
             self._proposal(None, payload, now)
@@ -983,7 +1033,10 @@ class Engine:
         require(isinstance(s.get('humans'), list) and (asked is None or (
                     set(asked) == {'payload', 'votes'} and isinstance(pending, dict)
                     and pending.get('kind') in ('setup', 'tonoja_seat') and type(asked['votes']) is list
-                    and asked['votes'] and all(isinstance(q, str) and q in s['humans'] for q in asked['votes']))),
+                    and asked['votes'] and all(isinstance(q, str) and q in s['humans'] for q in asked['votes'])
+                    # each seat once, and not yet all of them: a decision everyone has confirmed
+                    # has taken effect and is no longer pending
+                    and len(set(asked['votes'])) == len(asked['votes']) < len(s['humans']))),
                 'snapshot', 'Setup check failed.')
         if pending is not None:
             try:
@@ -997,12 +1050,21 @@ class Engine:
                 and isinstance(offered, dict)
                 and set(offered) == {'mission', 'timed', 'tonoja_position', 'tonoja_seat'}
                 and type(offered['mission']) is int and type(offered['timed']) is bool
-                and type(offered['tonoja_position']) is int
+                and type(offered['tonoja_position']) is int and 0 <= offered['tonoja_position'] <= 2
+                and any(m['id'] == offered['mission'] for m in catalog(len(s['humans']), offered['timed']))
                 and (offered['tonoja_seat'] is None or (
                     type(offered['tonoja_seat']) is int and 0 <= offered['tonoja_seat'] <= 2
                     and len(s['humans']) == 2))
                 and (pending is None or pending['kind'] == 'setup'
                      or (len(s['humans']) == 2 and 0 <= pending['position'] <= 2)),
+                'snapshot', 'Setup check failed.')
+        # No task was drawn, no attempt counted and no mission completed. The request memory
+        # holds only what a seat may send before the deal (a proposal, an answer), as text.
+        require(s.get('deck') == [] and s.get('used') == [] and s.get('log') == []
+                and s.get('distress') is False and s.get('counted') is False
+                and type(s.get('attempts')) is int and s['attempts'] == 0
+                and type(s.get('dedup')) is dict
+                and all(type(k) is str and type(v) is str for k, v in s['dedup'].items()),
                 'snapshot', 'Setup check failed.')
         # Nothing has happened at a table that has dealt nothing (AVR-246): no event, no trick
         # resolving, no failure to attribute.
@@ -1106,8 +1168,9 @@ class Engine:
         # proposed at this moment. `seat_proposal` says who proposed a seat and who must answer.
         s = self.s
         two = len(s['humans']) == 2
-        missing = two and s['setup']['tonoja_seat'] is None
-        waiting = PAUSED if s['away'] else DECIDING if s['proposal'] else SEAT_FIRST if missing else None
+        # The first thing `lifecycle` refuses a setup with now (AVR-263): one list, so the reason
+        # shown and the refusal cannot disagree.
+        waiting = self._step_refusal('setup')
         seat_waiting = (PAUSED if s['away'] else ANSWER_FIRST if s['proposal'] else None) if two else None
         asked = s['proposal'] if s['proposal'] and s['proposal']['payload']['kind'] == 'tonoja_seat' else None
         return {'kind': 'expo', 'attempt': s['attempt'], 'revision': s['revision'], 'stage': 'setup',
@@ -1123,6 +1186,87 @@ class Engine:
                               'asked': [q for q in s['humans'] if q not in asked['votes']]},
                           'missions': catalog(len(s['humans']), s['setup']['timed'])},
                 'me': {'seat': actor} if actor in s['humans'] else None}
+
+    def _gate(self):
+        # What every command of a seated crew member meets before its own checks, in the order
+        # `apply` makes them; the first that refuses is the reason. A refusal added to `apply`
+        # there is one line here (as AVR-246's `resolving` was).
+        s = self.s
+        return next((sentence for refused, sentence in (
+            (s['away'], 'Waiting for the crew to reconnect.'),
+            (s['phase'] == 'closed', 'This table is closed.'),
+            (s['resolving'], RESOLVING),
+            (s['proposal'] is not None, 'Confirm or decline the crew decision first.')) if refused), None)
+
+    def reasons(self, actor):
+        """Why each control this crew member sees is unavailable, in the sentence `apply` rejects
+        the same request with (AVR-263). Every list below is in the order `apply` makes its
+        checks and the first that refuses is the reason, so a refusal added to `apply` is one
+        line added here, in the same place. A control with no reason is available; a card, task,
+        owner or answer absent from its map is. Nothing here decides anything, and nothing reads
+        more than the public table and this crew member's own hand: `apply` alone refuses, and
+        the coverage tests send every request and compare."""
+        s = self.s
+        first = lambda *checks: next((sentence for refused, sentence in checks if refused), None)
+        gate = self._gate()                # every command, before its own checks
+        if s['phase'] == 'setup':
+            # Nothing is dealt (AVR-245): no card, task, turn or question exists to give a reason
+            # for. A card cannot be played, in the sentence `apply` refuses one with.
+            return {'play': gate or 'This is not a card-play phase.', 'predictions': {}, 'cards': {}, 'tasks': {},
+                    'pass_task': None, 'volunteer': {}, 'offer': None, 'offer_owners': {}}
+        mode = s['mission']['allocation'] if s['phase'] == 'allocation' else None
+        selecting = mode in ('normal', 'skip_captain')
+        asked = self.controller(self.selector()) == actor if mode else False
+
+        # play_card, for any card; then card by card.
+        play = gate or first((s['phase'] not in ('before_trick', 'in_trick'), 'This is not a card-play phase.'),
+                             (self.controller(s['turn']) != actor, 'It is another crew member’s turn.'))
+        hand, tops = self.playable(actor), (self.playable('tonoja') if 'tonoja' in s['seats'] else [])
+        turn = [] if play else self.playable(s['turn'])
+        legal = legal_cards(turn, s['trick'])
+        cards = {c: play or first((c not in turn, 'That card is not in the playable hand.'),
+                                  (c not in legal, 'You must follow the opening suit.'))
+                 for c in hand + tops}
+        if s['phase'] == 'passing':
+            # pass_card: in the distress exchange a hand card is a card to pass, not to play.
+            for c in hand:
+                cards[c] = gate or first((actor in s['pass_choices'], 'Your pass is already locked or unavailable.'),
+                                         (suit(c) == 'submarine', 'Choose one of your color cards.'))
+
+        # choose_task and pass_task, in clockwise selection.
+        tasks, pass_task = {}, None
+        if selecting:
+            seat = self.selector()
+            tasks = {k: gate or first((not asked, 'It is another crew member’s task selection.'),
+                                      (not self.eligible(k, seat), 'The captain cannot take a captain comparison task.'))
+                     for k in s['pool']}
+            pass_task = gate or first((not asked, 'It is another crew member’s turn.'),
+                                      (not self._may_pass_task(), 'The remaining tasks must be assigned this round.'))
+
+        # volunteer, by answer.
+        answers = {}
+        if mode == 'volunteer':
+            forced = len(s['seats']) - len(s['answers']) <= s['mission']['volunteers'] - len(s['volunteers'])
+            turn_to_answer = gate or first((not asked, 'Answer when the captain asks you.'))
+            answers = {'yes': turn_to_answer,
+                       'no': turn_to_answer or first((forced, 'The remaining crew must take the tasks.'))}
+
+        # propose assign of all tasks (missions 6, 10 and 13): whoever is named, then owner by owner.
+        offer, owners = None, {}
+        if mode in ('one', 'captain_one'):
+            offer = gate or first((mode == 'captain_one' and actor != s['captain'], 'The captain must offer these tasks.'))
+            owners = {q: offer or first((not all(self.eligible(k, q) for k in s['pool']), 'Every task needs an eligible owner.'))
+                      for q in s['seats']}
+        # predict, task by task. The count is the client's own field (0 to the planned tricks).
+        predictions = {}
+        if s['phase'] == 'prediction':
+            predictions = {k: gate or first((self.controller(owner) != actor, 'Only the task owner can predict.'),
+                                            (k in s['predictions'], 'Your prediction must be in range and cannot be changed.'))
+                           for k, owner in s['assignments'].items() if TASKS[k]['params'].get('predict')}
+        kept = lambda reasons: {k: r for k, r in reasons.items() if r}
+        return {'play': play, 'predictions': kept(predictions), 'cards': kept(cards), 'tasks': kept(tasks), 'pass_task': pass_task,
+                'volunteer': kept(answers), 'offer': offer, 'offer_owners': kept(owners)}
+
     def events(self, actor=None):
         """The events a viewer may be sent, oldest first, as copies: nothing a caller does to
         them reaches the table.
@@ -1188,15 +1332,8 @@ class Engine:
             task_views.append(item)
         counts = {q: len(self.playable(q)) + sum(c['covered'] is not None for c in s['columns'])
                   if q == 'tonoja' else len(s['hands'][q]) for q in s['seats']}
-        play_reason = None
-        if s['away']:
-            play_reason = 'Waiting for the crew to reconnect.'
-        elif s['phase'] not in ('before_trick', 'in_trick'):
-            play_reason = 'Finish mission preparation before playing.'
-        elif s['resolving']:
-            play_reason = RESOLVING
-        elif self.controller(s['turn']) != actor:
-            play_reason = 'It is another crew member’s turn.'
+        reasons = self.reasons(actor) if participant else None
+        play_reason = reasons['play'] if participant else None
         allowed = legal_cards(self.playable(s['turn']), s['trick']) if participant and not play_reason else []
         return {'kind': 'expo', 'attempt': s['attempt'], 'revision': s['revision'],
                 'stage': s['phase'], 'mission': deepcopy(s['mission']), 'seats': list(s['seats']),
@@ -1218,7 +1355,12 @@ class Engine:
                 'resolving': deepcopy(s['resolving']), 'cause': deepcopy(s['cause']),
                 'events': self.events(actor), 'event_seq': s['event_seq'],
                 'me': {'seat': actor, 'hand': self.playable(actor), 'legal_cards': allowed,
-                       'play_reason': play_reason, 'communication_options': self.communication_options(actor),
+                       'play_reason': play_reason, 'card_reasons': reasons['cards'],
+                       'task_reasons': reasons['tasks'], 'pass_task_reason': reasons['pass_task'],
+                       'volunteer_reasons': reasons['volunteer'], 'offer_reason': reasons['offer'],
+                       'offer_owner_reasons': reasons['offer_owners'],
+                       'predict_reasons': reasons['predictions'],
+                       'communication_options': self.communication_options(actor),
                        'may_pass_task': (s['phase'] == 'allocation' and s['mission']['allocation'] in ('normal', 'skip_captain')
                            and self.controller(self.selector()) == actor and
                            s['initial_count'] < len(s['allocation_ring']) and

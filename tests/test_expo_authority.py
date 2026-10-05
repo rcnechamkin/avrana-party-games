@@ -421,6 +421,43 @@ def test_the_crew_gets_a_moment_to_ask_for_distress_before_the_host_can_begin():
     run(scenario())
 
 
+def test_every_phone_is_given_the_servers_reason_for_begin_and_told_when_it_no_longer_holds(monkeypatch):
+    """AVR-263, owner decision 2026-10-05: why the host's Begin is closed is the server's own
+    sentence, in the view of every phone (the host here only watches and has no seat). When the
+    crew's moment ends the server says so itself: a state arrives with no reason, and nobody
+    sent anything."""
+    monkeypatch.setattr(expo_game, "DISTRESS_GRACE", 1.0)
+
+    async def scenario():
+        t = await table(host=DANA, watchers=((DANA, "Dana"),))
+        await t.prepare(grace=True)
+        phones = [t.socks[p][0] for p in (ALICE, BOB, CAROL, DANA)]
+        views = [ws.last_state()["game"] for ws in phones]
+        assert views[3]["me"] is None and views[0]["me"] is not None
+        for view in views:
+            assert view["lifecycle"] == "host" and view["begin_at"] is not None
+            assert view["lifecycle_reasons"] == {"begin": GRACE, "retry": "Retry is available after a failed mission.",
+                                                 "next": "Complete this mission first."}
+        revision = t.engine.s["revision"]
+        for _ in range(200):                                # the table's own timer, on the real clock
+            if all(ws.last_state()["game"]["lifecycle_reasons"]["begin"] is None for ws in phones):
+                break
+            await asyncio.sleep(0.02)
+        for ws in phones:
+            view = ws.last_state()["game"]
+            assert view["lifecycle_reasons"]["begin"] is None and view["begin_at"] is None
+        assert t.engine.s["revision"] == revision and t.engine.s["phase"] == "assistance"   # nothing was played
+        assert await t.host(DANA, "begin", role="spectator") == []
+        assert t.engine.s["phase"] == "before_trick"
+        # in play, Begin is refused for what it needs, and every phone already says so
+        for ws in phones:
+            assert ws.last_state()["game"]["lifecycle_reasons"]["begin"] == "Finish task allocation and predictions first."
+        said = await t.host(DANA, "begin", role="spectator")
+        assert [m["msg"] for m in said] == ["Finish task allocation and predictions first."]
+        await t.close()
+    run(scenario())
+
+
 def test_a_distress_request_made_in_that_moment_holds_begin_until_it_is_answered():
     async def scenario():
         t = await table()
@@ -1376,6 +1413,7 @@ def test_a_party_round_set_up_as_offered_is_the_table_a_party_round_opened_on_be
     for token, pid in zip(tokens, pids):
         view = s.game_state(token)
         assert (view.pop("lifecycle"), view.pop("begin_at"), view.pop("lifecycle_transitional")) == ("crew", None, True)
+        assert view.pop("lifecycle_reasons") == s.engine.lifecycle_reasons(False)      # the adapter's, AVR-263
         assert {**view, "revision": 0} == direct.view(pid)
 
 
@@ -1952,3 +1990,49 @@ def test_a_setup_snapshot_in_which_something_happened_is_refused(forge):
         with pytest.raises(Invalid) as refused:
             Engine.restore(saved)
         assert refused.value.code == "snapshot"
+
+
+# ---- a setup snapshot holds nothing a table that dealt nothing could not hold --------------------
+
+SEAT_ASKED = {"payload": {"kind": "tonoja_seat", "position": 1}}
+
+
+@pytest.mark.parametrize("humans,forge", [
+    (3, lambda s: s.update(deck=["blue4"])),
+    (3, lambda s: s.update(used=["blue4"])),
+    (3, lambda s: s.update(log=[{"mission": 1, "attempts": 1, "distress": False, "attempt": 1}])),
+    (3, lambda s: s.update(distress=True)),
+    (3, lambda s: s.update(attempts=1)),
+    (3, lambda s: s.update(attempts=False)),
+    (3, lambda s: s.update(counted=True)),
+    (3, lambda s: s.update(dedup=[])),
+    (3, lambda s: s.update(dedup={"p1:0:a": {"t": "propose"}})),
+    (3, lambda s: s["setup"].update(mission=0)),
+    (3, lambda s: s["setup"].update(mission=51)),
+    (3, lambda s: s["setup"].update(mission=-4)),
+    (2, lambda s: s["setup"].update(tonoja_position=3)),
+    (2, lambda s: s["setup"].update(tonoja_position=-1)),
+    (2, lambda s: s.update(proposal={**SEAT_ASKED, "votes": ["p1", "p2"]})),      # everyone confirmed: not pending
+    (2, lambda s: s.update(proposal={**SEAT_ASKED, "votes": ["p2", "p1"]})),
+    (2, lambda s: s.update(proposal={**SEAT_ASKED, "votes": ["p1", "p1"]})),
+    (3, lambda s: s.update(proposal={"payload": {"kind": "setup", **SETUP}, "votes": ["p1", "p2", "p3"]})),
+], ids=range(18))
+def test_a_crafted_setup_snapshot_is_refused(humans, forge):
+    e = setup_engine(CREWS[humans - 2])
+    saved = e.snapshot()
+    forge(saved["state"])
+    with pytest.raises(Invalid) as refused:
+        Engine.restore(saved)
+    assert refused.value.code == "snapshot"
+
+
+def test_what_a_setup_snapshot_may_hold_still_restores():
+    e = setup_engine(TWO)
+    propose_seat(e, "p1", 1)                                 # one vote of two, and its request remembered
+    assert len(e.s["dedup"]) == 1 and Engine.restore(json.loads(json.dumps(e.snapshot()))).s == e.s
+    e = setup_engine()
+    e.apply("p1", seat_msg(e, "propose", "a", proposal={"kind": "setup", **SETUP}))
+    e.apply("p2", seat_msg(e, "confirm", "b", yes=True))     # two votes of three
+    assert Engine.restore(json.loads(json.dumps(e.snapshot()))).s == e.s
+    for mission in (1, 3, 16, 50):                           # offered is any mission the catalog lists
+        Engine(TWO, random.Random(1), mission, setup=True)
