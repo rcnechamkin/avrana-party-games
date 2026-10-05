@@ -55,7 +55,9 @@ checked for its type before anything is stored (AVR-264, 2026-10-04). E-D10, a t
 in a mission played after mission 32: a task card is now in one place at a time (AVR-265,
 2026-10-04). E-D11, a request id that could not be written to the snapshot file and stopped the
 table: a request id is plain printable text, and a snapshot that cannot be written is a failed
-write like any other (AVR-268, 2026-10-04). E-D8, reasons on unavailable controls that were not
+write like any other (AVR-268, 2026-10-04). E-D12, request ids that made a snapshot file too
+large to read after a restart: a request id is letters, digits and `-`, and a file over the size
+limit is never written (AVR-273, 2026-10-04). E-D8, reasons on unavailable controls that were not
 the server's rejection: the view now carries the server's own sentence for each such control and
 the client shows only that (AVR-263, 2026-10-05).
 

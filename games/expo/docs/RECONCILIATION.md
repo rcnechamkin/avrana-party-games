@@ -26,7 +26,7 @@ Source notation and conflict numbers: [VTT_REFERENCE](VTT_REFERENCE.md). Tests n
 - The card rules, deal, captain, trick resolution, communication truth and timing, selection and
   pass rule, task evaluators, mission targets and modifiers of the 24 enabled missions match R
   and L.
-- Eleven defects were recorded (E-D1 to E-D7 by the reconciliation, E-D8 by AVR-247, E-D9 and E-D10 by probing during its review, E-D11 by the review of AVR-264). Nine are fixed: E-D8, the reasons shown on unavailable controls (AVR-263), E-D11, a request id that stopped a stored table (AVR-268), E-D10, a task dealt twice after mission 32 (AVR-265), E-D9, the table freeze from one malformed crew decision (AVR-264), E-D1, the selection stall
+- Twelve defects were recorded (E-D1 to E-D7 by the reconciliation, E-D8 by AVR-247, E-D9 and E-D10 by probing during its review, E-D11 by the review of AVR-264, E-D12 by the review of AVR-268). Ten are fixed: E-D8, the reasons shown on unavailable controls (AVR-263), E-D12, request ids that made a snapshot too large to read back (AVR-273), E-D11, a request id that stopped a stored table (AVR-268), E-D10, a task dealt twice after mission 32 (AVR-265), E-D9, the table freeze from one malformed crew decision (AVR-264), E-D1, the selection stall
   (AVR-239), E-D3 and E-D4, late completion of the window tasks and currents visibility
   (AVR-241), and E-D5 and E-D7, the content hash scope and the timed clock (AVR-242). E-D6 was
   settled by amending the contract (AVR-242). The one that remains affects play and needs
@@ -117,6 +117,7 @@ updated.
 | E-D9 | **Fixed 2026-10-04.** Was: a crew decision was checked for its keys but not for the type of every value. In missions 6, 10 and 13 the `task` of an `assign` decision was never read, so any JSON value was stored in the pending decision and sent to every viewer; a value nested about 500 lists deep (one socket message) then made every view, snapshot and command raise, and one seated player could freeze the table. Now: every field of a crew decision must be a plain value of its own type and, where all tasks go together, `task` must be `all`; anything else is rejected before it is stored or remembered | action contract (a rejected request changes nothing) | `test_an_assign_field_of_the_wrong_type_is_refused_in_every_allocation_mode`, `test_every_other_decision_field_of_the_wrong_type_is_refused`, `test_where_all_tasks_go_together_the_task_field_is_the_word_all`, `test_the_request_that_froze_the_table_is_refused_and_the_table_plays_on` | AVR-264 |
 | E-D10 | **Fixed 2026-10-04.** Was: mission 32 took its four named tasks without removing them from the task deck; after it ended they were in the used pile too, and once the deck was refilled from the used pile a later mission could deal the same task twice. Assigning the second copy overwrote the first copy's owner, so one task disappeared and the mission was easier than its difficulty. Now: a fixed mission takes its tasks out of the deck and the used pile, and the engine's invariant refuses any state with a task id twice in a pile or in two piles | no source involved: a task card cannot be in two piles | `test_no_task_is_dealt_twice_in_the_missions_after_mission_thirty_two`, `test_no_task_is_dealt_twice_for_any_crew_size`, `test_retries_before_and_after_mission_thirty_two_keep_every_task_in_one_place`, `test_mission_thirty_two_takes_its_four_tasks_out_of_the_deck_and_the_used_pile`, `test_a_table_that_opens_on_mission_thirty_two_deals_its_four_tasks`, `test_the_reported_table_reaches_mission_forty_seven_with_distinct_tasks`, `test_a_snapshot_with_a_task_in_two_places_is_refused` | AVR-265 |
 | E-D11 | **Fixed 2026-10-04.** Was: a request id was checked only for its length; one that cannot be written as UTF-8 (a lone surrogate) on an otherwise legal command was accepted and remembered, the snapshot write then raised, and every later command on a table with a snapshot file raised too. Now: a request id is 1 to 80 printable ASCII characters, and a snapshot that cannot be written as text is a failed write: the command is rolled back and answered `storage` | action contract (a rejected request changes nothing); state contract (a failed write rolls back) | `test_a_request_id_that_is_not_plain_printable_text_is_refused`, `test_a_plain_request_id_is_still_accepted`, `test_an_unstorable_request_id_leaves_a_stored_table_saving_and_answering`, `test_a_snapshot_that_cannot_be_written_as_text_is_a_storage_failure_not_a_crash`, `test_the_store_reports_any_snapshot_it_cannot_write_as_a_failed_write` | AVR-268 |
+| E-D12 | **Fixed 2026-10-04.** Was: a request id could be any printable ASCII, and an accepted id is written into the snapshot twice, the second time inside a string, where a quotation mark takes four bytes. Two seats alternating a proposal to end and its refusal with ids of 80 quotation marks passed the 4,000,000 bytes the server reads after about 6,900 accepted commands, short of the 10,000 an attempt allows. The table kept playing and a restart refused its file. Now: a request id is 1 to 80 letters, digits and `-`, which makes the same run of 10,000 a file of 2,744,892 bytes, and 3,069,966 bytes with the largest command a seat can have accepted (both measured); and the store never writes a file over the limit it reads with: that command is rolled back and answered `storage` | state contract (a table with a snapshot file survives a restart; a failed write rolls back) | `test_a_request_id_is_letters_digits_and_hyphens_only`, `test_two_seats_filling_the_request_memory_leave_a_file_the_server_reads_back`, `test_a_command_whose_snapshot_would_pass_the_size_limit_is_rolled_back_and_the_table_restarts`, `test_the_store_counts_the_bytes_of_the_file_against_the_limit_it_reads_with` | AVR-273 |
 
 Not a defect, recorded so nobody "fixes" it by guessing: other reversible tasks could be proven
 safe early from public cards (a "win no pink" task after all nine pink cards are gone). The
@@ -882,11 +883,12 @@ the store's failure handling; it has a test now. Recorded and not fixed here:
 
 - Two cooperating seats can still make a snapshot too large to read back, with about 7,000
   accepted commands whose request ids are all quotation marks (each is escaped twice in the
-  file). The table keeps playing and is lost only at a restart. No issue is filed yet.
+  file). The table keeps playing and is lost only at a restart. Filed as AVR-273 and since
+  fixed as E-D12.
 - An integer of more than 4,300 digits raises out of `Engine.apply`. A socket cannot deliver one
   (the JSON reader refuses it); state and file are unchanged.
 
-The counts below include `main` and the later AVR-242 commit merged in. The playtest was run
+The counts above include `main` and the later AVR-242 commit merged in. The playtest was run
 before that merge and not repeated.
 
 Not covered: a live socket carrying the request (the tests call the adapter), real phones, the
@@ -897,6 +899,89 @@ work (AVR-275, AVR-252, AVR-266). The fix did not change. The new tests were run
 it: with the engine check taken out 16 of the 27 failed, with the store's handling taken out 6
 did. With both in place, `pytest tests/test_expo_*.py` gave 926 passed, 2 skipped, 2 expected
 failures (Windows 11). The whole repository and the playtests were not run again.
+
+### AVR-273, 2026-10-04
+
+Request ids could make a snapshot file larger than the server reads back (E-D12). Built on the
+AVR-268 branch. Changed: `games/expo/engine.py` (the form of a request id),
+`games/expo/storage.py` (the size limit), `tests/test_expo_input.py`, one line each in
+`tests/test_expo_authority.py`, `tests/test_expo_coverage.py` and `tests/test_expo_docs.py`,
+and these documents. No client, adapter, shared session, protocol or provider file changed,
+and the snapshot format is still version 1.
+
+- **Cause.** The file is refused above 4,000,000 bytes when it is read; nothing limited it when
+  it was written. An accepted request id is in the file twice, as part of a key and inside the
+  remembered message, which is itself a string: there a quotation mark or a backslash takes
+  four bytes. With ids of 80 quotation marks one remembered command took about 580 bytes, and
+  10,000 are allowed in an attempt.
+- **Fix, in two places.** A request id is 1 to 80 characters, each an ASCII letter, a digit or
+  `-`; this replaces the printable ASCII of AVR-268. None of these characters is escaped. The
+  store makes the bytes of the file first, counts them against the one limit that reading uses
+  (`MAX_SNAPSHOT_BYTES`), and refuses a larger file as a failed write before a temporary file
+  exists. The adapter already rolls a failed write back and answers `storage`. The file is
+  still written to a temporary file, flushed, synced and moved into place.
+- **What sends a request id.** The page (`crypto.randomUUID()`), the two browser playtests (the
+  same) and the tests. Two test helpers wrote ids with a full stop or an underscore and were
+  changed. The Party sends none: its host action has no `request` ([ACTIONS](ACTIONS.md)).
+- **Not done, on purpose.** The request memory is not compacted or hashed and the snapshot
+  format did not change. A snapshot written before this change with other characters in its
+  request memory is still restored; such an id can no longer be sent, so it can no longer be
+  repeated either.
+- **At the limit.** A table whose file would pass the limit refuses every command that makes it
+  larger, the same way a full disk does; it stays as it was and restarts. Request ids cannot
+  get a table there (see the numbers below). The one known way is a large file written before
+  this change; what that means for an operator is in
+  [GAME_STATE](GAME_STATE.md#restoration-after-a-server-restart).
+
+Measured on this branch (Windows 11), two seats alternating a proposal to end and its refusal,
+every id 80 characters:
+
+| Run | Result |
+|---|---|
+| 10,000 commands, ids of letters and digits (this branch) | all accepted; the file is 2,744,892 bytes; the next command is refused by the request limit; a restart restores the table with all 10,000 remembered |
+| the same with the largest proposal a seat can have accepted: mission 17, a task with the longest id (23 characters) offered to Tonoja, declined (this branch; this is what the test runs) | all accepted; the file is 3,069,966 bytes; the same refusal and restart |
+| ids of quotation marks on the AVR-268 branch, before this change | the file was 4,056,834 bytes at 7,000 commands (the run saved every 250th, and the save before was under the limit); a restart refused it |
+
+Each new test was run without each half of the fix. With the AVR-268 form of the id put back,
+10 of the 14 id cases failed (the other four were refused before too). With the size check
+taken out of the store, both size tests failed. The full run of 10,000 passes with or without
+the fix, because ids of letters and digits never made a file too large: it is there to fail if
+the request memory ever grows. It is the slow test of the file, 36 to 45 s here: every command
+copies the whole request memory for its rollback, in the engine, which this change did not
+touch.
+
+The size of a full request memory was also calculated, by writing 10,000 entries in the
+engine's own format (checked equal to the request memory of 20 real commands) and adding the
+11,056 bytes of the rest of the file:
+
+| Request memory of 10,000, two seats, every id 80 characters | File, bytes |
+|---|---|
+| propose to end, decline | 2,744,946 (measured: 2,744,892) |
+| propose distress, decline (needs three humans; calculated with two seat ids) | 2,899,946 |
+| offer a 23-character task to Tonoja, decline | 3,069,946 (measured: 3,069,966) |
+| the same with attempt 9,999, seat ids of four characters and revisions from 1,000,000 | 3,181,056 |
+| 10,000 such offers and no refusals (not reachable: an offer waits for its answer) | 3,489,946 |
+
+| Check | Result (Windows 11) |
+|---|---|
+| `pytest tests/test_expo_*.py` (before the review's findings) | 945 passed, 2 skipped, 2 expected failures, in 94 s |
+| `pytest tests/test_expo.py` (before the review's findings) | 140 passed |
+| `pytest tests/test_expo_input.py tests/test_expo_docs.py tests/test_expo_persistence.py` (after them) | 298 passed in 49 s; the full run took 42 s of it |
+| `ops/check_docs.py`, `tests/test_no_private_data.py`, `ops/export_avrana_catalog.py --check provider/catalog.json` | all passed |
+
+Not run: the whole repository, the browser playtests (their page code did not change; it sends
+a UUID), the Party cross-repo tests, anything on Linux, a real phone, the appliance.
+
+The independent review passed the change with findings, none Important, all taken:
+
+- The size first given for a full request memory was that of the issue's run, which is not the
+  largest. The test now runs the largest accepted command and the numbers above replace it.
+- The test's comment said it was kept to seconds; it takes most of a minute, and says so now.
+- What a table at the size limit means for an operator was not written down. It is in
+  [GAME_STATE](GAME_STATE.md#restoration-after-a-server-restart) now, after a probe on a table whose
+  limit was brought down: the proposal to end was accepted, every answer to it was refused
+  with `storage`, and a restart restored the table with the proposal still pending.
+- Two wording and source nits, corrected.
 
 ### AVR-275, AVR-252 and AVR-266, 2026-10-04
 
