@@ -103,7 +103,7 @@ async function holdCheck(player){
   if(!snap.game.resolving)return;                    // this page was told only after the settle
   if(!pres.hold)await other.screenshot({path:path.join(OUT,"trick-resolving.png")});
   assert.equal(await other.evaluate(()=>document.getElementById("hand-reason").textContent),snap.game.me.play_reason,"the hold is said in the words the server gives");
-  assert.match(await other.evaluate(()=>document.getElementById("status").textContent),/Latest: \w+ won trick \d+ with \d \w+/,"the resolved trick is words in the live region");
+  assert.match(await other.evaluate(()=>document.getElementById("status").textContent),/Latest: (.*\. )?\w+ won trick \d+ with \d \w+/,"the resolved trick is words in the live region");
   if(DIRECTOR&&EXPECT_FX!=="low"){
     const d=await directed(other),t=d.lastTrick;
     assert.ok(t&&t.until===snap.game.resolving.until,"the director timed the trick against the hold");
@@ -152,6 +152,12 @@ try{
   // A table that starts in front of this page is a mission start: at the high tier the director
   // briefs it, inside the mission stage, and nothing is covered or disabled meanwhile.
   if(EXPECT_FX==="high"){
+    // A real touch, not a scripted click (which fires no pointerdown), ends it on another phone.
+    const title=await pages[1].evaluate(()=>{const b=document.getElementById("mission-title").getBoundingClientRect();return {x:b.left+b.width/2,y:b.top+b.height/2};});
+    assert.ok(await running(pages[1],"cine")>0,"the briefing is running when the finger comes down");
+    await pages[1].mouse.click(title.x,title.y);
+    assert.equal(await running(pages[1],"cine"),0,"a tap ends the briefing");
+    assert.equal(await pages[1].evaluate(()=>document.getElementById("briefing").hidden),true,"and the mission stage is given back");
     const brief=await directed(pages[0]);
     assert.ok(brief.performed.includes("briefing"),"the mission start is briefed at the high tier");
     assert.equal(await pages[0].evaluate(()=>getComputedStyle(document.getElementById("briefing")).pointerEvents),"none","the briefing takes no input");
@@ -223,6 +229,26 @@ try{
   {
     const pg=pages[0];
     assert.equal((await control(pg,"radio")).disabled,false,"the radio is always reachable from the hand");
+    // Two players: the radio is about this player's own cards. Opened while Tonoja's cards are
+    // showing, it shows the player's own and puts the switch away; closed, Tonoja's are back.
+    const two=Boolean(await pg.$('[data-key="hand-tonoja"]'));
+    assert.equal(two,HUMANS===2,"a two-player crew has Tonoja's cards to look at");
+    if(two){
+      const hand=()=>pg.evaluate(()=>({cards:[...document.querySelectorAll("#hand [data-card]")].map(n=>n.dataset.card).sort(),sw:document.getElementById("hand-switch").hidden,title:document.getElementById("hand-title").classList.contains("sr"),
+        tonoja:document.querySelector('[data-key="hand-tonoja"]')?.getAttribute("aria-pressed")??null}));
+      const mine=[...sonar.game.me.hand].sort(),theirs=sonar.game.tonoja.filter(Boolean).sort();
+      await clickKey(pg,"hand-tonoja");
+      assert.deepEqual((await hand()).cards,theirs,"Tonoja's cards are showing");
+      await clickKey(pg,"radio");
+      let h=await hand();
+      assert.deepEqual(h.cards,mine,"the radio shows the player's own cards");
+      assert.ok(h.sw&&!h.title,"the switch is put away while the radio is open, and the hand is named");
+      await pg.keyboard.press("Escape");
+      h=await hand();
+      assert.ok(!h.sw&&h.tonoja==="true","the switch is back, on Tonoja");
+      assert.deepEqual(h.cards,theirs,"closing the radio puts Tonoja's cards back");
+      await clickKey(pg,"hand-mine");
+    }
     await clickKey(pg,"radio");
     assert.equal(await pg.evaluate(()=>document.getElementById("game").classList.contains("radio-mode")&&Boolean(document.querySelector(".radio-console"))),true,"the radio opens in place");
     await oneViewport(pg,"the radio open");await touchTargets(pg,"the radio open");
@@ -242,7 +268,12 @@ try{
       assert.equal((await state(pg)).game.revision,rev,"choosing a card transmits nothing");
       assert.deepEqual(await pg.evaluate(()=>[...document.querySelectorAll('[data-key^="radio-meaning:"]')].map(n=>n.dataset.key.slice(14))),opts[card],"only the meanings the server offers are shown");
       if(opts[card].length>1)await clickKey(pg,"radio-meaning:"+opts[card][0]);
-      await oneViewport(pg,"the radio with a card chosen");
+      await oneViewport(pg,"the radio with a card chosen");await touchTargets(pg,"the radio with a card chosen");
+      // The sentence says which meaning is being sent: it is read in full, on one line.
+      const ask=await pg.evaluate(()=>{const n=document.querySelector(".radio-ask"),b=n.getBoundingClientRect(),box=n.closest(".radio-console").getBoundingClientRect();
+        return {text:n.textContent,cut:n.scrollWidth>n.clientWidth+1||n.scrollHeight>n.clientHeight+1,inside:b.left>=box.left&&b.right<=box.right+.5&&b.top>=box.top&&b.bottom<=box.bottom+.5};});
+      assert.match(ask.text,/ is your:$/);assert.ok(!ask.cut&&ask.inside,"the radio's sentence is whole");
+      assert.equal(await pg.evaluate(()=>[...document.querySelectorAll('[data-key^="radio-meaning:"]')].every(n=>n.scrollWidth<=n.clientWidth+1)),true,"and so is every meaning");
       await pg.screenshot({path:path.join(OUT,"radio-open.png")});
       await clickKey(pg,"transmit");await waitRevision(pg,rev);
       assert.equal(await pg.evaluate(()=>document.getElementById("game").classList.contains("radio-mode")),false,"the radio closes after transmitting");
@@ -260,6 +291,11 @@ try{
         assert.match(told.tile,/^\d[○△□×]/,"the sender's tile shows the transmitted card to everyone");
         assert.match(told.news,/Ava radioed \d \w+/,"the transmission is words on the mission stage");
         assert.match(told.live,/Latest: Ava radioed/,"and in the live region");
+        // Degraded radio: the sender alone sees the meaning, and the sender's own phone says the
+        // crew does not. Nobody else's phone changes, and no other radio mode says it.
+        const own=p===pg&&mode==="currents",tileSaid=await p.evaluate(seat=>document.querySelector(`#seats [data-seat="${seat}"]`).getAttribute("aria-label"),sonar.you.pid);
+        if(own){assert.match(told.news,/as their \w+ \(meaning hidden from the crew\)/,"the sender is told the crew cannot see the meaning");assert.match(tileSaid,/meaning hidden from the crew/);assert.match(mark.said,/meaning hidden from the crew/);pres.hiddenCue=true;}
+        else{assert.doesNotMatch(told.news+tileSaid,/hidden from the crew/);if(mode==="currents")assert.match(told.news,/radioed \d \w+, meaning hidden/,"the crew sees the card and no meaning");}
       }
       if(DIRECTOR&&EXPECT_FX!=="low")assert.ok((await directed(pages[1])).performed.includes("radio-burst"),"the others get a radio pulse");
       // A shared pool loses one token for everyone; an empty pool leaves nobody any option.
@@ -347,6 +383,13 @@ try{
       await pg.evaluate(()=>{delete document.hidden;document.dispatchEvent(new Event("visibilitychange"));});
       assert.notEqual(await pg.evaluate(()=>getComputedStyle(document.querySelector(".mstage-art .h1")).animationName),"none");
     }
+  }else if(DIRECTOR){
+    // Reduced motion wins over the choice, so the choice is switched off and the menu says why.
+    await pg.click("#menu-toggle");
+    const fx=await pg.evaluate(()=>({off:[...document.querySelectorAll('[data-key^="fx:"]')].map(n=>n.disabled),said:document.getElementById("sheet-body").innerText}));
+    assert.deepEqual(fx.off,[true,true,true],"no Effects button pretends to work under reduced motion");
+    assert.match(fx.said,/Reduced motion is on for this browser, so the board stays still and this choice is off\./);
+    await pg.click("#sheet-close");
   }
   for(let i=0;i<70;i++){
     const s=await settle();if(s.game.result)break;

@@ -37,7 +37,7 @@ One viewport, phone first; the trick is the only flexible row.
 | Zone | Element | Shows (all from the view) |
 |---|---|---|
 | A. Mission stage | `#mission-stage` | mission number, trick counter, timer; the mission's objective in one line; a conditions chip (attempt, clock running, distress active, or the result); a radio chip (clear, degraded, shared with the tokens left, off); the newest two events in words; the placeholder environment behind a scrim |
-| B. Crew strip | `#seats` | per seat: name, Captain mark, Party Host tag where the Party names a host who is seated, turn marker, hand size and tricks, radio state (ready, used, the card being shown, shared supply, off), "Reconnecting…" for a seat that is away |
+| B. Crew strip | `#seats` | per seat: name, Captain mark, Party Host tag where the Party names a host who is seated, turn marker, hand size and tricks, radio state (ready, used, the card being shown, shared supply, off), "Reconnecting…" for a seat that is away (in place of its hand size and tricks) |
 | C. Shared trick | `#stage` | each card in its player's place, numbered in play order from the lead, the lead marked and its suit named; for a resolved trick the winner the server resolved, marked WON, the others tucked. A pending crew decision, mission preparation and the open radio take this zone's place |
 | D. Crew objectives | `#objectives` | up to two task cards (owner, text, the task's `state`: Standby, Active, Done, Failed, Lost), and done-of-total; opens the full task list. The log of the latest trick is the button beside it |
 | E. Hand and controls | `#hand-panel`, `#dock` | the hand, the server's reason when play is unavailable, the Radio control, Play; table control (Party Host or crew) stays in its own half of the dock |
@@ -46,6 +46,21 @@ The mission stage is 15 to 25 percent of the screen height at every phone size t
 default, 15.5 % on screens of 700 px or less, 18 % from 820 px). On screens of 700 px or less the
 status line moves between the two top-bar buttons so that its row goes to the board; the word
 "Connected" is not spelled out there, and a lost connection still is ("Reconnecting…").
+
+**Known limit, decision pending.** In that place the status line is one line between two buttons
+and a long sentence is cut with an ellipsis. The sentence that tells a player a decision waits for
+them is one of the long ones: "Your answer is needed: Activate distress and pass one color card
+left?" does not fit at 360 px. The decision itself is whole in the trick zone under it; the
+status sentence is not. Where the status line belongs on a short screen is the owner's decision
+(question 6 of [the report](RECONCILIATION.md#avr-267-2026-10-05)) and was left as built.
+
+**A narrow crew tile keeps its name.** With four or five seats on a 360 px screen a tile is about 65 to 80 px wide. The
+name's row carries the turn marker, the Captain mark and the name, and nothing else: the hand
+size and tricks are abbreviated ("8c · 0t"), the radio state is its icon and one word, and the
+Party Host tag is the letter H on the second line (the tile's label for a screen reader and the
+crew sheet say "Party Host" in full). With two or three seats the tag reads HOST beside the name
+and the roles are spelled out under it. The playtests require every name whole and at least
+28 px of the row left for it.
 
 **Not shown: who is winning an unfinished trick.** The view and the events do not say, and the
 client does not work out a rule. See "Not built".
@@ -70,12 +85,22 @@ the objectives and table control dim to half; the hand lights exactly the keys o
 `me.communication_options`; choosing a card shows exactly that card's list of meanings; nothing is
 sent until Transmit. It closes on Transmit, on Escape, on its own button, and whenever the table
 moves on or a crew decision arrives. When nothing can be sent it still opens and says why.
+The sentence that names the meaning being sent ("7 yellow is your:" and the meanings beside it)
+is on one line and whole. The controls that step back while the radio is open are dimmed, not
+disabled: they can still be tapped.
+
+In a two-player crew the radio is about the player's own cards. Open, it shows them and the
+switch between the player's hand and Tonoja's is put away; closed, by any of the ways above, the
+hand shows again whichever cards it showed before.
 
 Each radio state is named by the fiction and stated as a rule beside it: clear (one transmission
 each), degraded (`currents`: the card is shown, its meaning hidden), shared (`rapture`: one
 supply for the crew), off (`none`). On `COMMUNICATION_SENT` the sender's tile carries the card
 for everyone, the mission stage and the live region say it in words, and the director pulses the
-sender's tile and, for the others, the stage.
+sender's tile and, for the others, the stage. In the degraded state the sender's own phone, and
+only that phone, shows the meaning (the server sends it to nobody else); there it is followed by
+"meaning hidden from the crew", in the mission stage, the live region, the tile's label, the crew
+sheet and the card's label. What everyone else sees is unchanged.
 
 ## The director
 
@@ -95,6 +120,10 @@ and classifies each view:
 
 Settling means the cursor moves to `event_seq` and the board, already drawn from the view, is the
 whole presentation.
+
+A briefing belongs to the preparation. When a view arrives in which the table has left it (the
+first trick has begun, a result stands, or there is no table), a running briefing is ended at
+once and the mission stage is given back; so does a tap or a key.
 
 **Event to intensity tier.** Micro (100 to 400 ms): `CARD_PLAYED`, `TURN_STARTED`,
 `OBJECTIVE_PROGRESS`, `PLAYER_RECONNECTED`. Gameplay (500 to 1500 ms): `TRICK_RESOLVED`,
@@ -123,7 +152,8 @@ Chosen per browser: reduced motion (the system's, or the suite's per-browser set
 gives `low`; otherwise an explicit choice (table menu, Effects: Full, Light, Still; stored as
 `expo-fx`); otherwise `medium` on a device that reports 2 GB or less, two cores or less, or data
 saving, and `high` on the rest. `expo-fx=off` (set by hand, for diagnosis) does not create the
-director at all.
+director at all. Under reduced motion the three Effects buttons are disabled and the menu says
+why ("Reduced motion is on for this browser, so the board stays still and this choice is off.").
 
 | Tier | What runs |
 |---|---|

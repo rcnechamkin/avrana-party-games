@@ -139,11 +139,14 @@ function cardNode(card, action, enabled=false, reason="") {
   return n;
 }
 // A card this seat has shown the crew keeps a public marker until it leaves the hand.
+// In currents the crew sees the card and not its meaning; the author sees both, and is told so.
+function hiddenFromCrew(g, seat) { return Boolean(g && g.communication === "currents" && g.me && g.me.seat === seat); }
+const HIDDEN = "meaning hidden from the crew";
 function mark(node, exposure) {
   const [glyph, word] = MEANING[exposure.assertion] || ["◌", "meaning hidden"];
   const m = el("span", `${glyph} ${{highest:"HIGH", lowest:"LOW", only:"ONLY"}[exposure.assertion] || "SENT"}`, "mark");
   node.append(m); node.classList.add("sent");
-  node.setAttribute("aria-label", `${node.getAttribute("aria-label")}, transmitted${exposure.assertion ? " as your " + word : ", meaning hidden"}`);
+  node.setAttribute("aria-label", `${node.getAttribute("aria-label")}, transmitted${exposure.assertion ? " as your " + word : ", meaning hidden"}${exposure.assertion && hiddenFromCrew(ST?.game, exposure.seat) ? ", " + HIDDEN : ""}`);
 }
 function fx() { const i = el("i", undefined, "fx"); i.setAttribute("aria-hidden", "true"); return i; }
 function icon(symbol) {
@@ -308,7 +311,7 @@ function draw() {
   if (g.result && g.proposal) ui.resultHidden = false;
   ui.grace = graceLeft(g);
   syncTurn(g);
-  if (ui.radio && (!g.me || g.proposal || g.result)) ui.radio = false;      // a decision or a result comes first
+  if (ui.radio && (!g.me || g.proposal || g.result)) endRadio();      // a decision or a result comes first
   $("game").classList.toggle("radio-mode", ui.radio);
   drawStatus(g);
   drawMission(g);
@@ -354,7 +357,7 @@ function drawLobby(st) {
 function syncTurn(g) {
   const key = [g.attempt, g.stage, g.trick_number, g.turn, g.trick.length].join(":");
   if (key === ui.turnKey) return;
-  ui.turnKey = key; ui.selected = null; ui.radio = false; ui.radioCard = null; ui.radioMeaning = null;
+  ui.turnKey = key; ui.selected = null; ui.radio = false; ui.radioBack = null; ui.radioCard = null; ui.radioMeaning = null;
   if (!g.me) ui.handView = g.tonoja.length ? "tonoja" : "none";
   else ui.handView = g.tonoja.length && g.turn === "tonoja" && g.captain === g.me.seat
     && ["before_trick","in_trick"].includes(g.stage) ? "tonoja" : "mine";
@@ -422,7 +425,7 @@ const ALLOCATION = {skip_captain:"Task selection skips the captain", free:"The c
 function sayEvent(e) {
   switch (e.type) {
     case "TRICK_RESOLVED": return `${name(e.winner)} won trick ${e.trick} with ${cardLabel(e.winning_card)}`;
-    case "COMMUNICATION_SENT": return `${name(e.seat)} radioed ${cardLabel(e.card)}${e.assertion ? ` as their ${e.assertion}` : ", meaning hidden"}`;
+    case "COMMUNICATION_SENT": return `${name(e.seat)} radioed ${cardLabel(e.card)}${e.assertion ? ` as their ${e.assertion}` : ", meaning hidden"}${e.assertion && hiddenFromCrew(ST?.game, e.seat) ? ` (${HIDDEN})` : ""}`;
     case "OBJECTIVE_COMPLETED": return e.scope === "task" ? `${name(e.owner)}’s task is complete` : "The mission objective held";
     case "OBJECTIVE_FAILED": return e.scope === "task" ? `${name(e.owner)}’s task is lost` : "The mission objective is lost";
     case "MISSION_SUCCESS": return "Mission complete";
@@ -528,7 +531,7 @@ function exposureMark(e) {
 function seatRadio(g, seat) {
   if (seat === "tonoja") return null;
   const e = exposureOf(g, seat);
-  if (e) return {key:"sent", text:exposureMark(e), said:`radioed ${cardLabel(e.card)}${e.assertion ? " as their " + e.assertion : ", meaning hidden"}`};
+  if (e) return {key:"sent", text:exposureMark(e), said:`radioed ${cardLabel(e.card)}${e.assertion ? " as their " + e.assertion : ", meaning hidden"}${e.assertion && hiddenFromCrew(g, seat) ? ", " + HIDDEN : ""}`};
   if (g.communication === "none") return {key:"off", text:"radio off", short:"off", said:"radio off"};
   if (g.shared_sonar !== null) return {key:g.shared_sonar ? "ready" : "spent", text:`shared ${g.shared_sonar}`, said:`shared radio, ${g.shared_sonar} left`};
   return g.sonar_spent.includes(seat) ? {key:"spent", text:"radio used", short:"used", said:"radio used"} : {key:"ready", text:"radio ready", short:"ready", said:"radio unused"};
@@ -549,13 +552,21 @@ function drawCrew(g) {
     if (turn) top.append(el("span", "▶", "turn-pip"));
     if (seat === g.captain) top.append(el("span", "♛", "crown"));
     top.append(el("b", name(seat)));
-    if (seat === host) top.append(el("span", "HOST", "host-tag"));
+    // The Party Host's tag never costs a narrow tile its name: with four or five seats it sits
+    // on the second line as the letter H (the tile's label, and the crew sheet, say Party Host).
+    const tight = g.seats.length > 3;
+    const tag = seat === host ? el("span", tight ? "H" : "HOST", "host-tag") : null;
+    if (tag) tag.title = "Party Host";
+    if (tag && !tight) top.append(tag);
     const roles = [seat === g.captain ? "Captain" : null, seat === host ? "Party Host" : null].filter(Boolean);
     const cards = g.hand_counts[seat], tricks = g.trick_counts[seat], radio = seatRadio(g, seat);
     tile.append(top);
     if (roles.length && g.seats.length <= 3) tile.append(el("span", roles.join(" · "), "seat-role"));
-    tile.append(away ? el("span", "Reconnecting…", "seat-count warn")
-      : el("span", g.seats.length > 3 ? `${cards}c · ${tricks}t` : `${cards} cards · ${tricks} trick${tricks===1?"":"s"}`, "seat-count"));
+    const second = el("span", undefined, "seat-line");
+    second.append(away ? el("span", "Reconnecting…", "seat-count warn")
+      : el("span", tight ? `${cards}c · ${tricks}t` : `${cards} cards · ${tricks} trick${tricks===1?"":"s"}`, "seat-count"));
+    if (tag && tight) second.append(tag);
+    tile.append(second);
     // Four or five tiles share a phone's width: the radio's icon stands for the word "radio".
     const line = el("span", undefined, "seat-radio " + (radio ? radio.key : ""));
     if (radio && g.seats.length > 3 && radio.short) line.append(icon("expo-slot-radio"), el("span", radio.short));
@@ -640,8 +651,14 @@ function trickNode(g) {
 // Which cards may be sent, and as what, is the server's list (me.communication_options). The
 // page offers exactly that list and adds nothing to it.
 function radioOptions(g) { return g.me && !g.proposal ? g.me.communication_options : {}; }
-function openRadio() { ui.radio = true; ui.radioCard = null; ui.radioMeaning = null; ui.selected = null; ui.handView = "mine"; draw(); }
-function closeRadio() { ui.radio = false; ui.radioCard = null; ui.radioMeaning = null; draw(); focusRef('[data-key="radio"]', $("mission-title")); }
+// The radio is about this player's own cards: open, it shows them (the switch to Tonoja's cards
+// is put away); closed, the hand goes back to whichever cards were showing.
+function openRadio() { ui.radioBack = ui.handView; ui.radio = true; ui.radioCard = null; ui.radioMeaning = null; ui.selected = null; ui.handView = "mine"; draw(); }
+function endRadio() {
+  if (ui.radio && ui.radioBack) ui.handView = ui.radioBack;
+  ui.radio = false; ui.radioBack = null; ui.radioCard = null; ui.radioMeaning = null;
+}
+function closeRadio() { endRadio(); draw(); focusRef('[data-key="radio"]', $("mission-title")); }
 function radioNode(g) {
   const box = el("section", undefined, "prep radio-console"); box.setAttribute("aria-label", "Helmet radio");
   const r = radioState(g), opts = radioOptions(g), keys = Object.keys(opts);
@@ -658,7 +675,7 @@ function radioNode(g) {
   else {
     if (!opts[ui.radioCard].includes(ui.radioMeaning)) ui.radioMeaning = opts[ui.radioCard].length === 1 ? opts[ui.radioCard][0] : null;
     const row = el("div", undefined, "choice-row");
-    row.append(el("p", `${cardLabel(ui.radioCard)} is your…`, "radio-ask"));
+    row.append(el("p", `${cardLabel(ui.radioCard)} is your:`, "radio-ask"));
     for (const a of opts[ui.radioCard]) {
       const b = button(`${(MEANING[a] || [""])[0]} ${a}`, () => { ui.radioMeaning = a; draw(); }, "radio-meaning:" + a, false, "", ui.radioMeaning === a ? "on" : "");
       b.setAttribute("aria-pressed", String(ui.radioMeaning === a)); row.append(b);
@@ -782,7 +799,7 @@ function handState(g) {
 
 function drawHand(g) {
   const sw = $("hand-switch"); sw.replaceChildren();
-  sw.hidden = !(g.tonoja.length && g.me);
+  sw.hidden = !(g.tonoja.length && g.me) || ui.radio;
   if (!sw.hidden) {
     for (const [view, label, count] of [["mine","Yours",g.me.hand.length],["tonoja","Tonoja",g.tonoja.filter(Boolean).length]]) {
       const b = el("button", `${label} ${count}`, "switch" + (ui.handView === view ? " on" : "")); b.type = "button";
@@ -858,7 +875,7 @@ function tableZone(g) {
 
 function actionZone(g) {
   const tonoja = ui.handView === "tonoja";
-  const z = zone(!g.me ? "Watching" : g.me.seat === g.captain ? (tonoja ? "Captain · Tonoja" : "Captain") : "Crew member", g.me ? "your role in the game" : "no seat");
+  const z = zone(!g.me ? "Watching" : g.me.seat === g.captain ? (tonoja ? "Captain · Tonoja" : "Captain") : "Crew member", g.me ? "game role" : "no seat");
   z.id = "dock-action";
   const row = el("div", undefined, "action-row");
   if (g.me) {
@@ -874,7 +891,7 @@ function actionZone(g) {
   if (ui.radio && g.me) {
     const card = ui.radioCard, meaning = ui.radioMeaning, ready = Boolean(card && meaning);
     const text = ready ? `Transmit ${cardLabel(card)} · ${meaning}` : card ? "Choose its meaning" : "Transmit";
-    const b = button(text, () => { send("communicate", {card, assertion: meaning}); ui.radio = false; ui.radioCard = null; ui.radioMeaning = null; draw(); focusRef('[data-key="radio"]', $("mission-title")); },
+    const b = button(text, () => { send("communicate", {card, assertion: meaning}); endRadio(); draw(); focusRef('[data-key="radio"]', $("mission-title")); },
       "transmit", !ready, ready ? "" : "Choose a lit card and its meaning first.", "btn-primary");
     b.setAttribute("aria-label", text);
     row.append(b);
@@ -1029,7 +1046,7 @@ function crewSheet(body, g) {
     const owned = g.tasks.filter(t => t.owner === seat);
     row.append(head, el("p", `${g.hand_counts[seat]} cards · ${g.trick_counts[seat]} tricks · ${owned.length} task${owned.length===1?"":"s"}`));
     const e = exposureOf(g, seat);
-    if (e) row.append(el("p", `Radio: ${cardLabel(e.card)} · ${e.assertion || "meaning hidden"}`, "exposure"));
+    if (e) row.append(el("p", `Radio: ${cardLabel(e.card)} · ${e.assertion || "meaning hidden"}${e.assertion && hiddenFromCrew(g, seat) ? ` (${HIDDEN})` : ""}`, "exposure"));
     else if (seat !== "tonoja") row.append(el("p", g.communication === "none" ? "Radio off" : g.shared_sonar !== null ? "Shares the crew’s transmissions" : g.sonar_spent.includes(seat) ? "Radio used" : "Radio unused", "muted"));
     if (g.away.includes(seat)) row.append(el("p", "Reconnecting: the table waits, and nothing is played for them.", "muted"));
     body.append(row);
@@ -1112,11 +1129,13 @@ function effectsRow(body) {
   const row = el("article", undefined, "crew-row"), now = director && !director.stats.disabled ? director.fidelity : "off";
   row.append(el("strong", "Effects"));
   if (now === "off") { row.append(el("p", "Effects are off in this browser. The game is the same.", "muted")); body.append(row); return; }
-  row.append(el("p", Hub.prefs.reducedFx ? "Reduced motion is on for this browser, so the board stays still. The game is the same."
+  row.append(el("p", Hub.prefs.reducedFx ? "Reduced motion is on for this browser, so the board stays still and this choice is off. The game is the same."
     : "Only how much the board moves. The game is the same at every level.", "muted"));
   const choice = el("div", undefined, "choice-row");
   for (const [value, label] of [["high","Full"],["medium","Light"],["low","Still"]]) {
-    const b = button(label, () => { try { localStorage.setItem(FX_KEY, value); } catch { /* private mode */ } draw(); }, "fx:" + value, false, "", now === value ? "on" : "");
+    // With reduced motion on, the choice would change nothing: it is disabled, and the line
+    // above says why.
+    const b = button(label, () => { try { localStorage.setItem(FX_KEY, value); } catch { /* private mode */ } draw(); }, "fx:" + value, Boolean(Hub.prefs.reducedFx), "Reduced motion is on for this browser.", now === value ? "on" : "");
     b.setAttribute("aria-pressed", String(now === value)); choice.append(b);
   }
   row.append(choice); body.append(row);

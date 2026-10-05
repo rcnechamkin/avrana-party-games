@@ -1133,6 +1133,31 @@ The palette moved from sea to dust, and "sonar" reads "radio" on the page (the s
 sentences still say "sonar"; the engine was out of bounds). Lobby and preparation copy changed in
 three places ("Into the waste.", "Ready to move out", the failure subtitle).
 
+**Every change to words and behaviour a player can see**, beside the layout, for the owner to
+accept or send back (the first report left some of these out):
+
+- Task states read "Standby" and "Active" where AVR-275 said "Open" and "Pending"; a task that
+  can no longer be completed has a state of its own, "× Lost" (the engine's `IMPOSSIBLE`).
+- "History" is "Log". "Communicate" is "Transmit"; "sonar" is "radio" and "Burst Transmission".
+- The dock's label for the player's role reads "Captain (game role)" or "Crew member (game
+  role)"; it read "(your role in the game)", which did not fit beside the Party Host's half at
+  360 px.
+- EXPO's stylesheet overrides four of the suite's shared colour tokens on its own page
+  (`--bg`, `--muted`, `--surface`, `--line`). Parts drawn by shared code inside EXPO, the toasts
+  and parts of the lobby, take the dust palette with it.
+- The table menu has a new setting, Effects (Full, Light, Still), kept per browser as `expo-fx`.
+  Under reduced motion it is disabled and says so.
+- The mission briefing also plays for a phone that opens EXPO during the preparation, once per
+  attempt and tab.
+- With the radio open, the dimmed parts of the board (mission stage, crew strip, objectives,
+  table control) are still live and can be tapped.
+- A seat that is away shows "Reconnecting…" in place of its hand size and tricks.
+- With four or five seats the hand size and tricks are abbreviated ("8c · 0t"), the radio state
+  is an icon and one word, and the Party Host tag is the letter H.
+- On screens of 700 px or less the status line is one line between the top-bar buttons and cuts
+  long sentences, "Your answer is needed: Activate distress and pass one color card left?" among
+  them (the decision itself is whole in the trick zone). Left as built; decision pending.
+
 **For the owner.**
 
 1. **The word for communication.** The page says radio and Burst Transmission; the server's
@@ -1195,4 +1220,53 @@ place (a fractional `translate`) measures 43.99997 px. The card is not smaller; 
 arithmetic. The check now waits for the hand to be at rest before it measures
 (`tests/_expo_phone.mjs`); the comparison itself is unchanged. The watching-host run that showed
 it passed four times in a row afterwards.
+
+**Review repairs, 2026-10-05.** An independent review of `5a4c76e` passed the change with
+findings. Repaired, client and tests only:
+
+- **The Party Host tag crowded the name out of a narrow tile.** With four or five seats the tag
+  is now the letter H on the tile's second line, and the tile's padding is tighter.
+  `crewLegible` requires every name whole and at least 28 px of its row. Exercised in a real
+  Party round with 5 seated (two of the five phones are 360 px wide) and with 4: the checks
+  during trick play have the true host, who is not the captain; one further check tells every
+  page that the captain is the Party Host (the Party's own claim is replaced for that check and
+  then restored) so that one tile carries the turn marker, the Captain mark, the name and the tag
+  at once.
+- **The radio in a two-player crew** forced the hand to the player's own cards and left it there,
+  with the hand switch still live. The switch is put away while the radio is open and the
+  earlier view comes back on every way of closing. A step in the two-player standalone playtest.
+- **A briefing outlived the preparation** (the mission stage stayed dimmed into trick 1). The
+  director ends it when the table leaves the preparation; a director test, and the standalone
+  playtest now ends a briefing with a real pointer press (a scripted click fires no
+  `pointerdown`).
+- **Degraded radio:** the sender's own phone now says "meaning hidden from the crew". Checked in
+  the browser on mission 9.
+- **Tests:** touch targets are measured with a radio card chosen (the meaning buttons); the
+  director's source may contain neither `.click(` nor `dispatchEvent`.
+- **Text cut at 360 px:** the radio's sentence ("7 yellow is your:") is whole on one line, with a
+  check; the dock's role label was shortened (above).
+- **Small:** the director's list of settle reasons is trimmed on every path; the Effects buttons
+  are disabled under reduced motion, with the reason; a wrong cross-reference in the test matrix.
+  `docs/manifest.json` was left alone: its `last_verified` dates were not moved by earlier edits
+  to these documents in this repository's history, so moving them is not the convention here.
+- The hold check's pattern for the live region now allows a sentence before "won trick" (a task
+  completed by that trick is announced first); met on mission 9, a fault of the check.
+
+Not changed, as decisions for the owner: the status line on short screens, the removed tab row,
+the palette, radio for sonar, and the copy.
+
+Run again after the repairs, serially, headless desktop Chrome at phone viewport sizes on
+Windows 11, by the author, on the working tree that became the repair commit:
+
+| Check | Result |
+|---|---|
+| `node tests/expo_director_test.mjs` | 18 passed |
+| `pytest tests/test_expo.py tests/test_expo_*.py` | 1119 passed, 2 skipped, 2 expected failures |
+| `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check | OK |
+| `tests/playtest_expo.mjs`, high tier, with 2, 3, 4 and 5 humans | PASS each |
+| `tests/playtest_expo.mjs`, 3 humans, `EXPO_FX=low`, and `EXPO_MOTION=reduced` | PASS each |
+| `tests/playtest_expo.mjs`, 3 humans, `EXPO_MISSION=9` (degraded radio) | PASS three times after the hold check's pattern was corrected. One run before that stopped later in the script on a stage comparison (`mission_result` where `assistance` was expected); it was not investigated and did not recur |
+| `tests/playtest_expo_party.mjs`, high tier, 2 seated with Tonoja, 3, 4 and 5 seated | PASS each |
+| medium tier, director off, watching host, old Party, whole-repository `pytest`, Linux CI | not run again |
+| A real phone, Safari, a screen reader | not run |
 

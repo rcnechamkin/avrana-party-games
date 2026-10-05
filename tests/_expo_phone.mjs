@@ -235,7 +235,10 @@ export async function crewLegible(pg, label, host = null) {
     return {g: {seats: g.seats, captain: g.captain, turn: g.turn, stage: g.stage, result: Boolean(g.result), counts: g.hand_counts, away: g.away, names: Object.fromEntries(g.seats.map(s => [s, name(s)]))},
       tiles: [...document.querySelectorAll("#seats .seat")].map(n => {
         const part = c => { const x = n.querySelector(c); if (!x) return null; const cs = getComputedStyle(x); return {text: x.textContent, size: parseFloat(cs.fontSize), clipped: x.scrollWidth > x.clientWidth + 1, shown: cs.display !== "none" && cs.visibility !== "hidden"}; };
-        return {seat: n.dataset.seat, name: part(".seat-name b"), crown: part(".crown"), hostTag: part(".host-tag"), pip: part(".turn-pip"), count: part(".seat-count"), radio: part(".seat-radio"), active: n.classList.contains("active"), said: n.getAttribute("aria-label")};
+        // The room the name's row leaves for the name: the row less the marks beside it.
+        const row = n.querySelector(".seat-name"), marks = [...row.children].filter(c => c.tagName !== "B");
+        const room = row.clientWidth - marks.reduce((sum, c) => sum + c.getBoundingClientRect().width, 0) - (parseFloat(getComputedStyle(row).columnGap) || 0) * marks.length;
+        return {seat: n.dataset.seat, room, name: part(".seat-name b"), crown: part(".crown"), hostTag: part(".host-tag"), pip: part(".turn-pip"), count: part(".seat-count"), radio: part(".seat-radio"), active: n.classList.contains("active"), said: n.getAttribute("aria-label")};
       })};
   });
   assert.deepEqual(m.tiles.map(t => t.seat), m.g.seats, `${label}: one tile per seat, in seat order`);
@@ -243,9 +246,13 @@ export async function crewLegible(pg, label, host = null) {
   for (const t of m.tiles) {
     const who = `${label}: the tile of ${m.g.names[t.seat]}`;
     assert.ok(t.name.shown && t.name.text === m.g.names[t.seat], `${who} shows the name`);
+    // No mark beside it (turn, Captain, Party Host) costs a tile its name: the name is whole,
+    // and the row keeps room for one whatever else the seat is.
+    assert.ok(!t.name.clipped, `${who}: the name is not cut short`);
+    assert.ok(t.room >= 28, `${who}: the name keeps at least 28 px of its row (${Math.round(t.room)} px)`);
     assert.equal(Boolean(t.crown), t.seat === m.g.captain, `${who}: the Captain mark is on the captain and nobody else`);
     assert.equal(Boolean(t.hostTag), host !== null && t.seat === host, `${who}: the Party Host tag is on the host and nobody else`);
-    if (t.hostTag) assert.ok(t.hostTag.shown && t.hostTag.text === "HOST" && t.hostTag.size >= 8, `${who}: the host tag is readable`);
+    if (t.hostTag) assert.ok(t.hostTag.shown && t.hostTag.text === (m.g.seats.length > 3 ? "H" : "HOST") && t.hostTag.size >= 8 && !t.hostTag.clipped, `${who}: the host tag is readable`);
     assert.equal(Boolean(t.pip) && t.active, playing && t.seat === m.g.turn, `${who}: turn emphasis is on the seat whose turn it is`);
     if (m.g.away.includes(t.seat)) assert.equal(t.count.text, "Reconnecting…", `${who} says it is reconnecting`);
     else assert.match(t.count.text, new RegExp(`^${m.g.counts[t.seat]}(c| cards) `), `${who} shows the hand size the view gives`);

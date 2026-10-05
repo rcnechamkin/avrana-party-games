@@ -97,7 +97,8 @@
     const clock = ctx.clock || (() => Date.now());
     const store = ctx.store || null;          // sessionStorage-like, for "this briefing was shown"
     const stats = {errors: 0, disabled: false, fidelity: "low", performed: [], settled: [], lastTrick: null, haptics: [], sounds: []};
-    let cursor = freshCursor(), rects = null, gesture = false, cine = [], moving = false;
+    let cursor = freshCursor(), rects = null, gesture = false, cine = [], moving = false, briefingOn = false;
+    const settled = why => { stats.settled.push(why); if (stats.settled.length > 30) stats.settled.shift(); };
 
     const env = () => ({
       stored: ctx.stored ? ctx.stored() : null, reduced: Boolean(prefs.reducedFx),
@@ -182,7 +183,7 @@
     function trickResolved(cue, g, high, last) {
       const D = trickBudget(g, clock());
       stats.lastTrick = {seq: cue.seq, budget: D, until: g.resolving ? g.resolving.until : null, started: clock(), ends: clock() + D};
-      if (!D) { stats.settled.push("trick-late"); return 0; }
+      if (!D) { settled("trick-late"); return 0; }
       for (const p of cue.plays || []) {
         const s = slot(p.seat), card = s && s.querySelector(".card");
         if (!s) continue;
@@ -261,7 +262,8 @@
         {duration: step, delay: i * step, fill: "both", easing: "ease-out"}, "cine")));
       const veil = play(body, [{opacity: 1}, {opacity: .1, offset: .06}, {opacity: .1, offset: .94}, {opacity: 1}], {duration: T, easing: "linear"}, "cine");
       cine.push(veil);
-      const done = () => { strip.hidden = true; strip.replaceChildren(); };
+      briefingOn = true;
+      const done = () => { briefingOn = false; strip.hidden = true; strip.replaceChildren(); };
       if (veil && veil.finished) veil.finished.then(done, done); else done();
       // The crew arrives and the cards are dealt early, so the hand is readable while the rest plays.
       [...doc.querySelectorAll("#seats [data-seat]")].forEach((n, i) => cine.push(play(n, [{opacity: .2, transform: "translateY(-6px)"}, {opacity: 1, transform: "none"}], {duration: 300, delay: Math.min(T * .1, 500) + i * 90, fill: "backwards"}, "cine")));
@@ -333,7 +335,10 @@
         const g = view && view.game;
         const plan = advance(cursor, view, {hidden: Boolean(doc.hidden), briefed: g ? briefed(g) : false});
         cursor = plan.cursor;
-        if (plan.why !== "live" && plan.why !== "duplicate") { stats.settled.push(plan.why); if (stats.settled.length > 30) stats.settled.shift(); }
+        if (plan.why !== "live" && plan.why !== "duplicate") settled(plan.why);
+        // A briefing belongs to the preparation: once the table has left it (the first trick
+        // has begun, a result stands, the table is gone) the mission stage is given back.
+        if (briefingOn && !(g && briefable(g))) { briefingOn = false; skip(); }
         if (plan.cues.length && g) perform(plan.cues, g);
         rects = null;
         return plan.why;

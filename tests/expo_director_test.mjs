@@ -202,11 +202,25 @@ test("cinematic beats are the high tier's only, and end at a tap", () => {
   assert.ok(cine.every(a => a.done), "a tap or a key finishes it");
   for (const stored of ["medium", "low"]) assert.deepEqual(run({stored}).animations.filter(a => a.id === "expo-fx:cine"), []);
 });
+test("a briefing ends when the table leaves the preparation, and not before", () => {
+  const start = game({attempt: 2, stage: "allocation", trick: [], event_seq: 3});
+  const begin = () => { const x = director({}); x.d.after(view(game({event_seq: 0}))); x.d.after(view(start)); return x; };
+  const cine = x => x.animations.filter(a => a.id === "expo-fx:cine");
+  const still = begin();
+  still.d.after(view(game({...start, stage: "assistance", revision: 11})));       // still preparing
+  assert.ok(cine(still).length > 0 && cine(still).every(a => !a.done), "the briefing runs on through the preparation");
+  for (const next of [game({attempt: 2, stage: "before_trick", trick: [], event_seq: 4, events: [ev(4, "TURN_STARTED", {attempt: 2, seat: "p1"})]}),
+    game({attempt: 2, stage: "allocation", trick: [], result: {status: "failed", reason: "x"}, event_seq: 3}), null]) {
+    const x = begin(), running = cine(x);
+    x.d.after(next ? view(next) : freeze({phase: "lobby", game: null}));
+    assert.ok(running.length > 0 && running.every(a => a.done), "the mission stage is given back at once");
+  }
+});
 
 // ---- it cannot change the game ------------------------------------------------------------------
 test("the director's source holds no connection and nothing that sends", () => {
   const src = read("director.js").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-  for (const banned of [/\bconn\b/, /WebSocket/, /\bfetch\s*\(/, /XMLHttpRequest/, /sendBeacon/, /\.send\s*\(/, /postMessage/, /hostAction/, /localStorage/, /\bST\b/, /\beval\b|Function\s*\(/, /\.onclick|addEventListener/, /(?<!stats)\.disabled\s*=(?!=)|\.inert\s*=(?!=)/])
+  for (const banned of [/\bconn\b/, /WebSocket/, /\bfetch\s*\(/, /XMLHttpRequest/, /sendBeacon/, /\.send\s*\(/, /postMessage/, /hostAction/, /localStorage/, /\bST\b/, /\beval\b|Function\s*\(/, /\.onclick|addEventListener/, /\.click\s*\(/, /dispatchEvent/, /(?<!stats)\.disabled\s*=(?!=)|\.inert\s*=(?!=)/])
     assert.doesNotMatch(src, banned, `director.js must not contain ${banned}`);
   // The client hands it a clock, preferences, slots and a frozen copy of the view; nothing else.
   const client = read("client.js"), made = client.slice(client.indexOf("ExpoDirector.create({"), client.indexOf("});", client.indexOf("ExpoDirector.create({")));

@@ -120,13 +120,18 @@ html[data-expo-fx="high"]:not([data-expo-paused]) .mstage-art .glow{animation:ex
 .turn-pip{flex:none;font-size:9px;color:var(--accent)}
 .host-tag{flex:none;padding:0 3px;border:1px solid var(--edge);border-radius:4px;font:700 8.5px/1.5 var(--font);letter-spacing:.06em;color:var(--foam)}
 .seat-role{font-size:10px;color:var(--muted);line-height:1.1}
+.seat-line{display:flex;align-items:center;gap:3px;min-width:0}
+.seat-line .seat-count{flex:0 1 auto;min-width:0}
 .seat-count{font-size:10.5px;letter-spacing:-.01em;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .seat-count.warn{color:#ffcf6b;font-weight:700}
 .seat-radio{display:flex;align-items:center;gap:3px;min-width:0;font:600 10px/1.15 var(--font);color:var(--muted);white-space:nowrap;overflow:hidden}
 .seat-radio .ic{width:10px;height:10px}
 .seat-radio.ready{color:var(--sea)}
 .seat-radio.sent{font:700 10.5px/1.15 var(--mono);color:var(--sea)}
-.crew-strip.tight .seat{padding:4px 5px}
+.crew-strip.tight{gap:4px}
+.crew-strip.tight .seat{padding:4px 3px}
+.crew-strip.tight .seat-name{gap:2px}
+.crew-strip.tight .crown{font-size:11px}
 .crew-strip.tight .seat-name{font-size:12px}
 
 /* ---- zone C: the shared trick, or the one thing waiting to be decided ---- */
@@ -173,7 +178,7 @@ input,select{min-height:44px;width:100%;background:var(--surface);border:1px sol
 .radio-console h2{font-size:14px}
 .radio-console .choice-row{align-items:center}
 .radio-console .choice-row .btn{text-transform:capitalize}
-.radio-ask{flex:0 1 auto!important;font-weight:700}
+.radio-ask{flex:0 0 auto!important;font-weight:700;white-space:nowrap}
 .radio-state{flex:none;padding:1px 7px;border:1px solid var(--sea);border-radius:999px;font-size:11px;font-weight:700;color:var(--sea);white-space:nowrap}
 .radio-state.degraded,.radio-state.shared{border-color:var(--accent);color:var(--accent)}
 .radio-state.disabled{border-color:var(--bad);color:var(--bad)}

@@ -148,7 +148,7 @@ async function labels(member, g) {
     tiles: [...document.querySelectorAll("#seats .seat")].map(n => ({seat: n.dataset.key.slice(5), said: n.getAttribute("aria-label")})), me: ST.you?.pid || null, seat: ST.game.me?.seat || null}));
   if (g.lifecycle === "host") assert.match(s.host, /^Party Host \(table control\)/, `${member.name}: table control is the Party Host's`);
   else assert.match(s.host, /^Crew \(decides (for now|together)\)/);
-  if (s.action) assert.match(s.action, !s.seat ? /^Watching \(no seat\)/ : s.seat === g.captain ? /^Captain( · Tonoja)? \(your role in the game\)/ : /^Crew member \(your role in the game\)/, `${member.name}: the in-game role is named as one`);
+  if (s.action) assert.match(s.action, !s.seat ? /^Watching \(no seat\)/ : s.seat === g.captain ? /^Captain( · Tonoja)? \(game role\)/ : /^Crew member \(game role\)/, `${member.name}: the in-game role is named as one`);
   const hostSeat = (await state(party.members.find(m => m.pid === party.host).page)).you?.pid ?? null;
   for (const tile of s.tiles) {
     assert.equal(/Captain/.test(tile.said), tile.seat === g.captain, "only the captain's tile says Captain");
@@ -311,6 +311,13 @@ try {
     const began = (await settle()).game;
     assert.equal(began.stage, "before_trick"); assert.equal(began.proposal, null, "nobody voted");
     assert.equal(began.captain, first.captain); assert.equal(began.turn, first.captain, "the captain still opens the first trick");
+    // The fullest tile there is: one seat that is the Captain, the Party Host and the seat whose
+    // turn it is, at once. The Party says who its host is, so the page is told the captain is
+    // (then told the truth again); every phone, 360 px wide ones among them, keeps the name whole.
+    await makeHost(captain);
+    for (const m of party.members) { await crewLegible(m.page, `${m.name}: the captain as Party Host, ${HUMANS} seats at ${m.page.viewport().width} px`, first.captain); await oneViewport(m.page, `${m.name}: the captain as Party Host`); }
+    await party.members[0].page.screenshot({path: path.join(OUT, `crew-captain-host-${HUMANS}.png`)});
+    await makeHost(host);
   }
 
   // ---- ordinary trick play, on one screen ----
