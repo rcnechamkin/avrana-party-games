@@ -1128,8 +1128,14 @@ a hold is recorded when the hold ends, up to 0.8 s after the deadline (the decis
 resolving the already-committed trick, then evaluate expiry"). No seat can act in that time,
 and a client's countdown reads zero while `resolving` is still set.
 
-Tests: the timed and resolving cases in `tests/test_expo_events.py` were rewritten; the four
-that asserted the credited deadline and the adjusted countdown were removed with the behaviour.
+Tests: the timed and resolving cases in `tests/test_expo_events.py` were rewritten. Four tests
+were removed outright with the behaviour they asserted (they are in the history at 1abc97d and
+are not cited by name here, because no such test exists now): the clock standing during a hold
+with the hold credited, the hold and the deadline sharing one timer with the hold credited, the
+view never showing a deadline the hold would move, and a hold spanning the old deadline never
+shown as expired. Two were replaced by named counterparts: the one on what a settle may credit
+by `test_a_settle_with_no_usable_clock_settles_the_trick_and_judges_no_deadline`, and the one
+on what a lost timer credits by `test_a_lost_timer_gives_a_timed_table_no_time`.
 Seventeen of the new cases fail on the code before this decision (checked by running the file
 against the engine and the adapter of commit 1abc97d). The engine-level case
 `test_the_deadline_of_a_timed_mission_is_the_same_after_any_number_of_holds` does not, because
@@ -1155,4 +1161,4 @@ timer path itself is tested through real sockets
 | `pytest tests/test_expo.py tests/test_expo_*.py` (every EXPO test file) | 1113 passed, 2 skipped (distress with two players, C11), 2 expected failures (E-D2, E-D8) at 84e179b; the review repairs add five tests |
 | `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check | OK |
 | `pytest -q` (whole repository), the cross-repository tests, the two browser playtests, a real phone | not run for this change |
-| after the owner decision of 2026-10-05, on `main` at 9f9aa41 merged in: `pytest tests/test_expo.py tests/test_expo_*.py` | 1166 passed, 2 skipped, 2 expected failures; `tests/test_expo_events.py` 98 passed; the four checks of the row above OK; browser playtests and the whole repository not run |
+| after the owner decision of 2026-10-05, on `main` at 9f9aa41 merged in: `pytest tests/test_expo.py tests/test_expo_*.py` | 1168 passed, 2 skipped, 2 expected failures; `tests/test_expo_events.py` 100 passed (with the early-timer repair and its two tests); the four checks of the row above OK; browser playtests and the whole repository not run |

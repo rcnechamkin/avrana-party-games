@@ -497,8 +497,17 @@ decided and in the state (winner, task statuses, the next leader); what waits is
     `test_a_restart_during_a_hold_under_a_clock_that_cannot_be_trusted_opens_no_turn`).
   - An untimed table has no deadline and is the same whatever clock its tricks are settled with
     (`test_an_untimed_table_is_the_same_whatever_clock_its_tricks_are_settled_with`).
+  - The adapter's timer may wake up to 20 ms early (`HOLD_SLACK`). The settle it causes is
+    judged at the hold's own end, so a deadline anywhere inside the hold ends the attempt and
+    no turn is open for the milliseconds between
+    (`test_a_timer_that_wakes_early_does_not_open_a_turn_before_a_deadline_inside_the_hold`).
+    The session's one timer is armed for the end of the hold, never for a deadline that comes
+    sooner.
   - For a client: during a hold that crosses the deadline the countdown drawn from `expiry`
     reaches zero while `resolving` is still set, and the result follows when the hold ends.
+  - A limit, unchanged from before the hold existed: outside a hold, a view requested between
+    the deadline and the timer firing still shows a turn and legal cards, and every command
+    sent then is refused.
 
 Why this design, and what was rejected:
 

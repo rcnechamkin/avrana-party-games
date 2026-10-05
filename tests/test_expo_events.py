@@ -1242,9 +1242,12 @@ def test_a_deadline_that_passes_during_the_hold_ends_the_attempt_at_the_end_of_t
     log, expiry, until = deepcopy(e.s['events']), e.s['expiry'], s.game_state(tokens[0])['resolving']['until']
     assert types(log)[-1] == 'TRICK_RESOLVED' and shown_deadline(s, clock) == pytest.approx(0.3)
     assert until == pytest.approx(clock.wall + game.RESOLVE_HOLD)
+    # The one timer is armed for the end of the hold, not for the deadline that comes sooner.
+    assert s.deadline == pytest.approx(until) and s.deadline > clock.wall + 0.3 + 0.4
     clock.pass_time(0.5)                                            # 0.2 s past the deadline, still held
     assert s.tick(s.gen) == []                                      # a timer that fires now settles nothing
     assert e.s['resolving'] == {'trick': 1} and e.s['result'] is None and e.s['expiry'] == expiry
+    assert s.deadline == pytest.approx(until)                       # and it is still the hold's end
     assert shown_deadline(s, clock) == pytest.approx(-0.2)          # the countdown was not stepped up
     assert s.game_state(tokens[0])['resolving']['until'] == pytest.approx(until)
     refused = raw_card(s, seat)                                     # a card now is not a play
@@ -1275,6 +1278,31 @@ def test_a_hold_that_ends_exactly_at_the_deadline_times_out_without_a_turn(tmp_p
     s.tick(s.gen)
     assert e.s['result'] == TIMEOUT
     assert types([x for x in e.s['events'] if x['seq'] > seq]) == ['MISSION_FAILURE']
+
+
+def test_a_timer_that_wakes_early_does_not_open_a_turn_before_a_deadline_inside_the_hold(tmp_path, monkeypatch):
+    clock = BothClocks(monkeypatch, wall=5_000_000.0, mono=1000.0)
+    s, tokens, seat = held_near_the_deadline(tmp_path / 'expo.json', clock, left=game.RESOLVE_HOLD - 0.010)
+    e = s.engine
+    log, ends = deepcopy(e.s['events']), s._hold[1]
+    assert e.s['expiry'] == pytest.approx(ends - 0.010) and e.s['expiry'] < ends
+    clock.pass_time(game.RESOLVE_HOLD - 0.015)                      # within HOLD_SLACK of the end
+    assert clock.mono < e.s['expiry'] < ends and ends - clock.mono < game.HOLD_SLACK
+    s.tick(s.gen)                                                   # the hold's own end, 15 ms early
+    assert e.s['result'] == TIMEOUT and e.s['resolving'] is None and s._hold is None
+    assert types(e.s['events'][len(log):]) == ['MISSION_FAILURE']   # no turn for the last 5 ms
+
+
+def test_a_timer_that_wakes_early_opens_the_turn_when_the_deadline_is_after_the_hold(tmp_path, monkeypatch):
+    clock = BothClocks(monkeypatch, wall=5_000_000.0, mono=1000.0)
+    s, tokens, seat = held_near_the_deadline(tmp_path / 'expo.json', clock, left=game.RESOLVE_HOLD + 0.010)
+    e = s.engine
+    expiry = e.s['expiry']
+    clock.pass_time(game.RESOLVE_HOLD - 0.015)
+    s.tick(s.gen)
+    assert e.s['result'] is None and e.s['resolving'] is None and e.s['expiry'] == expiry
+    assert types(e.s['events'])[-1] == 'TURN_STARTED'
+    assert s.deadline == pytest.approx(clock.wall + 0.025)          # the mission's deadline, unmoved
 
 
 def test_a_hold_that_ends_just_before_the_deadline_opens_the_turn_and_the_deadline_still_stands(tmp_path, monkeypatch):

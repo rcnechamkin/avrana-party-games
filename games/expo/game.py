@@ -177,8 +177,13 @@ class ExpoSession(GameSession):
         if not (self.engine and self.engine.s['resolving']):
             return False
         now = _mono()
-        if self._hold is not None and self._hold[1] - now > HOLD_SLACK:
-            return False
+        if self._hold is not None:
+            if self._hold[1] - now > HOLD_SLACK:
+                return False
+            # A timer may wake a little early (HOLD_SLACK). The deadline is still judged at the
+            # hold's own end, so one that falls anywhere inside the hold ends the attempt and
+            # no turn is opened for the few milliseconds between the two.
+            now = max(now, self._hold[1])
         # A timed attempt whose deadline has passed ends here and no turn opens (Engine.settle).
         return self.engine.settle(now)
 
