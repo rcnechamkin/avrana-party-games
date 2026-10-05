@@ -1572,4 +1572,20 @@ important). Client, tests and documents only.
    waiting on a decision sees who is missing and not the count; the Party Host tag is H with
    three seats; "For Tonoja (game role)".
 
-The runs of this round are recorded in the commit that follows it.
+Run serially at `364b59b` (the code and tests of round 3), headless desktop Chrome at phone
+viewport sizes on Windows 11, by the author, with `EXPO_MISSION=1`:
+
+| Check | Result |
+|---|---|
+| `node tests/expo_director_test.mjs` | 21 passed |
+| `pytest -rf tests/test_expo.py tests/test_expo_*.py` | 1203 passed, 2 skipped, 2 expected failures |
+| `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check | OK (run on the tree that became the commit) |
+| `tests/playtest_expo.mjs`, high tier, with 2, 3 and 5 humans | PASS each |
+| `tests/playtest_expo.mjs`, 3 humans, `EXPO_FX=low` and `EXPO_MOTION=reduced` | PASS each |
+| `tests/playtest_expo_party.mjs`, high tier, 3 and 5 seated | PASS each |
+| medium tier, director off, 4 humans, mission 9, watching host, old Party, whole-repository `pytest`, Linux CI | not run in this round |
+| A real phone, Safari, a screen reader, accessibility validation | not run |
+
+Still not complete: the direction is provisional by the owner's note, a real-phone review is the
+gate, and final human-made or licensed art and audio, Safari, a screen reader and accessibility
+validation are outstanding.
