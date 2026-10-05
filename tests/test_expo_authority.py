@@ -134,12 +134,19 @@ SETUP = {"mission": 1, "timed": False, "tonoja_position": 2}     # what a Party 
 
 
 async def table(host=ALICE, claims=True, players=PLAYERS, mission=1, seed=1, watchers=(), setup=True):
-    """A launched Party round. It opens in setup (AVR-245, the last section of this file); unless
-    `setup` is False the table is taken through it here, on `mission`, by whoever moves this
-    table on: the Party Host, or the crew under a Party that does not name its host."""
+    """A launched Party round, dealt from `seed`: the same seed is the same deal, tasks and
+    captain every time, so a test meets the table it was written for. It opens in setup (AVR-245,
+    the last section of this file); unless `setup` is False the table is taken through it here,
+    on `mission`, by whoever moves this table on: the Party Host, or the crew under a Party that
+    does not name its host."""
     b = GameBinding("expo", ExpoSession(rng=random.Random(seed)), party=proto.GameSide(KEY, "expo"))
     entries = [(p, n, "player") for p, n in players] + [(p, n, "spectator") for p, n in watchers]
     await b.party_launch(proto.launch_message(KEY, "expo", SID, roster(*entries)))
+    # A launch replaces the room with a new session of its own (GameBinding._fresh_room), which
+    # draws from an unseeded generator: the one given above is gone with the session it was
+    # given to. The deal is drawn from the session's generator when the setup is confirmed, and
+    # nothing draws from it before, so this is where the seed goes.
+    b.session.rng = random.Random(seed)
     socks = {}
     early = Table(b, socks, host if claims else None)       # the Party answers from the first hello
     for p, _ in players:
@@ -173,6 +180,15 @@ async def table(host=ALICE, claims=True, players=PLAYERS, mission=1, seed=1, wat
             await b.push_all(b.session.host_action({"t": "lifecycle", "decision": {"kind": "setup", **chosen},
                                                     "attempt": s["attempt"], "revision": s["revision"]}))
     assert b.session.phase == "allocation" and b.session.engine.s["mission"]["id"] == mission
+    # The seed took: this is the table that seed deals, card for card and task for task. The
+    # setup is an accepted change and (for a crew that voted) remembered requests, so those two
+    # counters are the only difference from a table dealt directly.
+    direct = Engine([early.pid(p) for p, _ in players], random.Random(seed), mission)
+    dealt = b.session.engine.s
+    for key in set(dealt) | set(direct.s):
+        if key not in ("revision", "dedup"):
+            assert dealt.get(key) == direct.s.get(key), f"seed {seed} did not decide the deal ({key})"
+    assert b.session.engine.rng.getstate() == direct.rng.getstate()
     return early
 
 
