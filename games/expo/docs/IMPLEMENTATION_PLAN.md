@@ -130,7 +130,7 @@ and a row that names something untested says why it cannot be tested. Every test
 | T46 | Failure causality and objective state (AVR-246) | `test_a_legal_card_that_loses_the_mission_is_accepted_and_names_who_triggered_it_and_who_lost`, `test_objective_states_follow_the_task_through_the_attempt` | no signal before the card: `test_nothing_in_any_view_tells_a_player_what_a_legal_card_will_do_before_it_is_played` | trigger is not the last player, is the owner, is a single card: `test_the_trigger_is_the_seat_that_won_the_trick_not_the_one_that_played_last`, `test_a_seat_that_breaks_its_own_task_is_both_trigger_and_affected_and_the_state_is_failed`, `test_a_card_that_fails_a_task_before_its_trick_ends_names_the_seat_that_played_it`; 3, 4, 5 players over many games: `test_every_failure_in_many_games_has_a_cause_that_matches_the_table` | the cause is state, restored with the table | mission 23 and task selection: `test_a_mission_objective_names_the_seat_that_took_the_trick_and_the_seat_that_had_to_stay_ahead`, `test_a_failure_in_task_selection_names_the_seat_whose_choice_ended_it` | full; the label never changes a status: `test_the_failure_kind_is_a_label_and_never_changes_a_task_status`. Two players with the dummy as trigger and the volunteer failure's cause have no fixture of their own |
 
 T47, presentation (AVR-267), is not a row of the matrix above, because it is not a Python test. It is
-`node tests/expo_director_test.mjs` (18 cases, no browser) and the two browser playtests with
+`node tests/expo_director_test.mjs` (21 cases, no browser) and the two browser playtests with
 `tests/_expo_phone.mjs`, each run at the high, medium and low tiers, with reduced motion and with
 the director off. What they prove, and what they cannot, is in
 [PRESENTATION](PRESENTATION.md#tests): no CI job runs them, a desktop Chrome is not a phone, and
@@ -157,7 +157,9 @@ In order. Each item has its issue; none is started by this document.
 8. **Party-round setup** (AVR-245). ~~Presentation contract, engine half (AVR-246)~~: done
    2026-10-04. ~~The board, the director and the asset slots (AVR-267)~~: built 2026-10-05.
 9. **AVR-267, what is left.** Final art and audio for the slots (made or licensed by people);
-   real-phone acceptance; the winner of an unfinished trick, which needs a field from the server;
+   real-phone acceptance, which is the gate (owner note 2026-10-05), with Safari, a screen reader
+   and accessibility validation; ~~the winner of an unfinished trick~~ (the view's
+   `trick_leading`, 2026-10-05: `test_the_leading_seat_is_given_by_the_function_that_resolves_the_trick`);
    the owner's questions in [the report](RECONCILIATION.md#avr-267-2026-10-05).
 
 Not on this list and not authorised by it: deployment, appliance keys, real-phone acceptance.

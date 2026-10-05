@@ -1375,3 +1375,47 @@ Windows 11, by the author, on the working tree that became the repair commit:
 | medium tier, director off, watching host, old Party, whole-repository `pytest`, Linux CI | not run again |
 | A real phone, Safari, a screen reader | not run |
 
+**Round 2, 2026-10-05: the owner's direction.** Recorded on the issue, verbatim: "The current
+presentation direction is acceptable for now and may be revisited after real-phone playtesting.
+Specific follow-through: add authoritative/public current-trick-winner state rather than
+reimplementing winner logic in the client; fix critical/status text truncation on short phone
+screens; the current board/navigation/palette/copy/radio/effects direction may continue
+provisionally; real-phone review remains the product gate before calling the presentation
+complete. Final human-created/licensed art/audio and real-device/accessibility validation remain
+outstanding."
+
+**State after it: still not complete.** The direction is provisional. Final human-made or
+licensed art and audio, real phones, Safari, a screen reader and accessibility validation are
+outstanding, and none of them can be done by code. Questions 2 and 6 of "For the owner" above are
+answered by the note (the field is added; the short-screen status line is fixed and the rest of
+the layout continues provisionally); the others stand.
+
+- **Merged the AVR-246 branch** (`5d8fecd`: `main`, and the owner's timer decision: the deadline
+  never moves). Documents keep both sides. Nothing on this side said the clock stands or the
+  deadline moves; the test matrix's T45 row is the other side's.
+- **`trick_leading`** (engine, `games/expo/engine.py`; the only engine change, `game.py`
+  untouched): the seat winning the unfinished trick, in every view. It is `rules.winner`, the
+  function that resolves a trick, asked about the cards played so far; the resolving code is not
+  touched, so no second copy of the rule exists and resolution cannot have changed. None before
+  the first card, during the hold, with a result, and outside play. Not in the snapshot. No
+  mission hides a played card, so no mission withholds it. Five engine tests
+  ([GAME_STATE](GAME_STATE.md#the-seat-leading-an-unfinished-trick)). The page shows it as the
+  word WINNING on that seat's place and says it in the live region when it changes; `trickShows`
+  asserts the tag is on the seat the view names and on no other, and that nothing in the hand is
+  marked; a static test bans card arithmetic in `client.js`.
+- **The status line is read whole** at every size: bounded sentences, three lines between the
+  top-bar buttons on short screens, and room taken from the mission stage's lesser lines when a
+  sentence still does not fit ([PRESENTATION](PRESENTATION.md#the-five-zones)). Words changed to
+  make that possible, for the owner to accept or send back: a sentence that waits for several
+  people names one and counts the rest ("Ava and 2 more") in the status line and in a decision;
+  a decision's status asks the question without its second sentence; a decision's heading is no
+  longer shown (a screen reader still has it); the hand's reason wraps.
+- **The fixed deadline on the page**: "Clock at zero" and "The mission clock is at zero" once
+  `expiry` has passed and no result has come; no outcome is claimed. A deadline's cause is given
+  no trick and no card. A trick and a deadline's failure arriving together do not both play.
+  `event_seq` going backwards has its own director test.
+- **`say()`** rebuilds the live region's two parts if another writer replaced them.
+- **Notes for merging AVR-263 and AVR-245**: [PRESENTATION](PRESENTATION.md#merging-with-avr-263-and-avr-245).
+
+The runs made after this round are in the table that follows.
+

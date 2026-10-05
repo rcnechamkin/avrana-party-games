@@ -11,7 +11,7 @@ import path from "path";
 import assert from "node:assert/strict";
 import { puppeteer, CHROME_PATH } from "./_resolve.mjs";
 import { PHONES, oneViewport, onScreen, playCard, resultOwnsTheScreen, clickKey, withLongText, touchTargets, modalHolds, focused,
-  FX, EXPECT_FX, presentation, directorSentNothing, crewLegible, trickShows, legalCardsLookAlike } from "./_expo_phone.mjs";
+  FX, EXPECT_FX, presentation, directorSentNothing, crewLegible, trickShows, legalCardsLookAlike, criticalTextWhole, longestStatusesFit } from "./_expo_phone.mjs";
 
 const BASE=process.argv[2]||"http://127.0.0.1:8196";
 const OUT=process.argv[3]||path.join(os.tmpdir(),"expo-playtest");
@@ -65,7 +65,7 @@ async function crewDecision(pg,key){
       for(const k of ["agree","decline"])await onScreen(p,k,"a pending crew decision");
       assert.match(await p.evaluate(()=>document.getElementById("status").textContent),/^Your answer is needed/);
       assert.equal(await p.evaluate(()=>document.getElementById("status").getAttribute("aria-live")),"polite");
-      if(!s.game.result)await oneViewport(p,"a pending crew decision");
+      if(!s.game.result){await oneViewport(p,"a pending crew decision");await criticalTextWhole(p,"a pending crew decision");}
       const rev=s.game.revision;await clickKey(p,"agree");await waitRevision(p,rev);
     }
   }
@@ -328,6 +328,7 @@ try{
     await pg.setViewport(size);await pause(60);
     assert.equal(await pg.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,"no horizontal overflow");
     await oneViewport(pg,"the table");
+    if(size.width===360&&size.height===740)pres.statuses=(await longestStatusesFit(pg,"the longest statuses",OUT)).length;
     if(size.width<600){await touchTargets(pg,"the table");await withLongText(pg,async()=>{await oneViewport(pg,"the table at its fullest");await touchTargets(pg,"the table at its fullest");});}
     await pg.screenshot({path:path.join(OUT,`table-${size.width}x${size.height}.png`)});
   }
@@ -487,6 +488,22 @@ try{
     shown=await text();
     assert.match(shown,/What failed: The mission clock/);assert.match(shown,/Deciding play: No single play decided it\./);assert.match(shown,/Fell on: The whole crew/);
     assert.doesNotMatch(shown,/not a fault/,"nobody is named, so nobody needs excusing");
+    // A deadline's cause names a trick that never opened: the result puts no trick and no card to it.
+    await draw({...base,kind:"deadline",objective:null,failure:"deadline",state:"FAILED",trigger_seat:null,trigger_controller:null,trigger_card:null,affected_seat:null,action:null,cards:[card],trick:last?last.index:1});
+    assert.doesNotMatch(await text(),/· trick \d/,"a deadline is not pinned on a trick");
+    assert.equal(await pg.evaluate(()=>document.querySelectorAll("#result .mini.about").length),0,"nor on a card of the last trick");
+    // A deadline that passes while a trick is held: the server judges it when the hold ends, and
+    // until then the page says what the view and the clock say, and no outcome.
+    await pg.evaluate(st=>render({...st,game:{...st.game,attempt:st.game.attempt+3000,result:null,cause:null,proposal:null,stage:"before_trick",trick:[],expiry:conn.now()/1000+1.2,
+      resolving:st.game.last_trick?{trick:st.game.last_trick.index,until:conn.now()/1000+30}:null}}),real);
+    const clock=()=>pg.evaluate(()=>({chip:document.getElementById("env-chip").textContent,timer:document.getElementById("timer").textContent,status:document.getElementById("status-now").textContent,result:document.getElementById("result").hidden}));
+    let c=await clock();
+    assert.equal(c.chip,"Clock running");assert.match(c.timer,/^0:0[12]$/);
+    await pause(1600);                                          // no new view arrives: the page's own tick
+    c=await clock();
+    assert.deepEqual([c.chip,c.timer,c.result],["Clock at zero","0:00",true],"the chip follows the deadline, and no result is shown before the server sends one");
+    assert.match(c.status,/The mission clock is at zero$/);assert.doesNotMatch(c.chip+c.status,/fail|lost|over|running/i,"no outcome is claimed");
+    await criticalTextWhole(pg,"the clock at zero");
     await pg.evaluate(st=>render(st),real);
     await resultOwnsTheScreen(pg,"the real result again");
   }

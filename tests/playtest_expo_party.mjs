@@ -35,7 +35,7 @@ import { fileURLToPath } from "url";
 import assert from "node:assert/strict";
 import { puppeteer, CHROME_PATH } from "./_resolve.mjs";
 import { PHONES, oneViewport, onScreen, has, clickKey, playCard, resultOwnsTheScreen, withLongText, touchTargets, modalHolds, focused,
-  FX, EXPECT_FX, presentation, directorSentNothing, crewLegible, trickShows, legalCardsLookAlike } from "./_expo_phone.mjs";
+  FX, EXPECT_FX, presentation, directorSentNothing, crewLegible, trickShows, legalCardsLookAlike, criticalTextWhole, longestStatusesFit } from "./_expo_phone.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = process.argv[2] || path.join(os.tmpdir(), "expo-party-playtest");
@@ -279,7 +279,7 @@ try {
       for (const size of m === seated().find(x => x !== asker) ? PHONES : [m.page.viewport()]) {
         await m.page.setViewport({...m.page.viewport(), ...size}); await pause(60);
         for (const k of ["agree","decline"]) await onScreen(m.page, k, `${m.name}: the distress decision`);
-        await oneViewport(m.page, `${m.name}: the distress decision`);
+        await oneViewport(m.page, `${m.name}: the distress decision`); await criticalTextWhole(m.page, `${m.name}: the distress decision`);
       }
       assert.match(await m.page.evaluate(() => document.getElementById("status").textContent), /^Your answer is needed: Activate distress/);
       assert.match(await m.page.evaluate(() => document.getElementById("stage").innerText), /Activate distress and pass one color card left/);
@@ -291,7 +291,7 @@ try {
       assert.deepEqual(after.proposal, before.proposal);
       for (const k of ["agree","decline"]) await onScreen(answering.page, k, `${answering.name}: the decision after a reload`);
       assert.match(await answering.page.evaluate(() => document.getElementById("status").textContent), /^Your answer is needed: Activate distress/);
-      await oneViewport(answering.page, "a pending decision after a reload"); await touchTargets(answering.page, "a pending decision");
+      await oneViewport(answering.page, "a pending decision after a reload"); await criticalTextWhole(answering.page, "a pending decision after a reload"); await touchTargets(answering.page, "a pending decision");
     }
     if (seated().includes(host)) assert.equal((await has(host.page, "begin")).disabled, true, "Begin waits for the crew's answer");
     assert.equal(await refused(host.page, SEND_HOST({kind:"begin"})), "The crew is deciding something. Wait for their answer.");
@@ -321,7 +321,7 @@ try {
   }
 
   // ---- ordinary trick play, on one screen ----
-  let plays = 0, succession = false, reconnected = false;
+  let plays = 0, succession = false, reconnected = false; const statuses = [];
   for (let i = 0; i < 90; i++) {
     const s = await settle(); if (s.game.result) break;
     const actor = await byPid(s.game.turn === "tonoja" ? s.game.captain : s.game.turn), g = (await state(actor.page)).game;
@@ -346,6 +346,8 @@ try {
         await oneViewport(other.page, "looking at Tonoja's cards"); await clickKey(other.page, "hand-mine");
       }
     }
+    // The longest status sentences, long names, five sizes: for a player, and for whoever watches.
+    if (plays === 1) for (const m of [actor, party.members.at(-1)]) statuses.push(...await longestStatusesFit(m.page, `${m.name}: the longest statuses`));
     if (plays === 1) for (const size of PHONES) { await actor.page.setViewport({...actor.page.viewport(), ...size}); await pause(60); await oneViewport(actor.page, "mid-trick"); await withLongText(actor.page, async () => { await oneViewport(actor.page, "mid-trick at its fullest"); await touchTargets(actor.page, "mid-trick at its fullest"); }); await actor.page.screenshot({path:path.join(OUT, `play-${size.width}x${size.height}.png`)}); }
     // tapping a card chooses it; nothing is played until the dock's button
     await clickKey(actor.page, "card:" + g.me.legal_cards[0]);

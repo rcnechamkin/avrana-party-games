@@ -166,6 +166,46 @@ test("on the page: a resolved trick's animations all end inside the hold", () =>
   assert.ok(late.d.stats.settled.includes("trick-late"));
 });
 
+test("a deadline that passed during a hold: the trick and the failure in one batch do not fight", () => {
+  const failed = ev(8, "MISSION_FAILURE", {trick: 2});
+  const result = {result: {status: "failed", reason: "Time has run out."}, resolving: null, trick: [], last_trick: HELD.last_trick};
+  const late = show({}, [...TRICK, failed], {...result, cause: {kind: "deadline", trick: 2, cards: []}});
+  assert.equal(late.why, "live");
+  assert.deepEqual(late.animations.filter(a => ["expo-fx:trick", "expo-fx:card", "expo-fx:objective"].includes(a.id)), [], "the trick's beat is not played over the result");
+  assert.ok(late.d.stats.settled.includes("trick-superseded"));
+  assert.ok(late.d.stats.performed.some(p => p.effect === "failure-cinematic"), "the failure is the one beat");
+  assert.ok(!late.d.stats.performed.some(p => p.effect === "trick-resolve" || p.type === "TRICK_RESOLVED"));
+  // The trick that itself ends the mission is still presented beside its result.
+  const own = show({}, [...TRICK, failed], {...result, cause: {kind: "task", trick: 1, cards: ["blue:9"]}});
+  assert.ok(own.animations.some(a => a.id === "expo-fx:trick") && own.d.stats.performed.some(p => p.effect === "failure-cinematic"));
+});
+test("a server restart can send event_seq backwards: nothing is replayed and the next event is new", () => {
+  // The log is bounded and a restored table numbers on from its snapshot, which may be older
+  // than what this page has shown.
+  const x = show({}, TRICK, HELD), before = x.animations.length;
+  assert.equal(x.d.after(view(game({event_seq: 3, events: [ev(2, "CARD_PLAYED", {seat: "p1", card: "blue:8"}), ev(3, "CARD_PLAYED", {seat: "p2", card: "blue:1"})]}))), "rewound");
+  assert.equal(x.animations.length, before, "the older events are state, not news");
+  assert.ok(x.d.stats.settled.includes("rewound"));
+  // Numbers the page has already seen are used again by the restarted server: they are new.
+  assert.equal(x.d.after(view(game({event_seq: 4, events: [ev(3, "CARD_PLAYED", {seat: "p2", card: "blue:1"}), ev(4, "TURN_STARTED", {seat: "p3", controller: "p3"})]}))), "live");
+  assert.deepEqual(x.d.stats.performed.at(-1).type, "TURN_STARTED");
+  assert.equal(D.advance(primed(40), view(game({event_seq: 0, events: []}))).why, "rewound");
+  assert.deepEqual(D.advance(primed(40), view(game({event_seq: 0, events: []}))).cursor, {primed: true, attempt: 1, seq: 0});
+});
+test("the page never works out who is winning a trick: it shows the server's trick_leading", () => {
+  const src = read("client.js").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  // A card's number is text to print: never a number, never compared, never sorted.
+  for (const banned of [/split\(":"\)\[1\]/, /\b(Number|parseInt|parseFloat)\(\s*r\b/, /\br\s*[<>]=?\s|\s[<>]=?\s*r\b/, /function\s+(winner|leading|beats|strongest|highest)\b/, /\.winner\s*=[^=]/, /trick_leading\s*=[^=]/, /"submarine"\s*\?\s*\d|trump/i])
+    assert.doesNotMatch(src, banned, `client.js must not contain ${banned}`);
+  // Each use of the field is a comparison of seats or a name: it is never derived or stored.
+  const uses = src.match(/.{0,24}trick_leading.{0,3}/g) || [];
+  assert.ok(uses.length >= 2, "the field is drawn and said");
+  for (const use of uses) assert.match(use, /(seat === g\.trick_leading|name\(g\.trick_leading\)|g\.trick_leading \?)/, use);
+  // And the rules stay on the server: the engine gives it by the function that resolves a trick.
+  const engine = fs.readFileSync(path.resolve(WEB, "..", "engine.py"), "utf8");
+  assert.match(engine, /def trick_leading\(self\):[\s\S]{0,1200}return winner\(s\['trick'\]\)/);
+});
+
 // ---- fidelity -----------------------------------------------------------------------------------
 test("the fidelity tier: reduced motion wins, then the choice, then the device", () => {
   const f = D.fidelity, ok = {animate: true};

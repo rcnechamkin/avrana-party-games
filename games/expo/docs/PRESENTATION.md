@@ -47,12 +47,29 @@ default, 15.5 % on screens of 700 px or less, 18 % from 820 px). On screens of 7
 status line moves between the two top-bar buttons so that its row goes to the board; the word
 "Connected" is not spelled out there, and a lost connection still is ("Reconnecting…").
 
-**Known limit, decision pending.** In that place the status line is one line between two buttons
-and a long sentence is cut with an ellipsis. The sentence that tells a player a decision waits for
-them is one of the long ones: "Your answer is needed: Activate distress and pass one color card
-left?" does not fit at 360 px. The decision itself is whole in the trick zone under it; the
-status sentence is not. Where the status line belongs on a short screen is the owner's decision
-(question 6 of [the report](RECONCILIATION.md#avr-267-2026-10-05)) and was left as built.
+**The status line is always read whole** (owner direction 2026-10-05). It is the one live
+instruction. Three things make that true at every size, 360x600 included:
+
+- *Sentences of bounded length.* A sentence that waits for people names one and counts the rest
+  ("Waiting for Ava and 2 more to reconnect. Your table is preserved."); the crew strip and the
+  crew sheet name every seat. A decision's status asks its question without the sentence of
+  consequence ("Your answer is needed: Activate distress and pass one color card left?"); the
+  decision itself, in the trick's place, shows both sentences.
+- *Its own place first.* A strip above the board (two lines), or between the top-bar buttons on a
+  screen of 700 px or less (three lines).
+- *Room taken from the mission stage when that is not enough.* `fitStatus` (client.js) measures
+  the line after every draw. A sentence that does not fit its place is shown whole over the
+  mission stage's lesser lines (the objective's line, the two chips, the news) under the
+  mission's title, trick counter and clock, which stay. Those lines come back with the next
+  shorter sentence. The mission stage's size does not change.
+
+In the trick's place a decision shows its question, its count and its answers; its heading is
+for a screen reader only. The reason the hand cannot be played wraps instead of being cut.
+`criticalTextWhole` (tests/_expo_phone.mjs) asserts that the status line, a decision's sentences,
+the radio's sentence and rule and the hand's reason are not cut by an ellipsis, a line clamp,
+their box, a scrolled panel or the screen; `longestStatusesFit` draws the longest status
+sentences the page can produce with 14-letter names of W at all five phone sizes and asserts the
+same, with the one-viewport contract.
 
 **A narrow crew tile keeps its name.** With four or five seats on a 360 px screen a tile is about 65 to 80 px wide. The
 name's row carries the turn marker, the Captain mark and the name, and nothing else: the hand
@@ -62,8 +79,22 @@ crew sheet say "Party Host" in full). With two or three seats the tag reads HOST
 and the roles are spelled out under it. The playtests require every name whole and at least
 28 px of the row left for it.
 
-**Not shown: who is winning an unfinished trick.** The view and the events do not say, and the
-client does not work out a rule. See "Not built".
+**Who is winning an unfinished trick** is the view's `trick_leading`, the server's word (the
+function that resolves a trick, asked about the cards on the table: see
+[GAME_STATE](GAME_STATE.md#the-seat-leading-an-unfinished-trick)). That seat's place in the trick
+carries the word WINNING, with an outline; the lead keeps LEAD, and a seat can carry both. The
+live region says "Ava is winning the trick." after the news, so a screen reader hears it when it
+changes and not with every card. The page compares seats with that field and never looks at a
+card to decide anything (a static test bans turning a card's number into a number, comparing it
+or sorting by it in `client.js`). It is public table state: nothing in the hand changes
+appearance because of it, and `trickShows` asserts that.
+
+**A timed mission's clock.** The deadline never moves (owner decision 2026-10-05). The chip reads
+"Clock running" until `expiry` is reached on the server's clock and "Clock at zero" after, and
+the status line then reads "The mission clock is at zero"; the page's own tick redraws both the
+moment it happens. When that happens while a trick is held, the cards still say "The trick is
+being resolved." (true), and no outcome is shown until the server sends the result. A deadline's
+cause names no trick and no card on the result (its `trick` is one that never opened).
 
 ## Card states
 
@@ -120,6 +151,13 @@ and classifies each view:
 
 Settling means the cursor moves to `event_seq` and the board, already drawn from the view, is the
 whole presentation.
+
+A table that is restored, or a view that arrives late, can bring a trick's resolution and a
+deadline's `MISSION_FAILURE` in one batch with `result` set. The failure is not about that trick,
+so the trick's beat (and its card and objective beats) is not played over the result; the board
+already shows both. A trick that itself ends the mission is still presented beside its result.
+`event_seq` can go backwards across a server restart (a restored table numbers on from its
+snapshot): the planner settles ("rewound"), replays nothing, and takes the next event as new.
 
 A briefing belongs to the preparation. When a view arrives in which the table has left it (the
 first trick has begun, a result stands, or there is no table), a running briefing is ended at
@@ -202,17 +240,37 @@ Final art must be made or licensed by people and recorded there with its source 
 
 | Test | Proves |
 |---|---|
-| `node tests/expo_director_test.mjs` | the planner's cases above; every engine event has a tier and every duration is inside it; a resolution fits the hold or is not played; the three fidelity tiers (only `high` moves, `low` animates nothing, only `transform` and `opacity` are animated); the director's source has no sender and is called only through the guard; a frozen view; the sound and haptics gate; the slots manifest; nothing fetched from outside |
+| `node tests/expo_director_test.mjs` | a deadline's failure and a trick in one batch; `event_seq` going backwards after a restart; `client.js` holds no trick rule; the planner's cases above; every engine event has a tier and every duration is inside it; a resolution fits the hold or is not played; the three fidelity tiers (only `high` moves, `low` animates nothing, only `transform` and `opacity` are animated); the director's source has no sender and is called only through the guard; a frozen view; the sound and haptics gate; the slots manifest; nothing fetched from outside |
 | `tests/playtest_expo.mjs`, `tests/playtest_expo_party.mjs` with `tests/_expo_phone.mjs` | in a real browser on five phone sizes: the zones in order and the stage's share of the screen; the crew strip; the trick; card states; the radio flow; the resolving hold and the director's timing against it; reload mid-trick, a reconnect on a resolving view and a reload on a result; the three shapes of a cause; no frame sent with the director on the stack |
 
 Both playtests take `EXPO_FX=high|medium|low|off` and `EXPO_MOTION=reduced`. The runs made for
 this change are in [the report](RECONCILIATION.md#avr-267-2026-10-05).
 
+## Merging with AVR-263 and AVR-245
+
+Neither is merged here. When one meets this branch, reapply exactly this:
+
+- **AVR-263** (PR #50, `fix/avr-263-expo-control-reasons`) changes the client's reason plumbing,
+  the short-screen rules of `expo.css` and the playtest.
+  1. `#hand-reason` must keep wrapping (no `white-space:nowrap`, no ellipsis) and every reason it
+     adds must pass `criticalTextWhole`.
+  2. In the `max-height:700px` and `max-height:610px` blocks keep: the status strip's place and
+     its three-line clamp, the `.app.status-long` rules, the mission stage's height, the
+     two-row hand's card height. Then run `longestStatusesFit`.
+  3. A reason sentence that names several people uses `whoOf`, not `names`.
+  4. Its playtest changes must keep the calls to `criticalTextWhole`, `longestStatusesFit` and
+     the `trick_leading` assertions of `trickShows`.
+- **AVR-245** adds a setup phase whose `drawSetup` writes `#status.textContent`. It must call
+  `say(text)` instead. If it does not, nothing breaks: `say` rebuilds the line's two parts when
+  they are gone. Its new status sentences belong in `longestStatusesFit`, `draw()` must still end
+  with `fitStatus()`, and a setup phase is a preparation phase for `ExpoDirector.briefable`.
+
 ## Not built
 
 - **Final art, audio, a real phone.** Placeholders only; simulated phones only.
-- **The current winner of an unfinished trick.** Needs a field from the server (for example the
-  leading seat on `CARD_PLAYED`); working it out in the client would be a rule in the client.
+- **Acceptance.** The direction is provisional (owner note, 2026-10-05) and may be revisited
+  after real-phone playtesting, which is the gate. Safari, a screen reader and accessibility
+  validation have not been done.
 - **Fiction per mission and cinematic templates per cause.** One placeholder line per kind of
   failure.
 - **A replay or recap of an attempt.** The server sends the latest trick only.

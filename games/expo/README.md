@@ -97,8 +97,12 @@ from the view alone, so the game is the same with it off, at the lowest tier or 
 motion. A failed attempt is explained from the server's cause: what failed, the deciding play,
 whose objective it was. **Every visual is a neutral placeholder in a named slot and every audio
 slot is empty: no final artwork or sound exists, and no real phone has shown any of it.** The
-winner of an unfinished trick is not shown, because the server does not say and the client does
-not compute rules: [PRESENTATION](docs/PRESENTATION.md).
+seat winning an unfinished trick is the server's own public field (`trick_leading`, given by the
+function that resolves a trick) and the page shows it as a word; the client computes no rule.
+**The direction is provisional by the owner's note of 2026-10-05 and is not complete: final
+human-made or licensed art and audio, real phones, Safari, a screen reader and accessibility
+validation are all outstanding, and a real-phone review is the gate.**
+[PRESENTATION](docs/PRESENTATION.md).
 
 **Still open.** Recovery from an away seat (AVR-240; the Party Host can always end EXPO):
 see the AVR-275 report in RECONCILIATION. Party-round setup: AVR-245.

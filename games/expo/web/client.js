@@ -129,6 +129,9 @@ function name(seat) {
   return ST.players.find(p => p.pid === seat)?.name || seat || "Unassigned";
 }
 function names(seats) { return seats.map(name).join(", "); }
+// Who a sentence is waiting for, at a length that always fits its line: one name, or one name
+// and how many more (the crew strip and the crew sheet name every seat).
+function whoOf(seats) { return seats.length > 1 ? `${name(seats[0])} and ${seats.length - 1} more` : name(seats[0]); }
 function cardLabel(card) { const [s,r] = card.split(":"); return `${r} ${s}`; }
 function cardNode(card, action, enabled=false, reason="") {
   const [s,r] = card.split(":");
@@ -329,6 +332,7 @@ function draw() {
   }
   syncModal();
   updateTimer();
+  fitStatus();
 }
 
 function drawLobby(st) {
@@ -380,12 +384,20 @@ function stillAsked(g) {
   return asked ? [asked] : g.seats.filter(s => s !== "tonoja" && !g.proposal.votes.includes(s));
 }
 
+// A timed mission whose deadline has passed and whose result has not arrived yet (the server
+// judges it when the held trick settles). A fact of the view and the clock; no outcome is claimed.
+function clockOut(g) { return Boolean(g && g.expiry && !g.result && g.expiry <= conn.now() / 1000); }
+
+// The status line is the one live instruction and is always read whole: it names one person and
+// counts the rest, and it asks a decision's question without the sentence of consequence that
+// the decision shows under it.
 function statusText(g) {
-  if (g.away.length) return `Waiting for ${names(g.away)} to reconnect. Your table is preserved.`;
+  if (g.away.length) return `Waiting for ${whoOf(g.away)} to reconnect. Your table is preserved.`;
   if (g.proposal) {
-    if (mustAnswer(g)) return `Your answer is needed: ${g.proposal.recipient ? `${name(g.captain)} offers you all tasks.` : question(g)}`;
-    return `Crew decision · waiting for ${names(stillAsked(g))}`;
+    if (mustAnswer(g)) return `Your answer is needed: ${g.proposal.recipient ? `${name(g.captain)} offers you all tasks.` : question(g).replace(/\?.*$/, "?")}`;
+    return `Crew decision · waiting for ${whoOf(stillAsked(g))}`;
   }
+  if (clockOut(g)) return "The mission clock is at zero";
   if (g.result) return g.result.status === "success" ? "Mission complete" : g.result.status === "failed" ? "Mission failed" : "Table ended";
   const mine = seat => g.me && (seat === g.me.seat || (seat === "tonoja" && g.captain === g.me.seat));
   if (g.stage === "allocation") {
@@ -408,12 +420,36 @@ function statusText(g) {
 // The one live region. First what is asked of this player now; then, for a screen reader only,
 // the latest thing that happened (the mission stage shows the same words to the eye).
 function say(text, news="") {
+  if (!$("status-now") || !$("status-news")) {
+    // Something else wrote into the live region and took its two parts with it: put them back.
+    const now = el("span"), then = el("span", undefined, "sr"); now.id = "status-now"; then.id = "status-news";
+    $("status").replaceChildren(now, then);
+  }
   if ($("status-now").textContent !== text) $("status-now").textContent = text;
   if ($("status-news").textContent !== news) $("status-news").textContent = news;
 }
+// The status line has a place of its own: a strip above the board, or, on a short screen, the
+// space between the two top-bar buttons. A sentence too long for that place is shown whole over
+// the mission stage's lesser lines (the objective's line, the chips, the news), under the
+// mission's title and clock: the one live instruction outranks them for as long as it is up.
+// Measured, not guessed: its own place is tried first, every time.
+function fitStatus() {
+  const app = $("app"), box = $("status");
+  app.classList.remove("status-long");
+  if ($("game").hidden || box.scrollHeight <= box.clientHeight + 1) return;
+  app.classList.add("status-long");            // the strip leaves its place, so measure after
+  const frame = app.getBoundingClientRect(), head = document.querySelector(".mission-head").getBoundingClientRect(), stage = $("mission-stage").getBoundingClientRect();
+  app.style.setProperty("--status-top", `${Math.round(head.bottom - frame.top + 2)}px`);
+  app.style.setProperty("--status-height", `${Math.round(stage.bottom - head.bottom - 6)}px`);
+}
+addEventListener("resize", fitStatus);
+
 function drawStatus(g) {
   const news = latest(g);
-  say((g.me ? "" : "Watching · ") + statusText(g), news.length ? ` Latest: ${news.join(". ")}.` : "");
+  // Who is winning the unfinished trick is the server's word (trick_leading). It is said after
+  // the news, so a screen reader hears it when it changes and not again with every card.
+  const ahead = g.trick_leading ? ` ${name(g.trick_leading)} is winning the trick.` : "";
+  say((g.me ? "" : "Watching · ") + statusText(g), (news.length ? ` Latest: ${news.join(". ")}.` : "") + ahead);
   $("status").classList.toggle("urgent", Boolean(g.proposal && mustAnswer(g)));
 }
 
@@ -454,7 +490,7 @@ function latest(g) {
 // data-radio); the words say them.
 function envState(g) {
   if (g.result) return g.result.status === "success" ? {key:"clear", text:"Mission complete"} : g.result.status === "failed" ? {key:"lost", text:"Mission failed"} : {key:"calm", text:"Table ended"};
-  if (g.expiry) return {key:"storm", text:"Clock running"};
+  if (g.expiry) return {key:"storm", text: clockOut(g) ? "Clock at zero" : "Clock running"};
   if (g.distress) return {key:"distress", text:"Distress active"};
   return {key:"calm", text:`Attempt ${g.attempts || 1}`};
 }
@@ -601,14 +637,15 @@ function decisionNode(g) {
     const row = el("div",undefined,"choice-row");
     row.append(button(asked?"Accept":"Agree",()=>send("confirm",{yes:true}),"agree",false,"","btn-primary"),button("Decline",()=>send("confirm",{yes:false}),"decline"));
     box.append(row);
-  } else if (!g.away.length) box.append(why(`Waiting for ${names(stillAsked(g))}.`));
+  } else if (!g.away.length) box.append(why(`Waiting for ${whoOf(stillAsked(g))}.`));
   return box;
 }
 
 // ---- zone C: the shared trick -----------------------------------------------------------------------
 // Every card stays with the seat that played it, in play order from the lead. The winner shown
-// is the one the server resolved; nothing here works out who is winning an unfinished trick.
-function slot(g, seat, card, cls, note, order, tag) {
+// is the one the server resolved, and the seat winning an unfinished trick is the one the server
+// names (trick_leading): nothing here looks at the cards to work either out.
+function slot(g, seat, card, cls, note, order, tag, ahead) {
   const s = el("div", undefined, "slot " + cls + (g.me && seat === g.me.seat ? " me" : "")); s.dataset.seat = seat;
   const top = el("span", undefined, "slot-top");
   top.append(el("b", String(order), "slot-order"), el("span", name(seat), "slot-name"));
@@ -616,6 +653,7 @@ function slot(g, seat, card, cls, note, order, tag) {
   if (card) s.append(cardNode(card));
   else s.append(el("div", note || "", "card-empty"));
   if (tag) s.append(el("span", tag, "slot-tag " + (tag === "WON" ? "won" : "lead")));
+  if (ahead) { s.classList.add("ahead"); s.append(el("span", "WINNING", "slot-ahead" + (tag ? " over" : ""))); }
   s.append(fx());
   return s;
 }
@@ -640,7 +678,7 @@ function trickNode(g) {
     caption.append(el("strong", g.result ? "No trick was played" : "Awaiting the opening card"));
   } else {
     const played = new Map(g.trick.map(p => [p.seat, p.card]));
-    order(g.leader).forEach((seat, i) => row.append(slot(g, seat, played.get(seat), played.has(seat) ? "played" : seat === g.turn ? "active" : "idle", seat === g.turn ? "To play" : "", i + 1, i === 0 ? "LEAD" : "")));
+    order(g.leader).forEach((seat, i) => row.append(slot(g, seat, played.get(seat), played.has(seat) ? "played" : seat === g.turn ? "active" : "idle", seat === g.turn ? "To play" : "", i + 1, i === 0 ? "LEAD" : "", seat === g.trick_leading)));
     caption.append(el("strong", `Current trick · lead ${suitWord(g.trick[0].card)}`), el("span", `Waiting for ${g.turn === "tonoja" ? `${name(g.captain)} (Tonoja)` : name(g.turn)}…`));
   }
   box.append(row, caption);
@@ -946,7 +984,7 @@ function causeFacts(g) {
   const facts = [["What failed", `${what}${FAILURE[c.failure] && c.kind !== "deadline" ? " " + FAILURE[c.failure] : ""}`]];
   if (c.trigger_seat) {
     const by = c.trigger_controller && c.trigger_controller !== c.trigger_seat ? `${name(c.trigger_seat)} (played by ${name(c.trigger_controller)})` : name(c.trigger_seat);
-    facts.push(["Deciding play", c.trigger_card ? `${by} · ${cardLabel(c.trigger_card)}${c.trick ? ` · trick ${c.trick}` : ""}` : `${by}${c.kind === "allocation" ? " · during task selection" : ""}`]);
+    facts.push(["Deciding play", c.trigger_card ? `${by} · ${cardLabel(c.trigger_card)}${c.trick && c.kind !== "deadline" ? ` · trick ${c.trick}` : ""}` : `${by}${c.kind === "allocation" ? " · during task selection" : ""}`]);
   } else facts.push(["Deciding play", "No single play decided it."]);
   facts.push(["Fell on", !c.affected_seat ? "The whole crew" : c.affected_seat === c.trigger_seat ? `${name(c.affected_seat)}’s own ${task ? "task" : "objective"}` : `${name(c.affected_seat)}${task ? "’s task" : ""}`]);
   return facts;
@@ -986,7 +1024,7 @@ function drawResult(g, st) {
     facts.append(fact);
   }
   if (g.last_trick) {
-    const t = g.last_trick, about = g.cause && g.cause.trick === t.index ? g.cause : null;
+    const t = g.last_trick, about = g.cause && g.cause.kind !== "deadline" && g.cause.trick === t.index ? g.cause : null;
     facts.append(el("p", `Ended after trick ${t.index} of ${g.planned_tricks}, won by ${name(t.winner)}.`, "fact"));
     const row = el("div", undefined, "result-trick");
     for (const p of t.plays) {
@@ -1147,6 +1185,9 @@ function helpSheet(body) { for (const text of HELP) body.append(el("p", text)); 
 function updateTimer() {
   const expiry = ST?.game?.expiry; $("timer").hidden = !expiry;
   if (expiry) { const remaining = Math.max(0, Math.ceil(expiry - conn.now()/1000)); $("timer").textContent = `${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,"0")}`; }
+  // The moment the deadline passes, the chip and the status line stop saying the clock runs.
+  const out = clockOut(ST?.game);
+  if (out !== ui.clockOut) { ui.clockOut = out; if (ST?.game && !$("game").hidden) { drawMission(ST.game); drawStatus(ST.game); fitStatus(); } }
 }
 function updateConnection() {
   const up = Boolean(conn.ws && conn.ws.readyState === 1);

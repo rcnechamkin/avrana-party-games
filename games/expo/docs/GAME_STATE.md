@@ -64,6 +64,7 @@ Per attempt (reset by every preparation):
 | `before_first_only` | sonar allowed only before the first trick (delegated all-tasks missions) |
 | `pass_choices`, `direction` | sealed distress choices and the agreed direction |
 | `trick`, `history` | plays of the trick in progress; every resolved trick `{index, leader, winner, plays}` |
+| `trick_leading` (view only, never stored) | the seat whose card is winning the trick in progress, or none: see [The seat leading an unfinished trick](#the-seat-leading-an-unfinished-trick) |
 | `expiry` | real-time deadline, or none: seconds on the clock the adapter passes in, which is the monotonic clock. The view the adapter sends carries the same moment as wall-clock seconds for the browser's countdown |
 | `resolving` | none, or `{trick}`: the trick just resolved, while no seat may act (AVR-246); see [The resolving phase](#the-resolving-phase) |
 | `cause`, `failures` | what a failed attempt is attributed to, and the kind of each task failure (AVR-246); see [Failure causality](#failure-causality) |
@@ -137,7 +138,7 @@ it. See [The resolving phase](#the-resolving-phase).
 | Public | Private to its owner | Never sent |
 |---|---|---|
 | mission definition, seats, captain, leader, turn | own hand | other hands |
-| trick in progress, the most recent resolved trick only | own legal cards and the reason play is unavailable | Tonoja's covered cards |
+| trick in progress and `trick_leading`, the seat winning it; the most recent resolved trick only | own legal cards and the reason play is unavailable | Tonoja's covered cards |
 | per-seat hand counts and trick counts | own communication options | resolved tricks before the latest |
 | tasks: text, difficulty, owner, status, eligible owners | own secret prediction, until the mission result | task deck order, used pile |
 | predictions that are public; whether one is committed | whether own distress choice is locked | sealed distress choices |
@@ -266,6 +267,34 @@ A timed mission and the clock (AVR-242, was E-D7):
   and the crew may retry. An appliance without a real-time clock cannot say how long it was off,
   so a reboot always ends a running timed attempt.
 - A table with no running deadline restores whatever the clocks say.
+
+## The seat leading an unfinished trick
+
+`trick_leading` (AVR-267, owner direction 2026-10-05) is in every view, the same for every
+viewer including one with no seat: the seat whose card is winning the trick on the table.
+
+- **One rule, one function.** It is `rules.winner`, the function that resolves a completed trick,
+  asked about the cards played so far (`Engine.trick_leading`). No second copy of the rule
+  exists, in the engine or in the client; the code that resolves a trick was not touched.
+- **Public by construction.** It reads `trick` and nothing else. Every card on the table is face
+  up for everyone in every mission (currents hides a declaration, never a played card; no mission
+  hides a played card or its strength), so no mission needs it withheld. If a mission ever hides
+  a played card, this field must be none there.
+- **None** when no card has been played to the trick, while a resolved trick is held
+  (`resolving`; `last_trick.winner` says who won), once the attempt has a result, and outside
+  play.
+- **Derived.** It is not in the snapshot; the snapshot format is unchanged.
+- **Not a hint.** It says who is ahead now. It says nothing about any card still in a hand,
+  including the viewer's own, and `legal_cards` and `play_reason` are what they were.
+
+Tests: `test_the_seat_leading_an_unfinished_trick_is_what_an_independent_count_gives_in_many_games`
+(every partial trick of 12 seeded games at each of 2 to 5 players, Tonoja and submarines among
+them, against a count written in the test; the same for every viewer; the resolved winner too),
+`test_the_leading_seat_is_given_by_the_function_that_resolves_the_trick`,
+`test_no_seat_is_named_as_leading_when_no_unfinished_trick_is_on_the_table`,
+`test_the_leading_seat_depends_on_no_hand_and_no_covered_card` (the privacy differential: every
+hand and covered card a viewer may not see is changed, with and without currents),
+`test_the_leading_seat_is_derived_and_never_stored`.
 
 ## Semantic events, failure causality and the resolving phase
 

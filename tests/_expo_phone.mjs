@@ -187,7 +187,79 @@ export async function withLongText(pg, check) {
       game: {...g, tasks, me: g.me ? {...g.me, hand: fill(g.me.hand)} : g.me,
              tonoja: g.tonoja.length ? fill(g.tonoja.filter(Boolean)) : g.tonoja}});
   }, real);
-  try { await check(); } finally { await pg.evaluate(st => render(st), real); }
+  try { await criticalTextWhole(pg, "at its fullest"); await check(); } finally { await pg.evaluate(st => render(st), real); }
+}
+
+/* The sentences a player must be able to read are read whole: the status line (the one live
+   instruction), a pending decision's question and who it waits for, the radio's sentence and
+   rule, and the reason the hand cannot be played. None is cut by an ellipsis, a line clamp, its
+   own box, a scrolled panel or the edge of the screen. */
+export async function criticalTextWhole(pg, label) {
+  const cut = await pg.evaluate(() => {
+    const out = [], app = document.getElementById("app").getBoundingClientRect();
+    const sel = ["#status", "#status-now", "#hand-reason", ".decision > p", ".decision .why", ".radio-ask", ".radio-console .why"];
+    for (const s of sel) for (const n of document.querySelectorAll(s)) {
+      if (!n.textContent.trim() || n.offsetParent === null || n.closest("[hidden]")) continue;
+      const b = n.getBoundingClientRect(), why = [];
+      if (n.scrollWidth > n.clientWidth + 1 && getComputedStyle(n).display !== "inline") why.push("wider than its box");
+      if (n.scrollHeight > n.clientHeight + 1 && getComputedStyle(n).display !== "inline") why.push("taller than its box");
+      if (b.width < 1 || b.height < 1) why.push("no size");
+      if (b.left < app.left - .5 || b.right > app.right + .5 || b.top < -.5 || b.bottom > innerHeight + .5) why.push("off the screen");
+      for (let p = n.parentElement; p && p.id !== "app"; p = p.parentElement) {
+        const cs = getComputedStyle(p);
+        if (![cs.overflowX, cs.overflowY].some(v => v !== "visible")) continue;
+        const pb = p.getBoundingClientRect();
+        if (b.top < pb.top - 1 || b.bottom > pb.bottom + 1 || b.left < pb.left - 1 || b.right > pb.right + 1) why.push(`outside ${p.id || p.className}`);
+      }
+      if (why.length) out.push(`${s} "${n.textContent.trim().slice(0, 60)}": ${why.join(", ")}`);
+    }
+    return {out, status: document.getElementById("status-now").textContent};
+  });
+  const vp = pg.viewport();
+  assert.ok(cut.status.length > 0, `${label}: the status line says something`);
+  assert.deepEqual(cut.out, [], `${label} at ${vp.width}x${vp.height}: every critical sentence is whole (status: "${cut.status}")`);
+}
+
+/* The longest status sentences the page can produce, with the longest names the lobby allows, on
+   every phone size: each is drawn from a copy of the real state with one thing changed, and each
+   is whole, with everything else still on one screen. Returns the sentences that were checked. */
+export async function longestStatusesFit(pg, label, shots = null) {
+  const real = await pg.evaluate(() => ST), size = pg.viewport(), said = new Set();
+  const cases = await pg.evaluate(st => {
+    const g = st.game, me = g.me && g.me.seat, others = g.seats.filter(s => s !== "tonoja" && s !== me);
+    const idle = {proposal: null, away: [], result: null, resolving: null};
+    const ask = (payload, more = {}) => ({...idle, proposal: {payload, votes: [], recipient: null, ...more}});
+    const stuck = reason => g.me ? {me: {...g.me, legal_cards: [], play_reason: reason}} : {};
+    const list = [
+      ["one seat away", {...idle, away: others.slice(0, 1), ...stuck("Waiting for the crew to reconnect.")}],
+      ["every other seat away", {...idle, away: others, ...stuck("Waiting for the crew to reconnect.")}],
+      ["distress asked", ask({kind: "distress", direction: "right"})],
+      ["all tasks to one seat asked", ask({kind: "assign", task: "all", owner: others[0]})],
+      ["next mission asked", ask({kind: "next", mission: 32})],
+      ["waiting for one answer", ask({kind: "distress", direction: "left"}, {votes: g.seats.filter(s => s !== "tonoja" && s !== others[0])})],
+      ["waiting for every other answer", ask({kind: "distress", direction: "left"}, {votes: me ? [me] : []})],
+      ["a captain who decides", {...idle, stage: "allocation", trick: [], selector: g.captain, mission: {...g.mission, allocation: "captain_one"}, ...stuck("Finish mission preparation before playing.")}],
+      ["tasks assigned", {...idle, stage: "assistance", trick: [], begin_at: null, ...stuck("Finish mission preparation before playing.")}],
+      ["another seat to play", {...idle, stage: "in_trick", turn: others[0], ...stuck("It is another crew member’s turn.")}],
+      ["a held trick after the deadline", {...idle, stage: "before_trick", trick: [], expiry: 1, resolving: g.last_trick ? {trick: g.last_trick.index, until: 2} : null, ...stuck("The trick is being resolved.")}],
+    ];
+    if (me && me !== g.captain) list.push(["the captain's offer", ask({kind: "assign", task: "all", owner: me}, {recipient: me})]);
+    return list.map(([what, patch]) => [what, {...st, players: st.players.map(p => ({...p, name: "WWWWWWWWWWWWWW"})), game: {...g, ...patch}}]);
+  }, real);
+  try {
+    for (const phone of PHONES) {
+      await pg.setViewport({...size, ...phone});
+      for (const [what, st] of cases) {
+        await pg.evaluate(s => render(s), st);
+        const where = `${label}: ${what}`;
+        await criticalTextWhole(pg, where);
+        await oneViewport(pg, where);
+        said.add(await pg.evaluate(() => document.getElementById("status-now").textContent));
+        if (shots) await pg.screenshot({path: `${shots}/status-${phone.width}x${phone.height}-${what.replace(/[^a-z]+/gi, "-")}.png`});
+      }
+    }
+  } finally { await pg.setViewport(size); await pg.evaluate(st => render(st), real); }
+  return [...said];
 }
 
 /* Every control a thumb can reach is a real target: at least 44 px tall and 40 px wide (a hand
@@ -268,11 +340,26 @@ export async function crewLegible(pg, label, host = null) {
 export async function trickShows(pg, label) {
   const m = await pg.evaluate(() => {
     const g = ST.game;
-    return {trick: g.trick, last: g.last_trick, leader: g.leader, seats: g.seats, names: Object.fromEntries(g.seats.map(s => [s, name(s)])),
+    return {leading: g.trick_leading, sent: "trick_leading" in g, result: Boolean(g.result), live: document.getElementById("status").textContent,
+      handMarks: document.querySelectorAll('#hand .ahead, #hand .slot-ahead, #hand [class*="winning"], #hand [class*="leading"]').length,
+      trick: g.trick, last: g.last_trick, leader: g.leader, seats: g.seats, names: Object.fromEntries(g.seats.map(s => [s, name(s)])),
       caption: document.querySelector(".stage-caption strong")?.textContent || "", resolving: Boolean(g.resolving),
       slots: [...document.querySelectorAll("#trick .slot")].map(n => ({seat: n.dataset.seat, order: n.querySelector(".slot-order")?.textContent, name: n.querySelector(".slot-name")?.textContent,
-        card: n.querySelector(".card")?.dataset.card || null, tag: n.querySelector(".slot-tag")?.textContent || "", winner: n.classList.contains("winner")}))};
+        card: n.querySelector(".card")?.dataset.card || null, tag: n.querySelector(".slot-tag")?.textContent || "", winner: n.classList.contains("winner"),
+        ahead: (a => { if (!a) return null; const b = a.getBoundingClientRect(), box = n.getBoundingClientRect(), t = n.querySelector(".slot-tag")?.getBoundingClientRect();
+          return {text: a.textContent, size: parseFloat(getComputedStyle(a).fontSize), inside: b.left >= box.left && b.right <= box.right + .5 && b.top >= box.top && b.bottom <= box.bottom + .5 && a.scrollWidth <= a.clientWidth + 1,
+            clear: !t || b.bottom <= t.top + .5 || b.top >= t.bottom - .5 || b.right <= t.left + .5 || b.left >= t.right - .5, outlined: n.classList.contains("ahead")}; })(n.querySelector(".slot-ahead"))}))};
   });
+  // The seat winning an unfinished trick is the server's field, drawn as a word on that seat's
+  // place and on no other, and said once in the live region. Nothing in the hand is marked by it.
+  assert.ok(m.sent, `${label}: the view carries trick_leading`);
+  assert.equal(m.leading !== null, m.trick.length > 0 && !m.result && !m.resolving, `${label}: a seat is leading exactly while an unfinished trick is on the table`);
+  assert.deepEqual(m.slots.filter(s => s.ahead).map(s => s.seat), m.leading && m.slots.length ? [m.leading] : [], `${label}: the WINNING tag is on the seat the view names and on no other`);
+  for (const s of m.slots.filter(s => s.ahead)) assert.deepEqual(s.ahead, {text: "WINNING", size: s.ahead.size, inside: true, clear: true, outlined: true}, `${label}: the WINNING tag is a readable word inside its place, clear of the LEAD tag`);
+  for (const s of m.slots.filter(s => s.ahead)) assert.ok(s.ahead.size >= 8);
+  assert.equal(/ is winning the trick\./.test(m.live), m.leading !== null, `${label}: the live region says who is winning only while someone is`);
+  if (m.leading) assert.ok(m.live.includes(`${m.names[m.leading]} is winning the trick.`), `${label}: and names the seat the view names`);
+  assert.equal(m.handMarks, 0, `${label}: nothing in the hand is marked by who is winning`);
   if (!m.slots.length) return null;
   assert.equal(m.slots.length, m.seats.length, `${label}: every seat has a place in the trick`);
   assert.deepEqual(m.slots.map(s => s.order), m.slots.map((_, i) => String(i + 1)), `${label}: the play order is numbered`);

@@ -282,6 +282,11 @@
       if (tier === "off") return;
       const high = tier === "high", still = tier === "low";
       moving = high;
+      // A deadline that passed while a trick was held: a restored or late view brings that
+      // trick's resolution and the failure in one batch. The failure is not about the trick, so
+      // the trick's beat is not played over the result; the board already shows both.
+      const timedOut = Boolean(g.result && g.cause && g.cause.kind === "deadline");
+      if (timedOut && cues.some(c => c.type === "TRICK_RESOLVED")) { settled("trick-superseded"); cues = cues.filter(c => c.type !== "TRICK_RESOLVED" && c.type !== "CARD_PLAYED" && !c.type.startsWith("OBJECTIVE_")); }
       const resolved = cues.find(c => c.type === "TRICK_RESOLVED");
       const last = resolved ? cues.filter(c => c.type === "CARD_PLAYED").pop() : null;
       let hold = 0;
