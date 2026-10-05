@@ -1063,17 +1063,36 @@ Open owner questions (nothing below is decided):
 3. **An unconfirmed table.** Built: it waits for ever, with no default start and no timer; the
    Party Host can end EXPO from the Party. Whether it should ever start by itself on mission 1
    is the packet's open point and was not invented here.
-4. **An away seat during setup** blocks it, like Begin (AVR-240 owns recovery).
-5. **A Party that names no host, after the transition flag is turned off,** cannot set a table
-   up at all, exactly as it could not Begin. Turning the flag off is its own change.
-6. **The timed setting** is offered with any mission, as in the lobby, and only changes
-   mission 16. Whether the Party screen should hide it elsewhere is a presentation question.
+
+Consequences of rules already in force, not questions: an away seat blocks the setup as it
+blocks Begin (AVR-240 owns recovery); a Party that names no host cannot set a table up once
+`HOST_CLAIM_TRANSITION` is off, exactly as it could not Begin; the timed setting is offered with
+any mission, as in the lobby, and changes mission 16 only.
+
+**Merging with AVR-246 and AVR-267.** Both branches were written against a table that is always
+dealt. The textual conflicts are keep-both. These are not conflicts and must be fixed by hand
+when either is merged with this one (confirmed by the independent review of 6903703):
+
+- `Engine._setup_view` must carry the keys their adapter and client read from every view:
+  `resolving: None` and `events: []`. AVR-246's `ExpoSession.game_state` reads
+  `view['resolving']` and raises without it.
+- `Engine._emit` reads `s['mission']['id']`, and `Engine.presence()` reads `len(s['history'])`
+  and then emits `PLAYER_RECONNECTED`. In `setup` there is no mission and no history: both must
+  tolerate that (record the presence change, emit nothing), or a seat that reconnects during
+  setup raises.
+- `drawSetup` writes `#status.textContent`. AVR-267 splits that line into two spans and writes
+  it through `say()`. The merge is textually clean and breaks every later draw, because the
+  spans are gone: `drawSetup` must call `say(text)` instead.
+
+`test_setup_waits_for_an_away_seat_and_survives_reloads` and the other socket-level setup
+tests reach the first two; only a browser reaches the third.
 
 | Check | Result (Windows 11) |
 |---|---|
 | `pytest -q tests/test_expo_*.py tests/test_expo.py` | 1111 passed, 2 skipped, 2 xfailed |
 | `tests/test_expo_authority.py` | 87 passed |
+| Independent review at 6903703, as reported to the implementer | pass with findings, none Important; the findings in the client (the reason a mission is unavailable, a choice kept from an earlier table, focus after the deal, the wording of a timed setup) were fixed afterwards |
 | `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check, `node --check games/expo/web/client.js` | OK |
 | `git diff --stat origin/main -- core provider deploy tests/vectors web` | empty |
-| `tests/playtest_expo_party.mjs`, `tests/playtest_expo.mjs` | **not run** by the implementer (no browser in that session); the Party playtest was edited to pass through setup |
+| `tests/playtest_expo_party.mjs`, `tests/playtest_expo.mjs` | **not run** by the implementer (no browser in that session). Run by the orchestrator at 6903703, as reported: standalone 2 and 3 humans, Party 3, 2 with Tonoja, 5, a watching host and an older Party, PASS each, the setup control in the first view on every phone. The client fixes made after that have not been run in a browser |
 | A real phone | not run |

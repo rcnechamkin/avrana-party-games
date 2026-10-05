@@ -81,7 +81,7 @@ contract is unchanged. It is one decision, checked by the lobby's own rules, com
 whoever moves that table on: the Party Host, or the whole crew under a Party that does not name
 its host. Mission 1, untimed, Tonoja after both players is offered first, and confirming it
 deals exactly the table a Party round opened on before. No timer starts an unconfirmed table.
-Not yet played in a browser or on a phone.
+Played by script in desktop Chrome (the Party playtest); not on a real phone.
 
 **Still open.** Recovery from an away seat (AVR-240; the Party Host can always end EXPO):
 see the AVR-275 report in RECONCILIATION. Who confirms a Party round's setup is an owner
