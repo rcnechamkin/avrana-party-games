@@ -63,6 +63,8 @@ class GameBinding:
         self.standalone = standalone
         self.party = party            # party_protocol.GameSide, or None: standalone only
         self.party_url = party_url    # where `ended` goes (party_session.party_url), or None
+        self.ask_host = party_session.ask_host    # (party_url, question) -> answer or None
+        self._no_host_claim_sid = None            # the session already warned about (see hello)
         self.party_roster: dict[str, dict] = {}   # game token -> roster entry (players only)
         # the party session this room belongs to, from launch until it is released. It outlives
         # self.party.sid (admission) through the results screen of a completed game.
@@ -364,36 +366,74 @@ class GameBinding:
             # this party says who its host is (avrana-party ADR 0006, amendment 2026-10-04): the
             # game may give the host things to do. Who that is, is asked again with every action.
             self.session.party_host = True
+        elif self._no_host_claim_sid != self.party.sid:
+            # transitional (a party older than the claim): games fall back to their own rules
+            # for what a host would do. Said once per session, so it is never a silent mode.
+            self._no_host_claim_sid = self.party.sid
+            event(self.slug, "party_host_claim_missing")
+            log.warning("[%s] this Party's tickets do not say who its host is: host actions are "
+                        "off for this session (update Party; transitional, AVR-275)", self.slug)
         entry = self.party_roster.get(who["token"])
         if who["role"] != "player" or entry is None:
             return None, None, who["role"] == "spectator", who["participant"]
         return who["token"], entry["name"], False, who["participant"]
 
-    async def _party_host_action(self, ws, participant, msg):
+    async def _party_host_confirm(self, ws, participant, msg):
         """{"t": "host", "ticket": <a fresh ticket>, "action": {...}}: something only the Party
-        Host may do in this game (AVR-252). Under the lock. The party's word is that one ticket:
-        it must be valid for the running session, unspent, minted for this connection's own
-        participant, and say `host: true`. Nothing about the host is kept here, so the next
-        action is asked again and succession needs no message. A player or a Party spectator may
-        be the host; an anonymous watcher never is. What the action means is the game's
-        (GameSession.host_action). The ticket is never logged."""
-        async def refuse(text, code="host"):
-            await self._send(ws, {"type": "fx", "kind": "invalid", "code": code, "msg": text})
-        action = msg.get("action")
-        if self.party is None or participant is None or not isinstance(action, dict)                 or self.party_room_sid is None or self.party.sid != self.party_room_sid:
-            await refuse("Only the Party Host can do that.")
-            return
+        Host may do in this game (AVR-252, AVR-275). Two things must both hold, and neither is
+        kept here afterwards:
+
+          * the ticket: valid for the running session, unspent, minted for this connection's own
+            participant, and saying `host: true`;
+          * the party's answer, asked now, server to server (GameSide.ask_host): this participant
+            is the host at this moment. A ticket fetched before the role moved fails here, at
+            once. No answer is a refusal.
+
+        Off the lock (it waits for the party). Returns the session id that was confirmed for, or
+        None after telling the phone why not. A player or a Party spectator may be the host; an
+        anonymous watcher never is. Neither the ticket nor the question is logged."""
+        async def refuse(text, reason):
+            event(self.slug, "host_refused", reason=reason)
+            await self._send(ws, {"type": "fx", "kind": "invalid", "code": "host", "msg": text})
+        sid = self.party.sid if self.party is not None else None
+        if sid is None or participant is None or not isinstance(msg.get("action"), dict) \
+                or sid != self.party_room_sid:
+            await refuse("Only the Party Host can do that.", "no_session")
+            return None
         try:
             who = self.party.present(msg.get("ticket"))
         except party_protocol.Invalid as e:
-            event(self.slug, "host_refused", reason=str(e))
-            await refuse("The Party could not confirm its Host. Try again.")
-            return
+            await refuse("The Party could not confirm its Host. Try again.", str(e))
+            return None
         if who["participant"] != participant or who["host"] is not True:
-            event(self.slug, "host_refused", reason="not_host")
-            await refuse("Only the Party Host can do that.")
+            await refuse("Only the Party Host can do that.", "not_host")
+            return None
+        try:
+            question = self.party.ask_host(participant)
+            answer = await asyncio.get_running_loop().run_in_executor(
+                None, self.ask_host, self.party_url, question)
+            if answer is None:
+                await refuse("The Party could not confirm its Host. Try again.", "no_answer")
+                return None
+            is_host = self.party.host_is(question, answer)
+        except party_protocol.Invalid as e:
+            await refuse("The Party could not confirm its Host. Try again.", str(e))
+            return None
+        if not is_host:
+            await refuse("Only the Party Host can do that.", "no_longer_host")
+            return None
+        return sid
+
+    async def _party_host_action(self, ws, sid, msg):
+        """Apply a host action the party just confirmed for session `sid`. Under the lock. What
+        the action means, and what the game's own rules still require first, is the game's
+        (GameSession.host_action)."""
+        async def refuse(text, code="host"):
+            await self._send(ws, {"type": "fx", "kind": "invalid", "code": code, "msg": text})
+        if self.party is None or self.party.sid != sid or self.party_room_sid != sid:
+            await refuse("Only the Party Host can do that.")      # the round ended meanwhile
             return
-        self.session.party_host = True
+        action = msg["action"]
         event(self.slug, "host_action", t=action.get("t") if isinstance(action.get("t"), str) else None)
         try:
             fxs = self.session.host_action(action)
@@ -522,14 +562,22 @@ class GameBinding:
                                           "now": int(time.time() * 1000)})
                     continue
                 if msg.get("t") == "host":
-                    # the Party Host's own actions: by ticket, from a seat or from the audience
+                    # the Party Host's own actions: by ticket and the party's word, from a seat
+                    # or from the audience
+                    try:
+                        confirmed = await self._party_host_confirm(ws, participant, msg)
+                    except Exception:
+                        log.exception("[%s] host confirm error", self.slug)
+                        confirmed = None
+                    if confirmed is None:
+                        continue
                     async with self.lock:
                         if room is not None and self.session is not room:
                             event(self.slug, "stale_message_dropped")
                             await self._close_all([ws])
                             break
                         try:
-                            await self._party_host_action(ws, participant, msg)
+                            await self._party_host_action(ws, confirmed, msg)
                         except Exception:
                             log.exception("[%s] host action error", self.slug)
                             self._sync_timer()

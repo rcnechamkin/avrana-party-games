@@ -85,6 +85,37 @@
         "outcome": "completed"
       },
       "token": "aps0.eyJhdWQiOiJwYXJ0eSIsImV4cCI6MjAwMDAwMDAzMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJibHVmZiIsIm5vbmNlIjoiY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjIiwib3V0Y29tZSI6ImNvbXBsZXRlZCIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJlbmRlZCIsInYiOiJhdnJhbmEucGFydHktc2Vzc2lvbi92MCJ9.LiYReIkg0tzKQcIr_qZQuW-WEnHODHcO_bYkLb3RvgY"
+    },
+    {
+      "name": "host",
+      "payload": {
+        "v": "avrana.party-session/v0",
+        "sid": "session-11111111111111111111111111111111",
+        "iat": 2000000000,
+        "exp": 2000000030,
+        "pid": "participant-22222222222222222222222222222222",
+        "nonce": "dddddddddddddddddddddddd",
+        "typ": "host",
+        "iss": "expo",
+        "aud": "party"
+      },
+      "token": "aps0.eyJhdWQiOiJwYXJ0eSIsImV4cCI6MjAwMDAwMDAzMCwiaWF0IjoyMDAwMDAwMDAwLCJpc3MiOiJleHBvIiwibm9uY2UiOiJkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGQiLCJwaWQiOiJwYXJ0aWNpcGFudC0yMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMiIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJob3N0IiwidiI6ImF2cmFuYS5wYXJ0eS1zZXNzaW9uL3YwIn0.9SbcLd2MQX3hoDtvDBn6082usadxm9xH2Pi09GhqP5M"
+    },
+    {
+      "name": "host_is",
+      "payload": {
+        "v": "avrana.party-session/v0",
+        "sid": "session-11111111111111111111111111111111",
+        "iat": 2000000000,
+        "exp": 2000000030,
+        "pid": "participant-22222222222222222222222222222222",
+        "nonce": "dddddddddddddddddddddddd",
+        "typ": "host_is",
+        "iss": "party",
+        "aud": "expo",
+        "host": true
+      },
+      "token": "aps0.eyJhdWQiOiJleHBvIiwiZXhwIjoyMDAwMDAwMDMwLCJob3N0Ijp0cnVlLCJpYXQiOjIwMDAwMDAwMDAsImlzcyI6InBhcnR5Iiwibm9uY2UiOiJkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGQiLCJwaWQiOiJwYXJ0aWNpcGFudC0yMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMiIsInNpZCI6InNlc3Npb24tMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJ0eXAiOiJob3N0X2lzIiwidiI6ImF2cmFuYS5wYXJ0eS1zZXNzaW9uL3YwIn0.NZECZXpLDCzSo0niXx8jKrufyqB4NcuB6SpqXaKhP-A"
     }
   ],
   "game_token": {

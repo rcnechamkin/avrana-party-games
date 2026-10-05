@@ -849,9 +849,10 @@ The phone client was rebuilt around one viewport, and a Party round got its two 
 Changed: `games/expo/web/` (all three files), `games/expo/game.py`, `games/expo/engine.py`
 (one added command, no rule changed), `core/net.py`, `core/session.py`, `web/hubnet.js`,
 `core/party_protocol.py` and its vectors (re-vendored), the provider contract digests, two
-playtests, `tests/test_expo_authority.py` (new) and these documents. Needs avrana-party's ticket
-host claim (ADR 0006, amendment 2026-10-04) to be deployed for the host rules to apply; without
-it a Party round behaves as before (crew votes), except that no seat ends it from inside.
+playtests, `tests/test_expo_authority.py` (new) and these documents. Needs avrana-party's host
+claim and host question (ADR 0006, amendment 2026-10-04) to be deployed for the host rules to
+apply; without them a Party round falls back to crew votes, transitionally and visibly, except
+that no seat ends it from inside.
 
 - **One viewport (AVR-275).** The page no longer scrolls. From top to bottom: the bar (table
   menu, title, help), the status line, the mission and trick counter, two objective lines, the
@@ -881,27 +882,75 @@ it a Party round behaves as before (crew votes), except that no seat ends it fro
 - **Card play changed shape.** A tap chooses a card and the dock's button plays it. This is a
   presentation choice against mis-taps on 44 px cards, not a rule: no legal card is warned about.
 
-Open after this change, for the owner:
+**Two merges, not one.** The work above merged as avrana-party-games#44 (at 1d2e602) before
+the owner's decisions below were built. Everything from here to the results table is the
+follow-up PR on top of `main`. Between the two merges `main` vendors a session protocol
+(avrana-party 0892729) that is on neither Party's `main` nor its final branch, so the paired
+contract check fails for `main` until avrana-party#75 and the follow-up are both merged.
+Nothing is deployed from that interval.
 
-- **Distress before Begin.** The crew's opportunity is that a distress request blocks the host's
-  Begin until answered. Nothing makes the host wait for one. If that is too thin, the choices are
-  a short hold before Begin unlocks, or a "ready" from each seat (which is a vote by another
-  name). Not designed here.
-- **An away seat still stops Begin, Retry and Next** (AVR-240). Only the Party's end works.
-- **A host's unspent ticket** stays valid for its 120 s after the role moves. A page fetches one
-  only to act, so this needs a deliberate ex-host.
+Owner decisions of 2026-10-04 on what that left open, and what was built for each:
+
+- **The host claim is accepted; a former host must have nothing to spend.** Built: the game
+  server asks the Party at every host action whether that participant is its host now
+  (avrana-party ADR 0006, amendment 2026-10-04). Tickets kept from before a succession still
+  say `host: true` and are refused at once. Party Core stays the only place the host exists.
+- **Distress gets a protected opportunity, not a vote.** Built: the host's Begin is closed for
+  4 s after the tasks are settled where distress is available; a pending request keeps it
+  closed; nobody confirms anything to start ([ACTIONS](ACTIONS.md#crew-decisions)).
+- **An away seat keeps blocking Begin, Retry and Next** this sprint (AVR-240). Unchanged. The
+  Party Host can always end EXPO from the Party; tested with a seat away.
+
+Hardening pass, same day:
+
+- **Authority words.** "Party Host" is never shortened to "Host" on the page and never used for
+  what the crew or the Captain decides. The dock names its two zones "Party Host (table
+  control)" and "Captain" or "Crew member (your role in the game)"; the table menu lists Party
+  Host, Crew and Captain with what each decides. The host's badge needs a seat whose name is
+  the host's alone (the Party gives the page a name, not a seat).
+- **Host capability.** Begin, Retry and Next only; everything else through that message is
+  refused (`test_the_host_gets_begin_retry_and_next_and_nothing_else`).
+- **Reloads.** Tested in the browser during a pending decision, a partly played trick and a
+  result, for the host and for a crew member, and for both phones after a succession. The page
+  now reads the Party's view again on its own tick, because after a reload that view can arrive
+  after the table's state and not every path announces it.
+- **iOS viewport.** The body is pinned (`position:fixed; inset:0`, `overscroll-behavior:none`)
+  because iOS Safari scrolls a body that is only `overflow:hidden`; the app is `100dvh` with a
+  `100vh` fallback, capped by the body; left and right safe-area insets are honoured as well as
+  top and bottom; inner scrollers contain their overscroll; the board under a sheet or a result
+  is `inert`. Inspected and tested in desktop Chrome with touch emulation. **Not verified on an
+  iPhone.**
+- **Fullest board.** Asserted with 14-character names, a long sentence on eight tasks and a
+  14-card hand, at every phone size.
+- **Touch targets.** Every control is at least 44 px tall and 40 px wide at every tested size
+  (a hand of seven shares 360 px). Short screens take the room from the trick.
+- **Focus.** A sheet and the result hold the keyboard and screen reader (inert board, Tab
+  cycle); closing gives focus back to what opened it; putting the result away moves focus to
+  the one dock button that brings it back, which says what it leads to.
+- **No host claim.** Marked transitional in the view, the page and the server log.
+
+Still open:
+
+- **Recovery from an away seat** (AVR-240).
 - **Mission, timed mode and Tonoja's seat** cannot be chosen in a Party round (AVR-245). The
   host's Next is the only way to another mission.
+- **Causality in the result** (AVR-246) and **the service worker** (AVR-274).
+- **Turning `HOST_CLAIM_TRANSITION` off.** Not part of the first deployment. Order agreed with
+  the owner: avrana-party#75 merges, then this repository's hardening PR; both are deployed
+  together; a real-phone test on the appliance confirms the Party Host claim works in
+  production; only then a small follow-up sets the flag False. Until then a rollback of either
+  service leaves tables playable.
 - **Not AVR-267.** No art, animation, audio or event-driven presentation was added.
 
 | Check | Result (Windows 11) |
 |---|---|
-| `pytest -q` (whole repository) | 2555 passed, 4 skipped, 2 xfailed |
-| `tests/test_expo_authority.py` | 32 passed |
+| `pytest -q` (whole repository) | 2565 passed, 4 skipped, 2 xfailed |
+| `tests/test_expo_authority.py` | 42 passed |
 | `node tests/hubnet_party_ticket_test.mjs` | 46 of 46 |
 | `node tests/playtest_expo.mjs`, 2, 3, 4 and 5 humans | PASS each, five phone sizes from 360 x 600 to 412 x 915 |
 | `node tests/playtest_expo_party.mjs`, 2, 3, 4 and 5 seated | PASS each |
 | `node tests/playtest_expo_party.mjs`, 3 seated and a watching host | PASS |
+| `EXPO_PARTY=old node tests/playtest_expo_party.mjs` (no host claim) | PASS |
 | `ops/check_docs.py`, `ops/check_static.sh`, `tests/test_no_private_data.py`, catalog export check | OK |
 | Party `tools/contract_check.py --games` against this branch | compatible |
 | A real phone | not run |
