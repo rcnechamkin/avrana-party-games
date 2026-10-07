@@ -1,10 +1,12 @@
-"""Characterization of SpadesSession's match rules and private view (AVR-312): session level, no sockets.
+"""Characterization of SpadesSession's match rules, turn order, clocks and private view (AVR-312):
+session level, no sockets.
 
 Hub-coupled on purpose. It drives the fork's own GameSession (join, ready, start, tick, the `g`
 dict, _do_bid / _do_play, state_for), so it pins what the donor does today and gives a native
 re-home something to be compared with. It is NOT a portable rules test (tests/test_spades_rules.py
 is that); expect to adapt it when the session class changes. Seeds are fixed, so every table, deal
-and bot delay below is the same on every run.
+and bot delay below is the same on every run; a test that reads a deadline freezes the session's
+clocks (the `clock` fixture), so no host is too slow for it.
 
 The last section pins today's gaps on purpose. They are the facts that
 docs/findings/2026-10-07-spades-native-readiness.md relies on, not behaviour to keep: when a native
@@ -20,6 +22,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from core import session as base_session
+from games.spades import game as spades_game
 from games.spades import rules
 from games.spades.bots import RookieBot, StandardBot
 from games.spades.game import SpadesSession
@@ -27,7 +31,34 @@ from games.spades.game import SpadesSession
 
 # ---------------- tables and moves ----------------
 
-def dealt(humans=2, seed=11, target=500, difficulty="standard"):
+class Clock:
+    """A frozen stand-in for the `time` module as core.session and games.spades.game read it: the
+    wall clock a deadline is armed on and the monotonic clock its wait is measured on. A test moves
+    both by hand, so a deadline is read exactly and a slow host cannot shift it."""
+
+    def __init__(self):
+        self.wall, self.mono = 1_000_000.0, 5_000.0
+
+    def time(self):
+        return self.wall
+
+    def monotonic(self):
+        return self.mono
+
+    def advance(self, seconds):
+        self.wall += seconds
+        self.mono += seconds
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    c = Clock()
+    monkeypatch.setattr(base_session, "time", c)          # _bump, remaining, state_for, Player.joined_at
+    monkeypatch.setattr(spades_game, "time", c)           # _arm_turn, _end_hand
+    return c
+
+
+def dealt(humans=2, seed=11, target=500, difficulty="standard", turn_seconds=30):
     """A dealt table through the fork's own lobby: `humans` ready players join in order, the
     start's countdown is run out, hand 1 is in bidding. Returns (session, human tokens, the fx the
     deal returned)."""
@@ -40,6 +71,7 @@ def dealt(humans=2, seed=11, target=500, difficulty="standard"):
         toks.append(tok)
     s.settings["target"] = target
     s.settings["difficulty"] = difficulty
+    s.settings["turn_seconds"] = turn_seconds
     s.start(toks[0])
     fx = s.tick(s.gen)
     assert s.phase == "bidding" and s.g["hand_no"] == 1
@@ -213,6 +245,45 @@ def test_bags_carried_into_a_hand_are_scored_and_the_new_count_is_carried_out():
         assert loaded["scores"][team]["bags"] == 9 + over - 10, team
 
 
+def test_bidding_and_card_play_go_clockwise_starting_left_of_the_dealer():
+    s, _ = table(seed=14)
+    g = s.g
+    first = (g["dealer"] + 1) % 4
+    bidders = []
+    for _ in range(4):
+        bidders.append(g["turn"])
+        s._do_bid(g["turn"], 3)
+    assert bidders == [(first + i) % 4 for i in range(4)] and bidders[-1] == g["dealer"]   # the dealer bids last
+    assert s.phase == "playing" and g["turn"] == first    # and the opening lead is left of the dealer too
+    tricks = 0
+    while s.phase == "playing":
+        lead, order = g["turn"], []
+        for _ in range(4):
+            order.append(g["turn"])
+            play_card(s)
+        assert order == [(lead + i) % 4 for i in range(4)], (tricks, order)   # a trick goes round the table
+        tricks += 1
+    assert tricks == 13
+
+
+def test_the_winner_of_a_trick_leads_the_next_one():
+    s, _ = table(seed=14)
+    bid_all(s)
+    g = s.g
+    leaders, winners = [], []
+    while s.phase == "playing":
+        lead = g["turn"]
+        assert not winners or lead == winners[-1], (len(winners), "the last trick's winner leads this one")
+        leaders.append(lead)
+        fx = []
+        for _ in range(4):
+            fx = play_card(s)
+        winners.append(rules.trick_winner(g["last_trick"]["cards"]))
+        assert g["last_trick"]["winner"] == winners[-1]
+        assert [f["seat"] for f in fx if f["kind"] == "trick_won"] == [winners[-1]]
+    assert len(leaders) == 13 and len(set(leaders)) > 1   # the lead really changed hands in this deal
+
+
 # ---------------- the private view: hands, every viewer, every phase ----------------
 
 VIEW_KEYS = {"kind", "stage", "seats", "my_seat", "hand", "turn", "trick", "last_trick",
@@ -359,12 +430,13 @@ def test_default_settings_and_what_validate_settings_accepts():
     assert s.validate_settings({"seating": "teams", "difficulty": "hard"}) == {}
 
 
+@pytest.mark.usefixtures("clock")
 def test_bots_and_absent_humans_play_after_a_short_pause_and_the_autopilot_is_always_standard():
     s, toks = table(humans=2, seed=3, difficulty="rookie")
     bots = [s.players[t] for t in s.g["seats"] if s.players[t].is_bot]
     assert len(bots) == 2 and all(isinstance(s.g["bots"][b.token], RookieBot) for b in bots)
     assert isinstance(s.g["autopilot"], StandardBot)      # timeouts and absent humans: never the rookie tier
-    assert 29.0 < s.remaining() <= 30.0                   # every bid and card re-arms the 30 s turn clock
+    assert s.remaining() == 30.0                          # the deal arms the default 30 s clock; each re-arm is pinned below
     bot_seat = s.g["seats"].index(bots[0].token)
     s.g["turn"] = s.g["seats"].index(toks[0])
     assert s.next_bot_action() is None                    # a connected human's turn is theirs
@@ -380,6 +452,36 @@ def test_bots_and_absent_humans_play_after_a_short_pause_and_the_autopilot_is_al
     s.g["turn"] = s.g["seats"].index(toks[0])
     assert s.next_bot_action()[1] == toks[0] and s.state_for(toks[1])["game"]["seats"][0]["auto"]
     assert s.run_bot("some-other-token") == []            # a stale bot task acts for nobody else
+
+
+def test_every_bid_and_every_card_restarts_the_turn_clock_from_the_setting(clock):
+    s, _ = table(seed=14, turn_seconds=20)                # not the 30 s default, so a constant would show
+    assert s.remaining() == 20.0 and s.deadline == clock.time() + 20      # the deal arms it
+    for n in range(4):
+        clock.advance(12)                                 # the seat on turn takes its time
+        s._do_bid(s.g["turn"], 3)
+        assert s.remaining() == 20.0, ("bid", n)          # and its bid starts the clock again for the next seat
+    cards = 0
+    while s.phase == "playing":
+        clock.advance(12)
+        play_card(s)
+        cards += 1
+        if s.phase == "playing":                          # mid-trick cards and the card that completes a trick
+            assert s.remaining() == 20.0, ("card", cards)
+    assert cards == 52                                    # the last card starts the recap instead (next test)
+
+
+def test_the_hand_recap_lasts_fourteen_seconds_and_then_the_next_hand_is_dealt(clock):
+    s, toks = table(seed=14)
+    bid_all(s)
+    play_hand(s)
+    assert s.remaining() == 14.0 and s.deadline == clock.time() + 14
+    shown = s.state_for(toks[0])                          # a browser counts down to the same moment
+    assert shown["deadline"] - shown["now"] == 14_000
+    clock.advance(14)
+    assert s.remaining() == 0.0
+    s.tick(s.gen)
+    assert (s.phase, s.g["hand_no"], s.remaining()) == ("bidding", 2, 30.0)   # the deal starts the turn clock again
 
 
 # ---------------- today's gaps, pinned on purpose (see the readiness packet) ----------------
