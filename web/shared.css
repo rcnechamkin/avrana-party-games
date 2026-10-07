@@ -250,10 +250,13 @@ input::placeholder { color: var(--faint); font-weight: 400; }
   position: absolute; z-index: 12; top: calc(12px + var(--sat)); left: 12px;
   min-width: 44px; height: 44px; padding: 0 14px 0 10px;
   display: inline-flex; align-items: center; gap: 7px;
-  /* the same navy values as before on a LAN Games screen (--muted at 28%, --bg at 72%), and the
-     Avrana pre-game colours inside #scr-join, where the chip always sits */
-  border: 1px solid color-mix(in srgb, var(--muted) 28%, transparent); border-radius: 999px;
-  color: var(--muted); background: color-mix(in srgb, var(--bg) 72%, transparent);
+  border: 1px solid rgba(139,150,179,.28); border-radius: 999px;
+  color: var(--muted); background: rgba(7,11,20,.72);
+  /* the same navy values on a LAN Games screen (--muted at 28%, --bg at 72%), and the Avrana
+     pre-game colours inside #scr-join, where the chip always sits; the rgba lines above are for
+     a browser without color-mix, which would otherwise drop both */
+  border-color: color-mix(in srgb, var(--muted) 28%, transparent);
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
   box-shadow: 0 8px 28px rgba(0,0,0,.28);
   backdrop-filter: blur(12px); text-decoration: none;
   font: 800 9px/1 var(--mono); letter-spacing: .12em;
