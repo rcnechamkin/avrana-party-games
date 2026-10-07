@@ -281,6 +281,15 @@ Dark, app-like, urban. Use the CSS vars: `--bg #070b14`, `--surface`, `--raised`
 `.toasts`, `.modal`, `.countdown-overlay`, `img.pfp`. Never hardcode colors that
 a token already covers.
 
+**The Avrana shell's palette (AVR-291).** The end of `shared.css` re-points those
+names to the shell's tokens (`--color-base-100`, `--color-primary`,
+`--color-accent`, … the names in avrana-party `web/src/party.css`) inside
+`#scr-join` and `#scr-lobby`, and `avrana-integration.css` does the same for the
+Back to Party bar and the round-over panel. That is platform chrome: write it
+with those tokens, never a hex literal. Your title's own CSS, accent and board
+stay yours. `tests/test_platform_palette.py` pins the token values to
+`tests/shell_tokens_snapshot.json` and fails a literal colour in that chrome.
+
 ### `/shared/hubnet.js` — the `Hub` module (identity + connection)
 - `Hub.identity` — `{name, avatar}` persisted in `localStorage` (keys shared
   across ALL hub games so a player is the same everywhere).
