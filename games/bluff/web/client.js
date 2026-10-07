@@ -151,7 +151,8 @@ const focusFirst = (sel, scroll) => focusEl(document.querySelector(sel), scroll)
 // where a prompt begins: its first control, in reading order
 function focusPrompt() {
   const G = g(), me = G && G.me;
-  if (picking) return focusFirst("#opponents button.seat", true);
+  // the first seat that can be aimed at: a seat that is out is a disabled button, which cannot take focus
+  if (picking) return focusFirst("#opponents button.seat:not(:disabled)", true);
   if (!me || me.left) return false;
   const kind = me.prompt && me.prompt.kind;
   if (kind === "lose") return focusFirst("#hand button.card", true);
@@ -476,17 +477,18 @@ function targetsFor(action) {
 // shows the latest story, line for line as the server wrote it, until the next action opens another.
 // A line begins with the name of the player it is about, and a name is the player's own words (up to
 // 14 letters and spaces: " claims " can be one). So a line is read only where a seat's name ends: what
-// follows that name is the verb, and a claim is read whole (art, one of the table's roles, " to ").
+// follows that name is the verb, and a claim is read whole: the art of one of the table's roles, that
+// role's name, then " to " (a name can put a word where the art goes, but never the art itself).
 const OPENERS = [" takes Income (", " launches a Coup", " asks for Foreign Aid ("];
 const OPENING_LINE = "Game on: ";
-const CLAIM_AT = /^ claims \S+ ([A-Za-z]+) to /;
-const BLOCK_AT = /^ blocks, claiming \S+ ([A-Za-z]+)\./;
+const CLAIM_AT = /^ claims (\S+) ([A-Za-z]+) to /;
+const BLOCK_AT = /^ blocks, claiming (\S+) ([A-Za-z]+)\./;
 // what is left of a line after each seat name it starts with (the longer name may be the player's, the shorter another's)
 const afterNames = (line) => ((g() && g().seats) || []).filter((s) => s.name && line.startsWith(s.name)).map((s) => line.slice(s.name.length));
-// the role a claim or a block names, if it is one of this table's roles
+// the role a claim or a block names, if it is one of this table's roles and the art in front of it is that role's own
 const roleIn = (rest, phrase) => {
-  const m = rest.match(phrase);
-  return m && Object.keys((g() && g().roles) || {}).includes(m[1]) ? m[1] : null;
+  const m = rest.match(phrase), roles = (g() && g().roles) || {};
+  return m && Object.keys(roles).includes(m[2]) && roles[m[2]].icon === m[1] ? m[2] : null;
 };
 const isOpener = (line) => line.startsWith(OPENING_LINE)
   || afterNames(line).some((rest) => OPENERS.some((m) => rest.startsWith(m)) || roleIn(rest, CLAIM_AT));

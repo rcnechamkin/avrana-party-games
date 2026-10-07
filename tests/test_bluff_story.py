@@ -2,9 +2,9 @@
 
 games/bluff/web/client.js reads the log the server sends. It finds the line that opens an action and
 shows that line and every line after it beside the claimed card; it takes the role of the last claim
-or block from two phrases. Those words are written by game.py, so these tests play the real
-BluffSession and fail when the two drift apart: change the log wording and the client's reading
-together.
+or block from two phrases, and only when the art in front of the role is that role's own. Those
+words are written by game.py, so these tests play the real BluffSession and fail when the two drift
+apart: change the log wording and the client's reading together.
 
 A log line begins with the name of the player it is about, and a name is the player's own words (up
 to 14 letters, digits, spaces and a few marks: " claims " can be one). So the client reads a line only
@@ -61,11 +61,12 @@ def after_names(line, names):
 
 
 def claimed_role(line, names, phrase):
-    """client.js roleIn: the role a claim or a block names after a seat's name, if it is one of the roles."""
+    """client.js roleIn: the role a claim or a block names after a seat's name, if it is one of the
+    roles and the art in front of it is that role's own (group 1 is the art, group 2 the role)."""
     for rest in after_names(line, names):
         m = phrase.match(rest)
-        if m and m.group(1) in ROLES:
-            return m.group(1)
+        if m and m.group(2) in ROLES and ROLES[m.group(2)]["icon"] == m.group(1):
+            return m.group(2)
     return None
 
 
@@ -138,23 +139,33 @@ def test_only_the_first_line_of_an_action_is_an_opener():
         assert starts == [0], "%s: openers at %s in %r" % (name, starts, chain)
 
 
-# names a player may really choose that read like part of a log line (core.session.clean_name: up to
-# 14 letters, digits, spaces and - ' . ! ?)
-SPOOFS = ["Bo claims Ag", "Al claims Bo", "x claims y z", "Alexandria", "Ann blocks"]
+# Tables whose names a player may really choose (core.session.clean_name: up to 14 letters, digits,
+# spaces and - ' . ! ?) and that read like part of a log line: the three seats' names, the seat that
+# bluffs a Banker (it holds two Guardians) and the seat that challenges it.
+SPOOFS = [
+    (("Alexandria", "Bo claims Ag", "Chen"), B, A),
+    (("Alexandria", "Al claims Bo", "Chen"), B, A),
+    (("Alexandria", "x claims y z", "Chen"), B, A),
+    (("Alexandria", "Alexandria", "Chen"), B, A),
+    (("Alexandria", "Ann blocks", "Chen"), B, A),
+    # a name that begins another's, and a third with a role in it: the challenge line reads, after the
+    # name "Al", as "claims challenges Banker to x's Banker!": a word where a claim has its art
+    (("Al", "Al claims", "Banker to x"), C, B),
+]
 
 
-@pytest.mark.parametrize("spoof", SPOOFS)
-def test_a_name_that_reads_like_a_verb_does_not_cut_or_open_a_story(spoof):
+@pytest.mark.parametrize("names,claimant,challenger", SPOOFS, ids=["-".join(n.replace(" ", "_") for n in t[0]) for t in SPOOFS])
+def test_a_name_that_reads_like_a_verb_does_not_cut_or_open_a_story(names, claimant, challenger):
     """A challenge, a bluff called, a lost card and a failed claim all name the claimant: with a name
     such as "Bo claims Ag" none of those lines may look like the start of a claim."""
-    names = ["Alexandria", spoof, "Chen"]
-    s = helper.table(3, names=names)
-    helper.rig(s, B, {A: ["Banker", "Agent"], B: ["Guardian", "Guardian"], C: ["Broker", "Guardian"]},
-               {A: 2, B: 2, C: 2})
+    s = helper.table(3, names=list(names))
+    hands = {tok: ["Banker", "Agent"] for tok in (A, B, C)}
+    hands[claimant] = ["Guardian", "Guardian"]
+    helper.rig(s, claimant, hands, {A: 2, B: 2, C: 2})
     since = len(s.g["log"])
-    helper.act(s, B, "tax")
-    helper.respond(s, A, "challenge")
-    s.game_action(B, {"t": "lose", "card": 0})
+    helper.act(s, claimant, "tax")
+    helper.respond(s, challenger, "challenge")
+    s.game_action(claimant, {"t": "lose", "card": 0})
     chain = s.g["log"][since:]
     assert len(chain) >= 5, chain
     seats = names_of(s)
@@ -173,8 +184,23 @@ def test_the_words_alone_do_not_open_a_story_without_the_name_in_front():
     assert not is_opener("Chen challenges Bo's Banker! Bo claims \U0001F3E6 Banker to Tax.", names)
     assert not is_opener("Zed claims \U0001F3E6 Banker to Tax.", names)
     assert not is_opener("Bo claims a lot to Chen", names)           # " to " without a role in front of it
+    # the art in front of the role is that role's own: a word is not art, and another role's art is not this one's
+    banker, agent = ROLES["Banker"]["icon"], ROLES["Agent"]["icon"]
+    assert is_opener("Bo claims %s Banker to Tax." % banker, names)
+    assert not is_opener("Bo claims challenges Banker to Tax.", names)
+    assert not is_opener("Bo claims %s Banker to Tax." % agent, names)
+    assert claimed_role("Bo blocks, claiming challenges Banker.", names, BLOCK_AT) is None
+    assert claimed_role("Bo blocks, claiming %s Banker." % agent, names, BLOCK_AT) is None
     assert claimed_role("Bo blocks, claiming \U0001F3E6 Banker.", names, BLOCK_AT) == "Banker"
     assert claimed_role("Alexandria challenges Bo blocks, claiming \U0001F3E6 Banker.", names, BLOCK_AT) is None
+
+
+def test_the_client_compares_the_art_with_the_roles_own():
+    """The reading above is a Python copy of client.js roleIn; the JavaScript runs only in
+    tests/bluff_layout_test.mjs (CI does not run the browser tests). So pin the one comparison that
+    keeps a word in a name from standing for a claim's art: if client.js drops or renames it, change
+    this test and the copy above together, and run the browser test."""
+    assert "roles[m[2]].icon === m[1]" in SRC, "client.js roleIn must compare a claim's art with the role's own icon"
 
 
 def test_a_slow_turn_leads_into_its_forced_move():

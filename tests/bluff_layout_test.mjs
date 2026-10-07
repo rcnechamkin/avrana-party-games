@@ -30,7 +30,10 @@
 //                button; a new challenge or block prompt starts on Pass or Allow; a stray Enter
 //                commits to nothing; seats that cannot be aimed at are disabled buttons; a name
 //                such as "Bo claims Ag" does not cut a story; the Party's results buttons work
-//                while the table's socket is down
+//                while the table's socket is down; and from the second review: aiming begins on the
+//                first seat that CAN be aimed at, also when the first seat round the table is out,
+//                and a claim is read only with its role's own art, so "Al claims challenges Banker
+//                to x's Banker!" is not a claim by "Al"
 //
 // Environment: CHROME_PATH and GAMEHUB_NODE_MODULES (tests/_resolve.mjs); GAMEHUB_PYTHON (the
 // helper's Python); BLUFF_STATES_JSON (a saved helper output, to skip playing the sessions);
@@ -436,6 +439,9 @@ const REVEAL_CASES = [
   ["turn_after_bluff", "turn", "Banker"], ["turn_after_true", "turn", "Banker"],
   // a player whose own name reads like a log verb: every line that names them is still one of the story's
   ["spoofed_name_bluff", "lose", "Banker"], ["spoofed_name_after", "turn", "Banker"],
+  // names that begin one another, one with a role in it ("Al", "Al claims", "Banker to x"): a challenge by "Al claims"
+  // reads, after the name "Al", as "claims challenges Banker to x's Banker!", which is not a claim (no art)
+  ["spoofed_prefix_bluff", "lose", "Banker"], ["spoofed_prefix_after", "turn", "Banker"],
 ];
 async function reveal() {
   for (const name of ["390x844", "390x664", "320x568", "844x390", "zoom200-195x332"]) {
@@ -555,6 +561,26 @@ async function operability() {
   const off1 = await page.evaluate(() => { const r = document.querySelector("#opponents button.seat:disabled").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
   await page.mouse.click(off1.x, off1.y);
   check((await sentMsgs(page)).length === 0 && await page.evaluate(() => document.querySelectorAll("#opponents button.seat").length) === 3, "...a tap on the disabled seat sends nothing and aiming goes on");
+
+  // the first seat round the table is out: it is first in the row and a disabled button, which cannot take
+  // focus, so aiming has to begin on the first seat that can be aimed at (not fall through to Cancel)
+  await show(page, "turn_coup_first_out", "player");
+  await focusK(page, "bar:coup"); await press(page, "Enter");
+  const firstOut = await ax(page, "#opponents .seat");
+  check(firstOut.length === 3 && firstOut.every((n) => n.role === "button") && JSON.stringify(firstOut.map((n) => !!n.disabled)) === "[true,false,false]",
+    `aiming with the first seat out: all three seats are buttons and only the first is disabled (${JSON.stringify(firstOut.map((n) => n.role + (n.disabled ? "/disabled" : "")))})`);
+  check(/Bartholomew/.test(firstOut[0].name) && /out of the game/.test(firstOut[0].name) && /can't be targeted/.test(firstOut[0].name), `...it says why in its name: "${firstOut[0].name}"`);
+  check(await activeK(page) === "seat:p3", `...Enter on Coup: focus begins on the first seat that can be aimed at, not on Cancel (${await activeK(page)})`);
+  await press(page, "Tab");
+  const g2 = await activeK(page);
+  await press(page, "Tab");
+  const g3 = await activeK(page);
+  check(g2 === "seat:p4" && g3 === "bar:cancel", `...Tab goes target, Cancel: the disabled seat is not a stop (${g2}, ${g3})`);
+  await press(page, "Escape");
+  await focusK(page, "bar:coup"); await press(page, "Enter");
+  await clearSent(page); await press(page, "Space");
+  sent = await sentMsgs(page);
+  check(sent.length === 1 && sent[0].action === "coup" && sent[0].target === "p3", `...and Space sends the Coup at that seat (${JSON.stringify(sent[0])})`);
 
   // giving up a card
   const lose = await show(page, "lose_true", "player");
@@ -688,6 +714,7 @@ async function tabwalk() {
     ["a turn with Coup not on offer", "turn_mine_poor", "player", null, [...HEAD, "bar:income", "bar:aid", "bar:coup", "bar:claim"]],
     ["aiming a Coup", "turn_mine_rich", "player", async () => { await focusK(page, "bar:coup"); await press(page, "Enter"); }, [...HEAD, "seat:p2", "seat:p3", "seat:p4", "seat:p5", "seat:p6", "bar:cancel"]],
     ["aiming a Coup with one opponent out", "turn_coup_one_out", "player", async () => { await focusK(page, "bar:coup"); await press(page, "Enter"); }, [...HEAD, "seat:p2", "seat:p3", "bar:cancel"]],
+    ["aiming a Coup with the first opponent out", "turn_coup_first_out", "player", async () => { await focusK(page, "bar:coup"); await press(page, "Enter"); }, [...HEAD, "seat:p3", "seat:p4", "bar:cancel"]],
     ["a challenge", "challenge_prompt", "player", null, [...HEAD, "bar:challenge", "bar:pass"]],
     ["a block", "block_prompt_steal", "player", null, [...HEAD, "bar:block:Smuggler", "bar:block:Broker", "bar:allow"]],
     ["giving up a card", "lose_true", "player", null, [...HEAD, "hand:0", "hand:1"]],

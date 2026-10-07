@@ -96,7 +96,10 @@ node --test tests/bluff_layout_test.mjs     # no arguments: BLUFF_LAYOUT_URL / B
 `tests/test_bluff_story.py` pins the log wording the reveal reads (`OPENERS`, `OPENING_LINE`,
 `CLAIM_AT` and `BLOCK_AT` in `web/client.js`) to `game.py`. A log line starts with a player's own
 name, and a name can contain the verbs (`Bo claims Ag`), so the client reads a line only after a
-seat's name; the tests play tables with such names.
+seat's name, and a claim only with its role's own art in front of the role; the tests play tables
+with such names. They run a Python copy of that reading: the JavaScript itself (`afterNames`,
+`roleIn`, `story()`) runs only in the browser test above, which CI does not run, so run it when you
+change either.
 
 ## How to play: first-play briefing and rules (AVR-90)
 

@@ -284,6 +284,13 @@ def build():
     s.g["revealed"][D] = ["Banker", "Agent"]
     out["turn_coup_one_out"] = scenario(s, "turn", A, B, 0)
 
+    # ---- the same, with the seat after mine out: the first seat in reading order cannot be aimed at -
+    s = table(4)
+    rig(s, A, {A: ["Banker", "Agent"], B: [], C: ["Broker", "Guardian"], D: ["Smuggler", "Guardian"]},
+        {A: 8, B: 0, C: 3, D: 3})
+    s.g["revealed"][B] = ["Banker", "Agent"]
+    out["turn_coup_first_out"] = scenario(s, "turn", A, C, 0)
+
     # ---- a player whose own name reads like a log verb ("Bo claims Ag"): the story is unchanged ---
     s = table(4, names=["Alexandria", "Bo claims Ag", "Chen", "Dee"])
     rig(s, B, {A: ["Banker", "Agent"], B: ["Guardian", "Guardian"]}, {A: 2, B: 2})
@@ -293,6 +300,17 @@ def build():
     out["spoofed_name_bluff"] = scenario(s, "lose", B, D, since, challenger=A)
     s.game_action(B, {"t": "lose", "card": 0})
     out["spoofed_name_after"] = scenario(s, "turn", A, D, since, challenger=B)
+
+    # ---- names that begin one another, one of them with a role in it ("Al", "Al claims", "Banker to x"):
+    #      the challenge line "Al claims challenges Banker to x's Banker!" is not a claim by "Al" ----------
+    s = table(4, names=["Al", "Al claims", "Banker to x", "Dee"])
+    rig(s, C, {A: ["Banker", "Agent"], B: ["Smuggler", "Guardian"], C: ["Guardian", "Guardian"]}, {A: 2, B: 2, C: 2})
+    since = len(s.g["log"])
+    act(s, C, "tax")
+    respond(s, B, "challenge")
+    out["spoofed_prefix_bluff"] = scenario(s, "lose", C, A, since, challenger=B)
+    s.game_action(C, {"t": "lose", "card": 0})
+    out["spoofed_prefix_after"] = scenario(s, "turn", A, B, since, challenger=C)
 
     # ---- tables that have not started (nobody has a hand): the lobby, and the Party's "starting" ---
     for label, party in (("lobby", False), ("lobby_party", True)):
