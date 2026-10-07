@@ -27,7 +27,7 @@
 //
 // Environment: CHROME_PATH and GAMEHUB_NODE_MODULES (tests/_resolve.mjs); GAMEHUB_PYTHON (the
 // helper's Python); BLUFF_STATES_JSON (a saved helper output, to skip playing the sessions);
-// BLUFF_LAYOUT_ONLY (a regexp over the section names: matrix reveal operability focus live contrast
+// BLUFF_LAYOUT_ONLY (a regexp over the section names: matrix reveal operability focus tabwalk live contrast
 // legibility overlays drawer party insets motion); BLUFF_LAYOUT_VP (a regexp over viewport names);
 // BLUFF_LAYOUT_SHOTS=0 (no screenshots). Writes layout-results.json (every state at every viewport)
 // and layout-metrics.json (the numbers a review quotes, the contrast table among them) to the
@@ -551,6 +551,20 @@ async function focus() {
   check(same.every((k) => k === "bar:aid"), `render() with the same state keeps focus on the same control (${same.join(", ")})`);
   await page.evaluate(() => { window.dispatchEvent(new Event("resize")); });
   check(await activeK(page) === "bar:aid", "...also after a resize");
+  // the same on the other choices: a target while aiming, a card to give up, a card to keep, the drawer's button
+  const stays = async (what, key, setup) => {
+    await setup();
+    check(await focusK(page, key), `${what}: ${key} is there to take focus`);
+    const seen = [];
+    for (let i = 0; i < 3; i++) { await page.evaluate(() => render()); seen.push(await activeK(page)); }
+    check(seen.every((k) => k === key), `${what}: render() keeps focus on ${key} (${seen.join(", ")})`);
+  };
+  await stays("aiming", "seat:p3", async () => { await show(page, "turn_mine_rich", "player"); await focusK(page, "bar:coup"); await press(page, "Enter"); });
+  await stays("giving up a card", "hand:1", async () => { await show(page, "lose_true", "player"); });
+  await stays("an exchange", "xc:2", async () => { await show(page, "exchange_prompt", "player"); });
+  await stays("the history drawer", "drawer:leave", async () => { await show(page, "turn_mine_poor", "player"); await page.evaluate(() => document.getElementById("history").click()); await sleep(80); });
+  await page.evaluate(() => document.getElementById("drawer-close").click());
+  await sleep(60);
   // each new prompt: its first control
   const prompts = [["waiting_other_turn", "challenge_prompt", "bar:challenge"], ["challenge_prompt", "lose_true", "hand:0"],
     ["lose_true", "exchange_prompt", "xc:0"], ["exchange_prompt", "turn_mine_poor", "bar:income"], ["turn_mine_poor", "block_prompt_aid", "bar:block:Banker"],
@@ -575,6 +589,63 @@ async function focus() {
   await show(page, "lose_true", "player");
   check(inside && await page.evaluate(() => !!document.activeElement.closest("#drawer")), "a new prompt does not take focus out of an open dialog");
   check(errors.length === 0, `focus: no page errors (${errors.slice(0, 2).join(" | ")})`);
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------- 4b. a Tab walk
+// From before the first control to past the last: every stop is a visible control with a name, in
+// the order of the page (header, then the table, then the moves), and Tab does not get stuck.
+async function tabwalk() {
+  const { ctx, page, errors } = await phone(vp("390x844"));
+  const walk = async (limit = 30) => {
+    await page.evaluate(() => { const s = document.createElement("span"); s.tabIndex = -1; document.body.prepend(s); s.focus(); s.remove(); });
+    const stops = [];
+    for (let i = 0; i < limit; i++) {
+      await page.keyboard.press("Tab");
+      const st = await page.evaluate(() => {
+        const a = document.activeElement;
+        if (!a || a === document.body || a === document.documentElement) return { away: true };
+        const r = a.getBoundingClientRect(), cs = getComputedStyle(a);
+        return { key: a.dataset.k || a.id || a.tagName, name: (a.getAttribute("aria-label") || a.textContent || "").replace(/\s+/g, " ").trim(),
+          shown: r.width > 0 && r.height > 0 && cs.visibility !== "hidden" && !a.closest("[hidden]") };
+      });
+      if (st.away || stops.some((x) => x.key === st.key)) break;
+      stops.push(st);
+    }
+    return stops;
+  };
+  const HEAD = ["rules", "party-end", "history"];
+  const cases = [
+    ["a turn", "turn_mine_rich", "player", null, [...HEAD, "bar:income", "bar:aid", "bar:coup", "bar:claim"]],
+    ["a turn with Coup not on offer", "turn_mine_poor", "player", null, [...HEAD, "bar:income", "bar:aid", "bar:coup", "bar:claim"]],
+    ["aiming a Coup", "turn_mine_rich", "player", async () => { await focusK(page, "bar:coup"); await press(page, "Enter"); }, [...HEAD, "seat:p2", "seat:p3", "seat:p4", "seat:p5", "seat:p6", "bar:cancel"]],
+    ["a challenge", "challenge_prompt", "player", null, [...HEAD, "bar:challenge", "bar:pass"]],
+    ["a block", "block_prompt_steal", "player", null, [...HEAD, "bar:block:Smuggler", "bar:block:Broker", "bar:allow"]],
+    ["giving up a card", "lose_true", "player", null, [...HEAD, "hand:0", "hand:1"]],
+    ["an exchange", "exchange_prompt", "player", null, [...HEAD, "xc:0", "xc:1", "xc:2", "xc:3", "bar:keep"]],
+    ["waiting for someone", "waiting_other_turn", "player", null, HEAD],
+    ["a Party spectator", "spectator_full_table", "spectator", null, HEAD],
+  ];
+  for (const [what, key, label, prep, want] of cases) {
+    await show(page, key, label);
+    if (prep) await prep();
+    const stops = await walk();
+    // a browser makes a table that scrolls and has nothing to press in it a Tab stop (so a keyboard can
+    // scroll it): that stop is the named group, and the controls come in the page's order around it
+    const keys = stops.map((x) => x.key).filter((k) => k !== "stage");
+    const unnamed = stops.filter((x) => !x.name || !x.shown).map((x) => x.key);
+    // block prompts offer the roles that can stop this move: the sequence is what the server asks for
+    const ok = JSON.stringify(keys) === JSON.stringify(want);
+    check(ok && unnamed.length === 0, `Tab walk, ${what}: ${keys.join(" > ")}${ok ? "" : "  (expected " + want.join(" > ") + ")"}${unnamed.length ? "; no name or not shown: " + unnamed.join(",") : ""}`);
+  }
+  // the one main landmark is top-level, and the scroller around it is a named group, not a landmark
+  const land = await page.evaluate(() => {
+    const m = document.querySelectorAll("main"), s = document.getElementById("stage");
+    const inside = m[0] && m[0].parentElement.closest("[role=region], [role=banner], [role=navigation], [role=complementary], [role=form], [role=search], header, nav, aside, form");
+    return { mains: m.length, nested: !!inside, role: s.getAttribute("role"), name: s.getAttribute("aria-label") };
+  });
+  check(land.mains === 1 && !land.nested && land.role === "group" && !!land.name, `one main landmark, top level; the scroller is the named group "${land.name}" (${JSON.stringify(land)})`);
+  check(errors.length === 0, `Tab walk: no page errors (${errors.slice(0, 2).join(" | ")})`);
   await ctx.close();
 }
 
@@ -890,6 +961,23 @@ async function drawer() {
     check(errors.length === 0, `${name}: drawer: no page errors (${errors.slice(0, 2).join(" | ")})`);
     await ctx.close();
   }
+  // at every size, 200 % text included: nothing in the drawer is wider than the drawer, it does not
+  // scroll sideways, and its close button is on the screen and a full 44 px target
+  for (const v of VIEWPORTS) {
+    const { ctx, page } = await phone(v);
+    await show(page, "challenge_prompt", "player");
+    await page.evaluate(() => document.getElementById("history").click());
+    await sleep(80);
+    const m = await page.evaluate(() => {
+      const d = document.getElementById("drawer"), r = d.getBoundingClientRect(), x = document.getElementById("drawer-close").getBoundingClientRect();
+      const wide = [...d.querySelectorAll("*")].filter((e) => { const b = e.getBoundingClientRect(); return b.width > 0 && (b.right > r.right + 0.5 || b.left < r.left - 0.5); }).map((e) => e.id || e.className || e.tagName).slice(0, 4);
+      return { sw: d.scrollWidth, cw: d.clientWidth, wide, vw: innerWidth, left: Math.round(r.left), right: Math.round(r.right),
+        close: x.left >= 0 && x.right <= innerWidth && x.top >= 0 && x.bottom <= innerHeight && x.width >= 44 && x.height >= 44 };
+    });
+    check(m.sw <= m.cw && m.wide.length === 0 && m.close && m.left >= 0 && m.right <= m.vw,
+      `${v.name}: the open drawer fits the screen: ${m.right - m.left}px wide, scrolls sideways ${m.sw > m.cw ? "YES (" + m.sw + ">" + m.cw + ")" : "no"}, wider than it: ${m.wide.join(",") || "none"}, close button on screen: ${m.close}`);
+    await ctx.close();
+  }
 }
 
 // ---------------------------------------------------------------- 9. the Party's view of the page
@@ -1074,6 +1162,7 @@ try {
   await run("reveal", reveal);
   await run("operability", operability);
   await run("focus", focus);
+  await run("tabwalk", tabwalk);
   await run("live", live);
   await run("contrast", contrast);
   await run("legibility", legibility);

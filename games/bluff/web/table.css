@@ -352,6 +352,12 @@ button.seat { background: none; padding: 0; font: inherit; text-align: center; t
   #reveal, #table:is([data-n="0"], [data-n="1"], [data-n="2"])[data-story] #reveal { grid-column: 1 / -1; grid-row: auto; width: min(calc(100% - 16px), 30rem); align-self: auto; }
   /* the stamp over the claimed card is never wider than the screen */
   #play .claimed::after { letter-spacing: 0; padding: 2px 5px; max-width: calc(100cqw - 16px); overflow: hidden; }
+  /* the history drawer takes the whole screen; its title is the size of the text under it, so
+     "happened" fits one line at 200 % on a 360 px phone, and the close button drops below it */
+  #drawer { width: 100%; }
+  .drawer-head { flex-wrap: wrap; gap: 8px; }
+  .drawer-head h2 { font-size: var(--fs-l); }
+  #drawer-close { margin-left: auto; }
 }
 
 /* the dock's first row gives way when the app is narrow or the text is large: wrap, centred */
@@ -381,6 +387,8 @@ button.seat { background: none; padding: 0; font: inherit; text-align: center; t
 #app[data-dock="flow"] #felt { display: none; }
 #app[data-dock="flow"] #hand { height: auto; min-height: var(--hand); flex-wrap: wrap; row-gap: 4px; padding-top: 12px; }
 #app[data-dock="flow"] #stage { overflow: visible; }
+/* a focused scroller (the keyboard can scroll it) shows its whole ring, unfaded */
+#app:not([data-dock="flow"]) #stage:focus-visible { outline: 3px solid var(--gold); outline-offset: -3px; -webkit-mask-image: none; mask-image: none; }
 #app:not([data-dock="flow"]) #stage { -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 12px), transparent 100%);
   mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 12px), transparent 100%); }
 #app[data-dock="flow"] #table { min-height: 0; margin: 4px max(2%, var(--sr)) 8px max(2%, var(--sl)); padding-inline: 8px; border-radius: 32px;

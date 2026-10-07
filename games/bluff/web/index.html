@@ -14,7 +14,10 @@
 
   <!-- One column, top to bottom: the header, the table (it scrolls where it cannot fit), and the
        dock (you: coins, hand, moves). Nothing on the table is placed by pixels, so nothing can
-       sit on top of anything else; client.js measures the dock to pin it or let it scroll. -->
+       sit on top of anything else; client.js measures the dock to pin it or let it scroll. The
+       scroller is a named group (not a landmark, so the main stays top-level): a browser makes a
+       scroller with nothing to press in it a Tab stop, so that a keyboard can scroll it, and the
+       stop needs a name. -->
   <header id="head">
     <button data-avrana-global id="home" class="round-btn" aria-label="Back to games"><span data-icon="house"></span></button>
     <button id="rules" class="round-btn" aria-label="How to play" aria-haspopup="dialog"><span data-icon="circle-help"></span></button>
@@ -25,7 +28,7 @@
     </div>
   </header>
 
-  <div id="stage">
+  <div id="stage" role="group" aria-label="Table view">
     <main id="table" aria-label="The table">
       <div id="opponents" role="group" aria-label="Other players"></div>
       <div id="center">
