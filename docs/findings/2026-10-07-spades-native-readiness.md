@@ -48,8 +48,8 @@ How to read it:
   build (section 13). The Checkers D1 to D10 decisions carry over, reopen or are new for Spades
   as mapped in section 13.3.
 - The rules module is portable as it is. Of the 38 existing Spades tests, 25 survive a move
-  unchanged (all 19 in `tests/test_bots.py` and 6 of 19 in `tests/test_spades.py`); the 35 new
-  tests split into 17 portable rules tests and 18 session tests, five of which pin gaps on
+  unchanged (all 19 in `tests/test_bots.py` and 6 of 19 in `tests/test_spades.py`); the 39 new
+  tests split into 17 portable rules tests and 22 session tests, five of which pin gaps on
   purpose (section 10).
 
 ### What AVR-41 asks to be captured, and where it is answered
@@ -261,8 +261,8 @@ Facts:
   always a `StandardBot` (`game.py:91`, `:284`; pinned).
 - **Pacing.** A bot or absent seat acts 0.9 to 1.8 s after its turn starts, plus 0.4 s when
   bidding (`game.py:296-305`); the turn clock restarts on every bid and card (`:132-133`,
-  `:185`, `:222`); when it runs out, a bot seat's own bot plays for it and the autopilot plays for a
-  human seat (`:265-294`).
+  `:185`, `:222`; pinned, section 8); when it runs out, a bot seat's own bot plays for it and the
+  autopilot plays for a human seat (`:265-294`).
 - **Party.** A bot has no participant id, so it is dropped from standings
   (`core/net.py:317-318`).
 - **Tests.** `tests/test_bots.py` has 19 pure tests: fuzzed full games and mid-trick states
@@ -288,22 +288,30 @@ Facts:
   public view, `core/session.py:170-173`). The envelope adds `players` (public fields only,
   `core/session.py:100-104`), `you`, `settings`, `party_round` and `party_host`
   (`core/session.py:469-492`). `fx` events carry only what is already public: a bid, a played
-  card, a trick winner (`games/spades/game.py:177`, `:207`, `:216`).
+  card, a trick winner (`games/spades/game.py:177`, `:207`, `:216`; scanned by the new tests,
+  below).
 - **Existing coverage.** `tests/test_spades.py:233-247` checks hand privacy in bidding only. A
   scratch mutation that sends the partner's hand while playing passed all 38 existing tests
   (mutation P01 in section 10).
-- **New coverage.** `tests/test_spades_session_pins.py:210-288` walks bidding, every card of a
+- **New coverage.** `tests/test_spades_session_pins.py:289-397` walks bidding, every card of a
   hand, the hand recap, the next deal and `game_end` for every seat, a benched human, an unknown
   token, an anonymous watcher and a Party spectator, with humans only and with bots. For each view
   and phase it asserts the exact key sets, that only the viewer's own cards appear, that no other
   seat's card appears anywhere in the serialized state, that no player token appears, and that the
-  rest of the view is identical for every viewer.
+  rest of the view is identical for every viewer. It scans the `fx` the same way: those the deal,
+  every `_do_bid`, every `_do_play` and every `tick` return, as `core.net.push_all` sends them
+  (without the routing key `to`), may hold no card still in a hand and no player token (an `fx`
+  for one seat may hold that seat's own cards). One hand is played by the turn clock alone, so the
+  autopilot's bids, cards and toasts are scanned too. A scratch mutation that adds
+  `hand=list(hand)` to the broadcast `played` fx (`games/spades/game.py:207`) is caught
+  (mutation P09 in section 10).
 - **Where the rule is duplicated.** The legal-play rule exists in `rules.py` and again in
   `spades.js:68-77`. See section 5.
 
 What a native build must keep: the per-viewer projection with a public spectator view, the
-every-phase leak test, and public-only `fx`. Whether Party spectators should see more than the
-public view (BLUFF shows them every hand, `party:docs/adr/0010-party-pregame.md:49-54`) is S11.
+every-phase leak test over the state and over every `fx`, and public-only `fx`. Whether Party
+spectators should see more than the public view (BLUFF shows them every hand,
+`party:docs/adr/0010-party-pregame.md:49-54`) is S11.
 
 ## 8. Team and scoring semantics
 
@@ -317,7 +325,8 @@ Facts, from `rules.py` unless another file is named:
 - **Deal and turn order.** The dealer starts at a random seat (`game.py:93`) and moves one seat at
   the start of every hand, the first included (`:107`); the deck is shuffled with the session's
   `rng` and dealt 13 each (`:108-110`); bidding and the first lead start left of the dealer (`:118`,
-  `:181`); a trick winner leads next (`:214`).
+  `:181`); bids and cards then go clockwise (`:178`, `:221`); a trick winner leads next (`:214`).
+  All pinned, below.
 - **Bids.** An integer 1 to 13 or `"nil"` (`game.py:171-174`). A team's bid is the sum of its
   numeric bids. There is no blind nil and no minimum team bid.
 - **Play.** Follow the led suit if able; spades cannot be led until a spade has been played
@@ -329,16 +338,23 @@ Facts, from `rules.py` unless another file is named:
   else -`nil_penalty` (100 and 100 by default). A team with no numeric bid banks every trick it
   took as a bag. Every 10 accumulated bags cost 100 and are removed, repeatedly if needed.
   Bags carry from hand to hand (`game.py:231`, `:236`).
-- **Match.** After the 14 s recap the match ends when at least one team is at or above the target
-  and the scores differ; if both are over, the higher score wins, not the first across the line;
-  an equal score plays another hand (`game.py:249-261`, `:265-268`). Targets are 200, 300, 400 or
-  500, default 500 (`:33`, `:50`). There is no losing threshold and no cap on hands.
+- **Match.** After the 14 s recap (`game.py:25`, `:246`) the match ends when at least one team is
+  at or above the target and the scores differ; if both are over, the higher score wins, not the
+  first across the line; an equal score plays another hand (`game.py:249-261`, `:265-268`).
+  Targets are 200, 300, 400 or 500, default 500 (`:33`, `:50`). There is no losing threshold and
+  no cap on hands.
 - **Not in the code:** blind nil, a minimum team bid, a bonus for large bids, a negative-score
   loss, a hand limit.
 
-The rules are pinned by `tests/test_spades_rules.py` (functions) and the match pins in
-`tests/test_spades_session_pins.py:85-208`. Behaviours a reimplementation must choose to keep or
-change on purpose (S13), each pinned today:
+The rules are pinned by `tests/test_spades_rules.py` (functions) and, in
+`tests/test_spades_session_pins.py`, by the match and hand pins (`:125-284`), which include the
+clockwise order of bids and cards
+(`test_bidding_and_card_play_go_clockwise_starting_left_of_the_dealer`) and the trick winner
+leading (`test_the_winner_of_a_trick_leads_the_next_one`), and by the pacing pins: the turn clock
+restarting on every bid and card, read from the setting
+(`test_every_bid_and_every_card_restarts_the_turn_clock_from_the_setting`, `:457-471`), and the 14 s
+recap (`test_the_hand_recap_lasts_fourteen_seconds_and_then_the_next_hand_is_dealt`, `:474-484`).
+Behaviours a reimplementation must choose to keep or change on purpose (S13), each pinned today:
 
 | Behaviour | Where | Pinned by |
 |---|---|---|
@@ -411,14 +427,14 @@ conflicts with the proposed rule that no game ends a Party round by itself
 
 ## 10. Tests: what survives a migration
 
-Four Spades files hold 73 tests at `a448972` plus this change: 38 existing and 35 new.
+Four Spades files hold 77 tests on this branch: 38 existing (at `a448972`) and 39 new.
 
 | Suite | Tests | Imports | Moves with the rules? |
 |---|---:|---|---|
 | `tests/test_bots.py` | 19 | `games.spades.rules`, `games.spades.bots` (`:11-12`) | Yes, as it is. Its determinism tests assume the same `random.Random` call sequence (`games/spades/bots.py:13-16`). |
 | `tests/test_spades.py` | 19 | `rules`, `SpadesSession` (`:7-8`) | 6 yes: `test_deck` to `test_score_hand_nil_and_bagout` (`:13-82`). 13 no: they drive the lobby, `s.g`, `_do_bid` and `_do_play` (`:84-266`). |
 | `tests/test_spades_rules.py` (new, 169 lines) | 17 | only `games.spades.rules`; its first test fails if anything else of the project is imported (`:24-35`) | Yes: change the one import line. Every expected value is a literal worked out by hand, never a call back into `rules`. |
-| `tests/test_spades_session_pins.py` (new, 397 lines) | 18 | `rules`, `bots`, `SpadesSession` | No. 13 pin behaviour to re-express against a native session: the match (`:85-141`), the hand (`:143-208`), the private view (`:269-288`), seating, settings and pacing (`:291-344`). 5 pin today's gaps on purpose (`:347-397`). |
+| `tests/test_spades_session_pins.py` (new, 539 lines) | 22 | `rules`, `bots`, `SpadesSession`, and the `time` that `core.session` and `games.spades.game` read (swapped for a frozen clock in the tests that read a deadline) | No. 17 pin behaviour to re-express against a native session: the match (`:125-178`), the hand and its turn order (`:183-284`), the private view (`:378-397`), seating, settings and pacing (`:402-484`). 5 pin today's gaps on purpose (`:489-539`). |
 
 The 5 gap pins say what is true now and are meant to flip with the decision named beside them;
 each is changed in the same commit as the behaviour:
@@ -433,14 +449,18 @@ each is changed in the same commit as the behaviour:
 
 Evidence that the new tests bite. Each rules case was checked against a scratch mutation of the
 rule it names, on a throwaway copy of the repository outside the worktree; the worktree itself was
-never mutated. In all, 96 single-edit mutations were applied one at a time and the four suites run
-for each: 95 to source files (38 in `games/spades/rules.py`, 52 in `games/spades/game.py`, 5 in
-`core/session.py`) and one to the rules test's own import rule. All 96 were killed. 67 are killed
-by the new tests alone, 29 by both old and new, none by the old alone, and each of the 35 new tests
-fails under at least one. For example, sending the partner's hand while playing, accepting the
-first team over the target, and not wrapping the dealer rotation are caught by the new tests; only
-the last was already caught by an old one. The harness is not committed; the per-mutation table is
-in the AVR-312 pull request description. Baseline: 73 passed, Python 3.12.3.
+never mutated. In all, 113 single-edit mutations were applied one at a time and the Spades suites
+run for each: 112 to source files (38 in `games/spades/rules.py`, 69 in `games/spades/game.py`, 5 in
+`core/session.py`) and one to the rules test's own import rule. All 113 were killed. 84 are killed
+by the new tests alone, 29 by both old and new, none by the old alone, and each of the 39 new tests
+fails under at least one. For example, sending the partner's hand while playing, adding a hand to
+the broadcast `played` fx, accepting the first team over the target, a bid that does not restart the
+turn clock, a recap of 5 s instead of 14 and not wrapping the dealer rotation are caught by the new
+tests; only the last was already caught by an old one. The harness is not committed; the
+per-mutation table is in the AVR-312 pull request description. Baseline: 73 passed in the first 96
+mutations' run (Python 3.12.3), and 58 passed in the three `tests/test_spades*.py` files in the
+run that added 17 more; `tests/test_bots.py` is unchanged and was not part of the second run (it
+imports only the rules and the bots, which none of the added mutations touches).
 
 Run them with:
 
@@ -464,7 +484,7 @@ only on repeated evidence (`party:docs/design/NATIVE-GAMES.md:112-114`; ADR 0014
 |---|---|---|---|
 | 1 | Teams | none; roster order decides sides (D7) | partnership by `seat % 2` (`rules.py:5-6`); the contract has no teams field (`party:avrana/contracts/game.py:60-62`), the envelope has no team field and defers teams (`ADR 0015:82-84`, `ADR 0015:173-175`); ADR 0014 decision 7 expects teams in the manifest "over time" (`ADR 0014:72-75`) |
 | 2 | Seats beyond two, filled by humans and by players who are not in the roster | two humans, no bot (D6; Linear AVR-238, 2026-10-04, decision 3) | two to four humans and up to two bots, seat layout by head count (`game.py:72-87`); bots have no participant id and are dropped from standings (`core/net.py:317-318`) |
-| 3 | Hidden information with several audiences | none; the board is public | own hand, a benched human, an unknown token, an anonymous watcher, a Party spectator (`game.py:336-375`; `core/session.py:170-173`); an every-phase leak test is needed (`tests/test_spades_session_pins.py:269-288`) |
+| 3 | Hidden information with several audiences | none; the board is public | own hand, a benched human, an unknown token, an anonymous watcher, a Party spectator (`game.py:336-375`; `core/session.py:170-173`); an every-phase leak test over the state and the `fx` is needed (`tests/test_spades_session_pins.py:378-397`) |
 | 4 | A per-seat clock and an absence policy | no timer, no autopilot; a disconnected turn waits; the Host may end (D6) | 30 s clock, 10 to 60 (`game.py:59`), autopilot for stalled or absent seats, at once on disconnect (`:135-139`, `:265-305`, `:318-332`) |
 | 5 | A multi-hand match with carried state | one game | dealer rotation, bags and scores carried, a 14 s recap, a tie plays on (`game.py:104-122`, `:227-268`) |
 | 6 | Settings with an owner | none declared | four settings in the fork, refused in a Party round (`game.py:32-61`; `core/session.py:391-397`); host settings are a deferred platform question (`party:docs/design/GAME-UX-CONTRACT.md:352-379`) |
