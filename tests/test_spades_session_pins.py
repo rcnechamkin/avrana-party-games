@@ -58,10 +58,10 @@ def clock(monkeypatch):
     return c
 
 
-def dealt(humans=2, seed=11, target=500, difficulty="standard", turn_seconds=30):
+def dealt(humans=2, seed=11, target=500, difficulty="standard", turn_seconds=None):
     """A dealt table through the fork's own lobby: `humans` ready players join in order, the
-    start's countdown is run out, hand 1 is in bidding. Returns (session, human tokens, the fx the
-    deal returned)."""
+    start's countdown is run out, hand 1 is in bidding. `turn_seconds` is the default unless given.
+    Returns (session, human tokens, the fx the deal returned)."""
     s = SpadesSession(rng=random.Random(seed))
     toks = []
     for i in range(humans):
@@ -71,7 +71,7 @@ def dealt(humans=2, seed=11, target=500, difficulty="standard", turn_seconds=30)
         toks.append(tok)
     s.settings["target"] = target
     s.settings["difficulty"] = difficulty
-    s.settings["turn_seconds"] = turn_seconds
+    s.settings["turn_seconds"] = turn_seconds or s.settings["turn_seconds"]
     s.start(toks[0])
     fx = s.tick(s.gen)
     assert s.phase == "bidding" and s.g["hand_no"] == 1
