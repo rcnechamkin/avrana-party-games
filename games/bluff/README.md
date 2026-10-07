@@ -63,7 +63,7 @@ Constants are at the top of `game.py`.
 Run from the repo root with the repo venv:
 
 ```sh
-.venv/bin/python -m pytest -q tests/test_bluff*.py     # rules, audit/fuzz, security, lifecycle
+.venv/bin/python -m pytest -q tests/test_bluff*.py     # rules, audit/fuzz, security, lifecycle, log wording
 .venv/bin/python -m pytest -q                          # + the whole upstream LAN Games suite
 
 # protocol-level checks against a RUNNING, fresh dev server (one room: restart between runs)
@@ -80,6 +80,19 @@ LANGAMES_PORT=8200 .venv/bin/python tests/sim_bluff.py --serve --server-seed 19 
 
 Phone-size screenshots were taken with headless Playwright/Chromium (2–6 players; 390×844,
 360×740, 390×664). Chromium is **not** iOS Safari; see "real-device checks" below.
+
+The table itself (AVR-313: reveal, buttons and focus, live region, contrast, overlays, drawer,
+reflow at eight phone sizes and 200 % text, insets, reduced motion) is checked in a real browser
+against real server states: `tests/bluff_states.py` plays the real session and the page's socket
+is a stub, so no game runs. Run it against any server that serves the page (screenshots go to the
+directory, `GAMEHUB_NODE_MODULES` and `CHROME_PATH` as for the other `.mjs` tests):
+
+```sh
+node tests/bluff_layout_test.mjs http://127.0.0.1:8198 /tmp/bluff-layout
+```
+
+`tests/test_bluff_story.py` pins the log wording the reveal reads (`OPENERS` in `web/client.js`)
+to `game.py`.
 
 ## How to play: first-play briefing and rules (AVR-90)
 
