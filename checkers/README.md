@@ -64,8 +64,12 @@ two-phone browser test is Party's.
 Party's [`party_protocol.py` and `party_result.py`](../provider/README.md) are used as they are,
 vendored byte for byte, because they are today's public boundary and not an SDK; their module paths
 may change. Everything else a native game needs is written in `party.py` and deliberately not
-shared: Checkers and the stand-in game in avrana-party each have it, and two copies are evidence,
-not yet a reason to freeze an interface. The pull request for AVR-238 lists what overlaps.
+shared: Checkers and the stand-in game in avrana-party each have it (the fork's older
+`core/party_session.py` has a third copy, over TCP), and copies are evidence, not yet a reason to
+freeze an interface. [The findings note](../docs/findings/2026-10-07-checkers-native-findings.md)
+lists what overlaps with file and line on both sides, what a package would have to express that
+today's boundary does not, which Party rules are accepted and which proposed, the owner decisions
+this raises (D11 to D15 are new) and what stays unproven until the Party half runs.
 
 ## Known limits
 
