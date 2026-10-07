@@ -138,5 +138,7 @@ jobs:
           node tests/hubnet_party_ticket_test.mjs
       - name: Party bridge on the game origin (vendored shim, launch integration)
         run: node --test tests/avrana_bridge_test.mjs
+      - name: Checkers page logic (AVR-238; the page itself runs against the server in the pytest job)
+        run: node --test tests/checkers_board_test.mjs
       - name: Prove deployment preserves runtime state
         run: bash ops/test_release_safety.sh
