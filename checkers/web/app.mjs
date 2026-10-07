@@ -101,10 +101,15 @@ export function createApp(env = {}) {
   /** Resolves on the Party's next word, or after `ms`. */
   function changeOrDelay(ms) {
     return new Promise((resolve) => {
-      let done = false;
-      const finish = () => { if (!done) { done = true; resolve(); } };
+      let timer = null;
+      const finish = () => {
+        cancel(timer);
+        const at = S.waiters.indexOf(finish);
+        if (at >= 0) S.waiters.splice(at, 1);
+        resolve();
+      };
       S.waiters.push(finish);
-      later(finish, ms);
+      timer = later(finish, ms);
     });
   }
 
@@ -233,7 +238,8 @@ export function createApp(env = {}) {
     }
     renderResult();
     setText(el.status, statusText());
-    el.resign.hidden = !(m === 'play' && !S.busy);
+    el.resign.hidden = m !== 'play';
+    el.resign.disabled = S.busy;                      // a move is on its way: the button stays, so nothing jumps
     const at = partyAt();
     el.end.hidden = !(isHost() && at.at === 'game' && at.game === GAME);
   }
@@ -305,7 +311,7 @@ export function createApp(env = {}) {
   }
 
   async function onResign() {
-    if (!S.view || !S.view.seat) return;
+    if (!S.view || !S.view.seat || S.busy) return;
     const rival = S.view.names[other(S.view.seat)] || word(other(S.view.seat));
     const yes = await ask({ title: 'Resign this game?', body: `${rival} wins. This cannot be undone.`, yes: 'Resign' });
     if (yes && S.view && !S.view.result) await act('api/resign', { token: S.token });

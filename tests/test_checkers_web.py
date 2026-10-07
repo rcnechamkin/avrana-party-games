@@ -326,7 +326,7 @@ class Table:
         self.httpd.server_close()
 
 
-SCENARIOS = ("play", "reload", "spectator", "resign", "host", "again", "rules", "replaced", "stale", "link", "noparty")
+SCENARIOS = ("play", "reload", "spectator", "resign", "host", "again", "rules", "replaced", "stale", "busy", "link", "noparty")
 
 
 @needs_node

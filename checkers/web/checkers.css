@@ -101,6 +101,7 @@ h1, h2, h3, p { margin: 0; }
 }
 
 .btn.primary { background: var(--text); border-color: var(--text); color: var(--bg); }
+.btn:disabled { opacity: 0.5; cursor: default; }
 .btn.quiet { background: transparent; font-weight: 500; }
 .btn.danger { border-color: var(--danger); color: var(--danger); background: transparent; }
 

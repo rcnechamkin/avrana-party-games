@@ -73,8 +73,9 @@ function makeDocument() {
 
 // ---- a phone: the page, a stand-in for the Party's bridge, and a log of what each asked for --
 
-/** `options.fetch` replaces the network; `options.hold` is an object whose `polls` promise, while
- * set, delays every poll; `options.failPolls()` says whether a poll fails to reach the game. */
+/** `options.fetch` replaces the network; `options.hold` is an object whose `polls` and `moves`
+ * promises, while set, delay every poll or move; `options.failPolls()` says whether a poll fails to
+ * reach the game. */
 function phone(tickets, options = {}) {
   const doc = makeDocument();
   const win = new Node('window');
@@ -99,6 +100,7 @@ function phone(tickets, options = {}) {
       if (options.failPolls && options.failPolls()) throw new TypeError('network down');
       if (options.hold && options.hold.polls) await options.hold.polls;
     }
+    if (String(path) === 'api/move' && options.hold && options.hold.moves) await options.hold.moves;
     return fetch(new URL(String(path), BASE), init);
   };
   const app = createApp({
@@ -500,6 +502,37 @@ const scenarios = {
     release();                                                       // and the poll that was held now answers
     await quiet(50);
     assert.equal(ana.S.view.v, 2);
+  },
+
+  // A move is on its way: the page does not take another tap, keeps the Resign button where it is
+  // (disabled, so nothing jumps) and takes the next one when the answer is in.
+  async busy() {
+    let release;
+    const hold = { moves: new Promise((resolve) => { release = resolve; }) };
+    const ana = phone(SETUP.tickets.ana.one, { hold });
+    const ben = phone(SETUP.tickets.ben.one);
+    ana.start();
+    ben.start();
+    await until(() => ana.S.view && ben.S.view, 'both players to be seated');
+    ana.cell(sq(5, 2)).click();
+    ana.cell(sq(4, 3)).click();
+    await until(() => ana.S.busy, 'the move to be on its way');
+    assert.equal(ana.el.resign.hidden, false);
+    assert.equal(ana.el.resign.disabled, true);
+    ana.cell(sq(5, 4)).click();
+    ana.cell(sq(4, 5)).click();
+    ana.el.resign.click();
+    await quiet(50);
+    assert.deepEqual(ana.S.trail, [sq(5, 2)]);                       // still the move on its way, not changed by the taps
+    assert.equal(ana.cell(sq(5, 2)).dataset.sel, undefined);         // and nothing shows as held
+    assert.equal(ana.el.confirm.open, false);
+    assert.equal(ana.asked('api/move').length, 1);
+    release();
+    await until(() => ana.S.view.v === 2 && !ana.S.busy, 'the answer');
+    assert.deepEqual(ana.S.trail, []);
+    assert.equal(ana.el.resign.disabled, false);
+    assert.equal(ana.el.resign.hidden, false);
+    assert.equal(ana.status(), 'Waiting for Ben.');
   },
 
   // The game cannot be reached for a while: the page says so, keeps its board and comes back by itself.
