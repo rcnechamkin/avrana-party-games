@@ -238,7 +238,9 @@ def test_the_onboarding_has_the_shape_the_party_reads():
 
 
 def test_the_onboarding_numbers_are_the_rules_numbers():
-    assert ONBOARDING["facts"] == {"men": rules.MEN_PER_SIDE, "drawTurns": rules.DRAW_CLOCK}
+    # The rules count half-moves (one player's move each); the sheet says how many moves each side makes.
+    assert rules.DRAW_CLOCK % 2 == 0
+    assert ONBOARDING["facts"] == {"men": rules.MEN_PER_SIDE, "drawEach": rules.DRAW_CLOCK // 2}
 
 
 def test_the_onboarding_is_one_short_sheet_with_no_bare_numbers():
@@ -326,7 +328,8 @@ class Table:
         self.httpd.server_close()
 
 
-SCENARIOS = ("play", "reload", "spectator", "resign", "host", "again", "rules", "replaced", "stale", "busy", "link", "noparty")
+SCENARIOS = ("play", "reload", "spectator", "resign", "host", "again", "results", "missed", "rules", "replaced", "stale", "busy",
+             "link", "noparty")
 
 
 @needs_node

@@ -151,11 +151,20 @@ def rig():
 
 # ---- Party Core: launch and end ---------------------------------------------------------------
 
-@pytest.mark.parametrize("header", ("X-Forwarded-For", "X-Real-IP", "Forwarded"))
-def test_control_routes_refuse_every_proxy_header_and_do_nothing(rig, header):
+PROXY_HEADER_NAMES = ("X-Forwarded-For", "X-Real-IP", "Forwarded")
+
+
+def test_the_proxy_headers_these_tests_try_are_the_ones_the_guard_knows():
+    assert {name.lower() for name in PROXY_HEADER_NAMES} == set(party.PROXY_HEADERS)
+
+
+@pytest.mark.parametrize("header", PROXY_HEADER_NAMES)
+@pytest.mark.parametrize("value", ("10.42.0.23", ""), ids=("with a value", "empty"))
+def test_control_routes_refuse_every_proxy_header_and_do_nothing(rig, header, value):
+    # The header's presence is what refuses, whatever it says: an empty one came through the front door too.
     for path, message in ((party.LAUNCH, protocol.launch_message(rig.key, GAME, SID, ROSTER)),
                           (party.END, protocol.end_message(rig.key, GAME, SID))):
-        assert rig.call("POST", path, {"message": message}, {header: "10.42.0.23"})[0] == 404
+        assert rig.call("POST", path, {"message": message}, {header: value})[0] == 404
     assert rig.app.side.sid is None and rig.app.match is None
     assert rig.launch()[0] == 200                       # the same kind of message, unproxied
     assert rig.app.side.sid == SID
@@ -769,8 +778,8 @@ class Client:
         message = protocol.launch_message(self.key, GAME, sid, roster)
         return self.call("POST", party.LAUNCH, {"message": message}, headers)
 
-    def end(self, sid=SID):
-        return self.call("POST", party.END, {"message": protocol.end_message(self.key, GAME, sid)})
+    def end(self, sid=SID, headers=None):
+        return self.call("POST", party.END, {"message": protocol.end_message(self.key, GAME, sid)}, headers)
 
     def seat(self, pid, role="player", sid=SID):
         status, body = self.post("redeem", ticket=protocol.mint_ticket(self.key, GAME, sid, pid, role))
@@ -952,8 +961,13 @@ def test_control_messages_through_a_proxy_are_refused_over_http(live):
     assert live.launch(headers={"X-Forwarded-For": "10.42.0.23"})[0] == 404
     assert live.launch(headers={"X-Real-IP": "10.42.0.23"})[0] == 404
     assert live.launch(headers={"Forwarded": "for=10.42.0.23"})[0] == 404
+    for name in PROXY_HEADER_NAMES:                     # a header with nothing after the colon is still a header
+        assert live.launch(headers={name: ""})[0] == 404, name
     assert live.app.match is None
     assert live.launch() == (200, {"ok": True})
+    for name in PROXY_HEADER_NAMES:                     # and an end that came that way does not drop the match
+        assert live.end(headers={name: ""})[0] == 404, name
+    assert live.app.match is not None and live.app.side.sid == SID
     ana = live.seat(ANA)
     # page traffic arrives through nginx with proxy headers, and is served
     assert live.call("POST", BASE + "/api/poll", {"token": ana["token"], "since": 0}, {"X-Forwarded-For": "10.42.0.23"})[0] == 200

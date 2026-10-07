@@ -1,8 +1,10 @@
 """American (straight) checkers rules: pure functions, no IO.
 
-Adapted from games/checkers/engine.py (lines 40 to 248: the rules; its bots are not carried),
-which is part of LAN Games by BEACNpool (MIT, (c) 2026 BEACNpool; see LICENSE, NOTICE.md and
-checkers/NOTICE.md). Nothing here imports the fork. What changed from the donor, and nothing else:
+Adapted from games/checkers/engine.py, its lines 1 to 248: the module docstring that states the
+rules (lines 1 to 38, below, reworded where the house-rule toggle is gone) and the engine (lines 40
+to 248). Its bots, which follow, are not carried. The donor is part of LAN Games by BEACNpool (MIT,
+(c) 2026 BEACNpool; see LICENSE, NOTICE.md and checkers/NOTICE.md). Nothing here imports the fork.
+What changed from the donor, and nothing else:
 
   * the house-rule toggle is gone: a capture is always compulsory (`forced` is not a parameter);
   * `moves_for(board, side)` exposes the move generator on a bare board, and `legal_moves(state)`

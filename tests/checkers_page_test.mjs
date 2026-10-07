@@ -75,18 +75,20 @@ function makeDocument() {
 
 /** `options.fetch` replaces the network; `options.hold` is an object whose `polls` and `moves`
  * promises, while set, delay every poll or move; `options.failPolls()` says whether a poll fails to
- * reach the game. */
+ * reach the game. The stand-in bridge hands out the tickets it was given, in order, while
+ * `party.open` is true; the real Party gives none once the session is over (the results), and
+ * `open = false` is that. */
 function phone(tickets, options = {}) {
   const doc = makeDocument();
   const win = new Node('window');
   const requests = [];
   const party = {
-    opts: null, calls: [], tickets: [...tickets], listener: null,
+    opts: null, calls: [], tickets: [...tickets], listener: null, open: true,
     onChange(fn) { this.listener = fn; },
     async ticket() {
       this.calls.push('ticket');
-      const ticket = this.tickets.shift();
-      return ticket ? { ok: true, ticket } : { ok: false, error: 'no_ticket' };
+      const ticket = this.open ? this.tickets.shift() : null;
+      return ticket ? { ok: true, ticket } : { ok: false, error: this.open ? 'no_ticket' : 'no_game' };
     },
     async end() { this.calls.push('end'); return { ok: true }; },
     async playAgain() { this.calls.push('playAgain'); return { ok: true }; },
@@ -397,6 +399,7 @@ const scenarios = {
     const at = (where) => ({ location: { at: where, game: 'checkers' }, hostName: 'Ana', host: true });
     ana.party.push(at('game'));
     ben.party.push(at('game'));
+    for (const p of [ana, ben]) p.party.open = false;               // the game is about to end: the Party has no ticket to give
     ben.el.resign.click();
     await until(() => ben.el.confirm.open, 'the confirmation');
     ben.el['confirm-yes'].click();
@@ -406,11 +409,15 @@ const scenarios = {
     ben.party.push(at('results'));
     assert.equal(ana.el['result-actions'].hidden, false);
     await quiet(100);
-    assert.equal(ana.party.calls.filter((c) => c === 'ticket').length, 1);   // still on the results: no new seat is asked for
+    const asked = ana.party.calls.length;
+    ana.party.push(at('results'));                                   // the Party speaks again: still nothing to ask it for
+    await quiet(100);
+    assert.equal(ana.party.calls.length, asked);
     // The Host chooses Play again: the Party starts the game again (here, the players the other way round).
     ana.el.again.click();
     await until(() => ana.party.calls.includes('playAgain'), 'the Host verb');
     assert.equal(await party(LAUNCH, SETUP.launch2), 200);
+    for (const p of [ana, ben]) p.party.open = true;
     ana.party.push(at('game'));
     ben.party.push(at('game'));
     await until(() => ana.S.view && !ana.S.view.result && ben.S.view && !ben.S.view.result && ana.S.view.v === 1 && ben.S.view.v === 1,
@@ -427,6 +434,110 @@ const scenarios = {
     await until(() => ana.S.view.v === 2, 'Ana to hear of the move');
   },
 
+  // A page that opens while the Party holds this game's results (a reload, or the Party sending the phone
+  // back to the game's page): the session is over and gives no ticket, so there is no seat and no board.
+  // The Host still has Play again and Party Home, everyone else says who they wait for, and the next game
+  // finds each of them.
+  async results() {
+    const at = (where, host) => ({ location: { at: where, game: 'checkers' }, hostName: 'Ana', host });
+    const ana = phone(SETUP.tickets.ana.next), ben = phone(SETUP.tickets.ben.next), cal = phone(SETUP.tickets.cal.next);
+    const all = [ana, ben, cal];
+    for (const p of all) {
+      p.party.open = false;
+      p.start();
+    }
+    await until(() => all.every((p) => p.party.listener), 'the pages to listen to the Party');
+    ana.party.push(at('results', true));
+    ben.party.push(at('results', false));
+    cal.party.push(at('results', false));
+    for (const p of all) {
+      assert.equal(p.S.view, null);
+      assert.equal(p.el.table.hidden, true);
+      assert.equal(p.el.result.hidden, false);
+      assert.equal(p.text('result-headline'), 'Game over');
+      assert.equal(p.el['result-detail'].hidden, true);
+      assert.equal(p.el.app.dataset.mode, 'over');
+      assert.equal(p.status(), 'Game over.');
+      assert.equal(p.el.resign.hidden, true);
+      assert.equal(p.el.end.hidden, true);
+    }
+    assert.equal(ana.el['result-actions'].hidden, false);
+    assert.equal(ana.el['result-wait'].hidden, true);
+    for (const p of [ben, cal]) {
+      assert.equal(p.el['result-actions'].hidden, true);
+      assert.equal(p.text('result-wait'), 'Waiting for Ana to choose what is next.');
+      assert.equal(p.el['result-wait'].hidden, false);
+    }
+    // The Party has no ticket to give at the results, and the page does not keep asking for one.
+    await quiet(100);
+    const asked = all.map((p) => p.party.calls.length);
+    ana.party.push(at('results', true));
+    ben.party.push(at('results', false));
+    cal.party.push(at('results', false));
+    await quiet(100);
+    assert.deepEqual(all.map((p) => p.party.calls.length), asked);
+    for (const p of all) assert.equal(p.asked('api/redeem').length, 0);
+
+    // The Host's two choices reach the Party.
+    ana.el.home.click();
+    await until(() => ana.party.calls.includes('goHome'), 'Party Home to be asked for');
+    ana.el.again.click();
+    await until(() => ana.party.calls.includes('playAgain'), 'Play again to be asked for');
+
+    // The game starts again: every page is given a seat in it, though none had a board before.
+    assert.equal(await party(LAUNCH, SETUP.launch2), 200);
+    for (const p of all) p.party.open = true;
+    ana.party.push(at('game', true));
+    ben.party.push(at('game', false));
+    cal.party.push(at('game', false));
+    await until(() => all.every((p) => p.S.view), 'every page to be seated in the new game');
+    assert.deepEqual(all.map((p) => p.S.view.seat), ['b', 'w', null]);
+    for (const p of all) {
+      assert.equal(p.el.result.hidden, true);
+      assert.equal(p.el.table.hidden, false);
+    }
+    assert.equal(ben.status(), 'Your move.');
+    assert.equal(ana.status(), 'Waiting for Ben.');
+    assert.equal(ana.el.end.hidden, false);                          // the Host's End is back: a game is on
+  },
+
+  // A phone that slept through the results is told `game`, and then `game` again once the Host has started
+  // the next one: never `results`. Its own game is over and the old session is closed, so asking for a seat
+  // gets nothing until the new session is there; the page keeps asking while the Party says `game`.
+  async missed() {
+    const ana = phone([...SETUP.tickets.ana.one, ...SETUP.tickets.ana.next]);
+    const ben = phone([...SETUP.tickets.ben.one, ...SETUP.tickets.ben.next]);
+    ana.start();
+    ben.start();
+    await until(() => ana.S.view && ben.S.view, 'both players to be seated');
+    const at = (where) => ({ location: { at: where, game: 'checkers' }, hostName: 'Ana', host: true });
+    ana.party.push(at('game'));
+    ben.party.push(at('game'));
+    for (const p of [ana, ben]) p.party.open = false;
+    ben.el.resign.click();
+    await until(() => ben.el.confirm.open, 'the confirmation');
+    ben.el['confirm-yes'].click();
+    await until(() => ana.S.view.result && ben.S.view.result, 'the end');
+    // The Party still says `game`: the page asks for a seat and is told there is none. It keeps the finished board.
+    await until(() => ana.party.calls.length >= 2 && ben.party.calls.length >= 2, 'the pages to ask for a seat');
+    assert.equal(ana.S.view.result.winner, 'w');
+    assert.equal(ana.el.result.hidden, false);
+    assert.equal(ana.text('result-wait'), 'Recording the result…');
+    assert.equal(ana.asked('api/redeem').length, 1);
+    // The Host starts the next game. The phones are told `game` once more, and were never told `results`.
+    assert.equal(await party(LAUNCH, SETUP.launch2), 200);
+    for (const p of [ana, ben]) p.party.open = true;
+    ana.party.push(at('game'));
+    ben.party.push(at('game'));
+    await until(() => ana.S.view && !ana.S.view.result && ana.S.view.v === 1 && ben.S.view && !ben.S.view.result && ben.S.view.v === 1,
+      'both phones to be seated in the new game');
+    assert.deepEqual([ana.S.view.seat, ben.S.view.seat], ['b', 'w']);
+    assert.equal(ana.el.result.hidden, true);
+    assert.equal(ben.status(), 'Your move.');
+    assert.equal(ana.status(), 'Waiting for Ben.');
+    await play(ben, sq(5, 2), sq(4, 3), () => ben.S.view.v === 2);   // and it can be played
+  },
+
   // The rules, from the same file the Party reads, filled in with its facts.
   async rules() {
     const { ana } = await table();
@@ -435,7 +546,7 @@ const scenarios = {
     const body = ana.text('rules-body');
     for (const title of ['Capturing', 'Kings', 'Ending a game']) assert.ok(body.includes(title), title);
     assert.ok(body.includes('Each side starts with 12 pieces'));
-    assert.ok(body.includes('80 turns in a row'));
+    assert.ok(body.includes('40 moves each go by with no capture and no plain piece moving'));
     assert.ok(!/[{}]/.test(body), 'a placeholder was left in the rules');
     assert.equal(ana.asked('onboarding.json').length, 1);
     ana.el['rules-open'].click();                                    // already open: not opened twice

@@ -124,14 +124,19 @@ export function createApp(env = {}) {
 
   // ---- what is on screen ----------------------------------------------------------------------
 
-  const canAct = () => Boolean(S.view && S.view.seat && S.view.turn === S.view.seat && !S.view.result && !S.busy);
   const partyAt = () => (S.partyView && S.partyView.location ? S.partyView.location : { at: null, game: null });
   const isHost = () => Boolean(S.partyView && S.partyView.host);
+  // Where the Party says it is, for this game. The results are this game's page (ADR 0011): the Party
+  // holds them until the Host moves on, and sends every phone back to the page when it is not there.
+  const atResults = () => { const at = partyAt(); return at.at === 'results' && at.game === GAME; };
+  const inGame = () => { const at = partyAt(); return at.at === 'game' && at.game === GAME; };
+  const canAct = () => Boolean(S.view && S.view.seat && S.view.turn === S.view.seat && !S.view.result && !S.busy
+    && !atResults());
 
   function mode() {
     if (S.noParty) return 'noparty';
+    if (atResults() || (S.view && S.view.result)) return 'over';   // with a board to show, or without one
     if (!S.view) return S.waiting ? 'waiting' : 'connecting';
-    if (S.view.result) return 'over';
     return S.view.seat ? 'play' : 'watch';
   }
 
@@ -197,20 +202,28 @@ export function createApp(env = {}) {
     }
   }
 
+  /** The result, and what happens next. This page has the finished board while the game it played
+   * is still held; a page that opens at the results (a reload, or the Party sending the phone back
+   * here) has no seat, since the game admits no one after it has reported the end, and no board.
+   * The Party's word that it is at the results is enough for the Host's choices and for everyone
+   * else's waiting line. */
   function renderResult() {
     const view = S.view;
-    const over = Boolean(view && view.result);
-    el.result.hidden = !over;
-    if (!over) return;
-    const lines = resultLines(view);
+    const known = Boolean(view && view.result);
+    const results = atResults();
+    el.result.hidden = !(known || results);
+    if (el.result.hidden) return;
+    const lines = known ? resultLines(view) : { headline: 'Game over', detail: '' };
+    const host = isHost();
+    const hostName = S.partyView && S.partyView.hostName;
+    const wait = !results ? 'Recording the result…'
+      : host ? '' : `Waiting for ${hostName || 'the Host'} to choose what is next.`;
     setText(el['result-headline'], lines.headline);
     setText(el['result-detail'], lines.detail);
-    const atResults = partyAt().at === 'results';
-    const host = isHost();
-    el['result-actions'].hidden = !(atResults && host);
-    const hostName = S.partyView && S.partyView.hostName;
-    setText(el['result-wait'], !atResults ? 'Recording the result…'
-      : host ? '' : `Waiting for ${hostName || 'the Host'} to choose what is next.`);
+    setText(el['result-wait'], wait);
+    el['result-detail'].hidden = !lines.detail;                 // an empty line would leave a gap
+    el['result-wait'].hidden = !wait;
+    el['result-actions'].hidden = !(results && host);
   }
 
   function statusText() {
@@ -240,8 +253,7 @@ export function createApp(env = {}) {
     setText(el.status, statusText());
     el.resign.hidden = m !== 'play';
     el.resign.disabled = S.busy;                      // a move is on its way: the button stays, so nothing jumps
-    const at = partyAt();
-    el.end.hidden = !(isHost() && at.at === 'game' && at.game === GAME);
+    el.end.hidden = !(isHost() && inGame());
   }
 
   // ---- what the server says -------------------------------------------------------------------
@@ -415,16 +427,17 @@ export function createApp(env = {}) {
     S.poll = null;
   }
 
-  /** The game is over and the Party holds the results. The Host's Play again shows here as the Party
-   * being in a game of this kind once more after it had left the last one; the page then asks for a
-   * seat in the new game. (Party Home, or a new briefing, takes the page away: the shim does it.) */
+  /** This game is over and the Party decides what comes next: the Host's Play again, or Party Home
+   * (which takes the page away: the shim does it). A new game shows as the Party saying a game of
+   * this kind is on, and a fresh ticket redeems only for a new session, the old one being closed. So
+   * whenever the Party says `game` the page asks for a seat, on each word from the Party and every
+   * few seconds; a refusal means it is still the old one. The page does not wait to have watched the
+   * Party leave and come back: the Party tells a phone only its latest view, and a phone that was
+   * locked or offline through the results sees `game` and then `game` again. Resolves true once
+   * seated. */
   async function nextGame() {
-    let left = false;
     for (;;) {
-      const at = partyAt();
-      const here = at.at === 'game' && at.game === GAME;
-      if (!here && at.at !== null) left = true;
-      else if (here && left) return;
+      if (inGame() && (await seat())) return true;
       await changeOrDelay(RETRY_MS);
     }
   }
@@ -438,15 +451,18 @@ export function createApp(env = {}) {
     }
     S.party = connect({ partyOrigin: origin, game: GAME });
     S.party.onChange(onParty);
+    let seated = false;                                // nextGame() has already got the seat
     for (;;) {
-      if (!(await seat())) {
+      // At the results the Party gives no ticket (the session is over): wait for it to say more.
+      if (!seated && (atResults() || !(await seat()))) {
         S.waiting = true;
         render();
         await changeOrDelay(RETRY_MS);
         continue;
       }
+      seated = false;
       await follow();
-      if (S.view && S.view.result) await nextGame();   // over: the Party decides what comes next
+      if (S.view && S.view.result) seated = await nextGame();   // over: the Party decides what comes next
     }
   }
 

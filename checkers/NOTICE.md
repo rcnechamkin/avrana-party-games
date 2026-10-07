@@ -6,7 +6,8 @@ rules come from the fork's Checkers.
 ## What is adapted, and from where
 
 `checkers/rules.py` is adapted from [`games/checkers/engine.py`](../games/checkers/engine.py)
-in this repository: its lines 40 to 248, the rules of American checkers. The engine's bots, which
+in this repository: its lines 1 to 248, which are the module docstring that states the rules of
+American checkers (lines 1 to 38) and the engine itself (lines 40 to 248). The engine's bots, which
 follow them in that file, are not carried. The engine is part of **LAN Games** by **BEACNpool**
 (https://github.com/BEACNpool/LAN-Games; upstream retired in September 2026), MIT licensed,
 (c) 2026 BEACNpool, like every file in `games/checkers/`.
@@ -16,7 +17,7 @@ What changed in the adaptation, and nothing else:
 - the house-rule toggle is gone: a capture is always compulsory;
 - `moves_for(board, side)` exposes the move generator on a bare board;
 - `is_capture`, `opponent` and `count_pieces` are public;
-- the module docstring says where the code came from.
+- the module docstring is reworded where the toggle is gone, and says where the code came from.
 
 `tests/test_checkers_rules.py` ports the fork's rules tests (its bot tests are not carried) and, for
 as long as the fork's engine exists, compares the two over seeded playouts.

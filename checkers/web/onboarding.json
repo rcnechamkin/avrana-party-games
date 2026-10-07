@@ -4,7 +4,7 @@
   "title": "Checkers",
   "premise": "Two players, one board. Jump the other side's pieces, or leave them with nowhere to go.",
   "ack": { "key": "checkers-briefed", "version": "1" },
-  "facts": { "men": 12, "drawTurns": 80 },
+  "facts": { "men": 12, "drawEach": 40 },
   "rules": [
     { "title": "Win by leaving no move",
       "points": ["Each side starts with {men} pieces. White moves first.",
@@ -21,7 +21,7 @@
                  "Reaching that row ends your move, even if another jump is open."] },
     { "title": "Ending a game",
       "points": ["You can resign at any time. The other side wins.",
-                 "{drawTurns} turns in a row with no capture and no plain piece moving is a draw."] },
+                 "It is a draw if {drawEach} moves each go by with no capture and no plain piece moving."] },
     { "title": "On your phone",
       "points": ["Tap a piece that is outlined, then tap where it goes.",
                  "A jump of several squares is one move: tap where the piece ends up."] }

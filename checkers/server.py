@@ -27,9 +27,11 @@ this process sets none.
 
 One match at a time: a newer launch replaces it. When the match is over the process builds the
 result, stops admitting the session (GameSide.ended), tells the Party over its internal Unix socket
-off the lock, and keeps the finished match and its tokens so that the phones in the room can still
-read the final board. No ticket is issued once the session has ended, so a reload after the end
-shows no board: the Party's results are where the game is read afterwards.
+off the lock, and keeps the finished match and its tokens so that the phones that already hold a
+seat can still read the final board. No ticket is issued once the session has ended, so a phone
+that opens or reloads at the results has no seat and no board. The Party holds the results on this
+game's page until the Host moves on (ADR 0011), so the page shows what the Party's bridge says
+there: the Host's Play again and Party Home, or who everyone else is waiting for.
 """
 
 from __future__ import annotations
@@ -123,8 +125,9 @@ class App:
         """A Reply for one request. `headers` has lower-case names."""
         if path.startswith(BASE + "/avrana/"):
             # Control traffic: only Party Core sends it, and Party sends no proxy header; nginx
-            # always adds one and also refuses this prefix itself. Anything else is not here.
-            if any(headers.get(h) for h in party.PROXY_HEADERS) or path not in (LAUNCH, END) \
+            # always adds one and also refuses this prefix itself. A proxy header at all, even an
+            # empty one, is a request that came through the front door: it is not here.
+            if any(h in headers for h in party.PROXY_HEADERS) or path not in (LAUNCH, END) \
                     or method != "POST":
                 return not_found()
             return self._control(path, raw)

@@ -42,7 +42,8 @@ Under `/games/checkers/`:
 A launch with other than two players is refused (409) and the Party shows the sentence. When the
 game is over the process builds the `avrana.game-result/v1`, closes the session, and reports `ended`
 over the internal socket after releasing its lock, again after 1, 2 and 4 seconds if nobody answers
-(the message lives 30 s). The finished board stays readable until Party releases the match.
+(the message lives 30 s). The finished board stays readable to the phones that hold a seat until
+Party releases the match.
 
 ## What is in the box
 
@@ -70,9 +71,16 @@ not yet a reason to freeze an interface. The pull request for AVR-238 lists what
 
 - The match is in memory. A crash or restart loses it; the Party shows the session as running until
   the Host ends it.
-- After `ended` the session admits no more tickets, so a phone that reloads at the results sees no
-  board. Party's results are where the game is read afterwards.
+- After `ended` the session admits no more tickets, so a phone that opens or reloads at the results
+  has no seat and no board. The Party holds the results on this game's page (ADR 0011), and the page
+  shows what the Party's bridge says there: the Host's Play again and Party Home, or who the others
+  are waiting for.
 - The process does not stop itself when idle (ADR 0016 section 4 asks games to): nothing says
   after how long, or on what signal.
 - `BUILD` in `party.py` (what `game.build` says) is a constant to change by hand with the rules.
 - No reconnect timer: a player who never comes back keeps the game waiting for the Host to end it.
+- A Party origin written as an IPv6 literal (`http://[::1]:8080`) does not pass `BARE_ORIGIN` in
+  `party.py`, so the page is told there is no Party. The origins in use are names and IPv4 addresses.
+- Long polls wait up to 25 s and at most 32 wait at once (`MAX_POLLERS`). The limit is tested with
+  it lowered to 2, against the App; nothing sends a burst of more than 32 real connections through
+  the HTTP server, so a full house of waiters plus a move arriving is reasoned, not measured.
