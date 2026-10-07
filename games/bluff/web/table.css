@@ -237,6 +237,11 @@ button.seat { background: none; padding: 0; font: inherit; text-align: center; t
   border-radius: var(--r-box); background: var(--ink-solid);
   border: 1px solid var(--ink-line); padding: 12px; box-shadow: 0 -4px 16px rgba(0,0,0,.5); }
 #sheet h3 { margin: 0 0 10px; font-size: var(--fs-s); letter-spacing: .06em; color: var(--muted); }
+#sheet h3.caps { text-transform: uppercase; }
+/* the one move, and this heading, are set in capitals by CSS (the page's own text is a sentence):
+   where 200 % text makes a word wider than its box they are sentence case, and not broken in two */
+.act[data-k="bar:challenge"] { text-transform: uppercase; }
+@container app (max-width: 8rem) { .act[data-k="bar:challenge"], #sheet h3.caps { text-transform: none; } #sheet h3.caps { letter-spacing: 0; } }
 .sheet-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); gap: 8px; }
 .sheet-grid .act { min-height: 64px; }
 .sheet-note { margin: 8px 0 0; font-size: var(--fs-s); font-weight: 650; color: var(--text); line-height: 1.3; }

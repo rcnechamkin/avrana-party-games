@@ -281,6 +281,19 @@ const MEASURE = () => {
     if (!vis(e)) continue;
     if (e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1) cut.push(`${e.id || e.dataset.k || (e.textContent || "").trim().slice(0, 16)} ${e.scrollWidth}x${e.scrollHeight}>${e.clientWidth}x${e.clientHeight}`);
   }
+  // a word of a move's label or of a role's name is never broken in two (a player's own name may be)
+  const broken = [];
+  for (const e of document.querySelectorAll("#bar .act, #sheet .act, #sheet h3, #drawer-actions .act, #hand .chip, #app .card .nm")) {
+    if (!vis(e)) continue;
+    const tw = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+    for (let tn; (tn = tw.nextNode());) {
+      for (const m of tn.textContent.matchAll(/\S+/g)) {
+        const rg = document.createRange();
+        rg.setStart(tn, m.index); rg.setEnd(tn, m.index + m[0].length);
+        if ([...rg.getClientRects()].filter((r) => r.width > 0).length > 1) broken.push(`"${m[0]}" in ${e.dataset.k || e.id || e.className.toString().slice(0, 14)}`);
+      }
+    }
+  }
   const text = (id) => ((document.getElementById(id) || {}).textContent || "").trim();
   return {
     W, H, mode: flow ? "flow" : "pinned", rootPx: parseFloat(getComputedStyle(document.documentElement).fontSize),
@@ -292,7 +305,7 @@ const MEASURE = () => {
     scrollH: scroller ? scroller.scrollHeight : H, clientH: scroller ? scroller.clientHeight : H,
     maxOverlap: Math.round(maxOverlap), overlaps: [...new Set(pairs)], offscreen: off, wide: wide.slice(0, 8),
     minFont: Math.min(...Object.keys(sizes).map(Number)), small: small.slice(0, 8),
-    smallTargets: tt, cut,
+    smallTargets: tt, cut, broken: broken.slice(0, 6),
     caption: text("caption"), reveal: text("reveal"), bar: text("bar"),
   };
 };
@@ -363,7 +376,7 @@ async function matrix() {
   for (const v of VIEWPORTS) {
     if (ONLY_VP && !ONLY_VP.test(v.name)) continue;
     const { ctx, page, errors } = await phone(v);
-    const flagged = [], small = [], cut = [];
+    const flagged = [], small = [], cut = [], broke = [];
     let worst = 0, off = 0, side = 0, flows = 0, scrolls = 0, minFont = 99;
     for (const [key, label] of SCENARIOS) {
       await show(page, key, label);
@@ -384,11 +397,13 @@ async function matrix() {
       if (problems.length) flagged.push(`${key}/${label}: ${problems.join("; ")}`);
       if (m.minFont < 11.99) small.push(`${key}/${label}: ${m.small[0]}`);
       if (m.cut.length) cut.push(`${key}/${label}: ${m.cut[0]}`);
+      if (m.broken.length) broke.push(`${key}/${label}: ${m.broken[0]}`);
     }
-    METRICS.matrix[v.name] = { states: SCENARIOS.length, flagged: flagged.length, worstOverlapPx2: worst, offscreen: off, maxSidewaysPx: side, minFontPx: minFont, flowStates: flows, scrollingStates: scrolls, cutLabels: cut.length };
+    METRICS.matrix[v.name] = { states: SCENARIOS.length, flagged: flagged.length, worstOverlapPx2: worst, offscreen: off, maxSidewaysPx: side, minFontPx: minFont, flowStates: flows, scrollingStates: scrolls, cutLabels: cut.length, brokenWords: broke.length };
     check(flagged.length === 0, `${v.name}: no overlap above 20px2, nothing off-screen, no sideways overflow in ${SCENARIOS.length} states (worst overlap ${worst}px2; ${scrolls} scroll, ${flows} as one page)${CAPPED(flagged, 4) ? " | " + CAPPED(flagged, 4) : ""}`);
     check(small.length === 0, `${v.name}: no text under 12px (smallest ${minFont}px)${small.length ? " | " + CAPPED(small) : ""}`);
     check(cut.length === 0, `${v.name}: no control label is cut${cut.length ? " | " + CAPPED(cut) : ""}`);
+    check(broke.length === 0, `${v.name}: no word of a move label or role name is broken in two${broke.length ? " | " + CAPPED(broke) : ""}`);
     check(errors.length === 0, `${v.name}: no page errors (${errors.slice(0, 2).join(" | ")})`);
     await ctx.close();
   }

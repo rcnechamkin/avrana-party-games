@@ -646,7 +646,8 @@ function fillBar(bar) {
   sheet = null;
   const pr = me.prompt;
   if (pr && pr.kind === "challenge") {
-    bar.appendChild(actBtn("art:hand_cross", "CHALLENGE", () => gsend({ t: "respond", choice: "challenge" }), "danger", false, "bar:challenge"));
+    // "Challenge" is set in capitals by table.css (not at 200 % text, where the word is wider than the bar)
+    bar.appendChild(actBtn("art:hand_cross", "Challenge", () => gsend({ t: "respond", choice: "challenge" }), "danger", false, "bar:challenge"));
     bar.appendChild(actBtn("art:flip_head", "Pass", () => gsend({ t: "respond", choice: "pass" }), "", false, "bar:pass"));
   } else if (pr && pr.kind === "block") {
     for (const r of pr.roles)
@@ -696,7 +697,7 @@ function renderExchangeSheet(pr) {
   const sh = $("sheet");
   sh.hidden = false;
   swap(sh, (probe) => {
-    probe.appendChild(el("h3", null, `EXCHANGE: KEEP ${pr.keep}`));
+    probe.appendChild(el("h3", "caps", `Exchange: keep ${pr.keep}`));
     const row = el("div", "sheet-cards");
     pr.pool.forEach((r, i) => {
       const on = keepSel.includes(i);
