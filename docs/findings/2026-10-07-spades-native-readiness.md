@@ -175,7 +175,10 @@ Proposal: a native Spades takes identity from the Party only (no join screen, av
 photo upload: Rules 6.1 and 6.2), shows the Party name beside each human seat, gives non-hosts
 no route out (Rule 3.3), leaves Play again and End to the Host (Rules 3.4, 12.1, 12.3), and keeps
 "Party Host" distinct from any in-game role (Rule 6.5). All seven rules:
-`party:docs/design/GAME-UX-CONTRACT.md:131-140`, `:527-555`, `:840-868`.
+`party:docs/design/GAME-UX-CONTRACT.md:131-140`, `:527-555`, `:840-868`. Rules 3.3, 3.4, 12.1 and
+12.3 are accepted there; the parts of 6.1, 6.2 and 6.5 that bind a game (no name field or avatar
+picker of its own, the Party name shown, "Party Host" labelled apart from a game role) are
+proposed.
 
 ## 5. Shared UI dependencies
 
@@ -311,11 +314,10 @@ Facts, from `rules.py` unless another file is named:
   Seats fill in join order (a Party: roster order): four humans take seats 0 to 3; three humans
   take 0, 1, 2 and a bot sits at 3; two humans sit at 0 and 2 (partners) or 0 and 1 (opponents)
   by the `seating` setting, bots in the rest (`game.py:72-87`; layouts checked by running them).
-- **Deal and turn order.** The dealer starts at a random seat (`game.py:93`) and moves one
-  seat at the start of every hand, the first included (`:107`); the deck is shuffled with the
-  session's `rng` and dealt 13 each
-  (`:108-110`); bidding and the first lead start left of the dealer (`:118`, `:181`); a trick
-  winner leads next (`:214`).
+- **Deal and turn order.** The dealer starts at a random seat (`game.py:93`) and moves one seat at
+  the start of every hand, the first included (`:107`); the deck is shuffled with the session's
+  `rng` and dealt 13 each (`:108-110`); bidding and the first lead start left of the dealer (`:118`,
+  `:181`); a trick winner leads next (`:214`).
 - **Bids.** An integer 1 to 13 or `"nil"` (`game.py:171-174`). A team's bid is the sum of its
   numeric bids. There is no blind nil and no minimum team bid.
 - **Play.** Follow the led suit if able; spades cannot be led until a spade has been played
@@ -374,14 +376,13 @@ What the Party accepts (`party:docs/adr/0015-game-result-envelope.md`, reference
 - `schema`, `game{id, build, content?}`, `mode` (`competitive` or `cooperative`), `standings`,
   `data_schema` with `data` (`core/party_result.py:100-167`; `ADR 0015:39-76`).
 - `standings` has one entry for every **player** of the session and nobody else: `participant`,
-  `standing` (`won`, `lost`, `draw`), optional `rank` for everyone or no one, ties sharing a
-  rank (`core/party_result.py:127-151`; `ADR 0015:62`, `ADR 0015:71`). A result that names four of five
+  `standing` (`won`, `lost`, `draw`), optional `rank` for everyone or no one, ties sharing a rank
+  (`core/party_result.py:127-151`; `ADR 0015:62`, `ADR 0015:71`). A result that names four of five
   players is refused as `incomplete` (`core/party_result.py:148-149`; measured).
-- `data` is game-owned: at most 1024 bytes canonical, 4 containers deep, strings of 200
-  characters or fewer; the whole result at most 2048 bytes (`core/party_result.py:38-42`;
-  `ADR 0015:73-76`). "There is deliberately no score, team, round or achievement field"
-  (`ADR 0015:82-84`);
-  teams are on the deferred list (`ADR 0015:173-175`).
+- `data` is game-owned: at most 1024 bytes canonical, 4 containers deep, strings of 200 characters
+  or fewer; the whole result at most 2048 bytes (`core/party_result.py:38-42`; `ADR 0015:73-76`).
+  "There is deliberately no score, team, round or achievement field" (`ADR 0015:82-84`); teams are
+  on the deferred list (`ADR 0015:173-175`).
 - An `abandoned` end carries no result (a result sent with it is refused `not_completed`)
   (`ADR 0015:94-100`). A result that would be refused is left out and the session still ends
   (`core/net.py:328-332`; `ADR 0015:86-105`).
@@ -441,8 +442,11 @@ first team over the target, and not wrapping the dealer rotation are caught by t
 the last was already caught by an old one. The harness is not committed; the per-mutation table is
 in the AVR-312 pull request description. Baseline: 73 passed, Python 3.12.3.
 
-Run them with `python -m pytest -q tests/test_spades.py tests/test_bots.py
-tests/test_spades_rules.py tests/test_spades_session_pins.py`.
+Run them with:
+
+```
+python -m pytest -q tests/test_spades.py tests/test_bots.py tests/test_spades_rules.py tests/test_spades_session_pins.py
+```
 
 Not covered by any Python test, and not run here: the page itself and the shared client
 (`tests/playtest_spades.mjs` drives the retired hub in a browser). A native build needs its own
@@ -587,21 +591,20 @@ evidence that Checkers (AVR-238) has not produced yet.
 
 **S4. Autopilot, pause and abandon**
 
-- Facts. When the turn clock (default 30 s) runs out, the autopilot (always a StandardBot) plays
-  for a human seat on turn and a bot seat's own bot plays for itself; a connected human gets the
-  toast "ran out of time" (`game.py:265-294`). A human whose last
-  socket closes is on autopilot at once (`_seat_is_auto`, `:135-139`) and plays after 0.9 to
-  1.8 s (+0.4 s bidding) (`:296-305`), with a toast (`:318-332`). When the last human leaves the
-  base class returns the room to the lobby with "Game abandoned" and no outcome
-  (`core/session.py:331-337`; pinned). There is no pause, no grace and no forfeit verb: the game
-  handles only `bid` and `play` (`game.py:155-165`). BLUFF's model is five presence states
-  (`games/bluff/game.py:818-827`), a table pause when every seated human is disconnected and an
-  abandon after `EMPTY_TABLE_ABANDON`, 300 s (`:24-35`, `:89`); Party's design table proposes one
-  presence grace at party level, a seat held "until the game ends" by default, and what "away"
-  means left to the game (`party:docs/design/GAME-INTEGRATION.md:337`). Party rules: only the Host
-  moves the Party
-  (Rule 3.4); a game's own sit-out must not move a page; proposed, no game ends a Party round by
-  itself (Rule 12.4); the Host may end a game unilaterally after a confirmation (Rule 12.3)
+- Facts. When the turn clock (default 30 s) runs out, the autopilot (always a StandardBot) plays for
+  a human seat on turn and a bot seat's own bot plays for itself; a connected human gets the toast
+  "ran out of time" (`game.py:265-294`). A human whose last socket closes is on autopilot at once
+  (`_seat_is_auto`, `:135-139`) and plays after 0.9 to 1.8 s (+0.4 s bidding) (`:296-305`), with a
+  toast (`:318-332`). When the last human leaves the base class returns the room to the lobby with
+  "Game abandoned" and no outcome (`core/session.py:331-337`; pinned). There is no pause, no grace
+  and no forfeit verb: the game handles only `bid` and `play` (`game.py:155-165`). BLUFF's model is
+  five presence states (`games/bluff/game.py:818-827`), a table pause when every seated human is
+  disconnected and an abandon after `EMPTY_TABLE_ABANDON`, 300 s (`:24-35`, `:89`); Party's design
+  table proposes one presence grace at party level, a seat held "until the game ends" by default,
+  and what "away" means left to the game (`party:docs/design/GAME-INTEGRATION.md:337`). Party rules:
+  only the Host moves the Party (Rule 3.4, accepted); a game's own forfeit or sit-out must not move
+  a page (Rule 3.4) and no game ends a Party round by itself (Rule 12.4), both proposed for every
+  game; the Host may end a game unilaterally after a confirmation (Rule 12.3, accepted)
   (`party:docs/design/GAME-UX-CONTRACT.md:136-140`, `:854-868`).
 - Options. (a) as the fork: a clock and an immediate autopilot. (b) autopilot only after a
   presence grace from the platform, a pause when every human is away, and End by the Host only.
@@ -618,8 +621,8 @@ evidence that Checkers (AVR-238) has not produced yet.
 - Facts. A bot is not a roster member: it has no participant id and is dropped from standings
   (`core/net.py:317-318`). A bot can be a human's partner and can decide the match. BLUFF puts the
   count of bots and whether a bot won in `data` (`games/bluff/game.py:557-564`; `ADR 0015:152-155`).
-  The measured sizes are in section 9. Whether a game with bots should count in
-  future history or stats is AVR-71's (`ADR 0015:165-171`).
+  The measured sizes are in section 9. Whether a game with bots should count in future history or
+  stats is AVR-71's (`ADR 0015:165-171`).
 - Options. (a) a bot count only. (b) the count plus the partner map (`teams`), so a recap can say
   who partnered whom. (c) nothing about bots.
 - Proposal. (b), public facts only, no bot names.
@@ -707,13 +710,12 @@ every hand (`ADR 0010:86-87`). Options: public only; every hand; one team's. Pro
 fork's behaviour, with the every-phase test as the guard.
 
 **S12. Teams: a platform field or game-owned data.** Fact: the contract, the envelope and the
-`net.avrana.party` extension accept no team data (`party:avrana/contracts/game.py:60-62`; `ADR 0015:82-84`;
-`party:avrana/contracts/party_config.py:30`); ADR 0014 decision 7 expects the manifest to carry
-teams "over time" (`ADR 0014:72-75`) and ADR 0015 defers them (`ADR 0015:173-175`). Options: keep
-teams in `spades.result/v1`
-and in the game's own text, or add a contract key and an envelope field. Proposal: game-owned
-until a second team game needs it; Euchre is written in Spades' mold (`games/euchre/game.py:3`),
-so the evidence may come from the Classics.
+`net.avrana.party` extension accept no team data (`party:avrana/contracts/game.py:60-62`;
+`ADR 0015:82-84`; `party:avrana/contracts/party_config.py:30`); ADR 0014 decision 7 expects the
+manifest to carry teams "over time" (`ADR 0014:72-75`) and ADR 0015 defers them
+(`ADR 0015:173-175`). Options: keep teams in `spades.result/v1` and in the game's own text, or add a
+contract key and an envelope field. Proposal: game-owned until a second team game needs it; Euchre
+is written in Spades' mold (`games/euchre/game.py:3`), so the evidence may come from the Classics.
 
 **S13. Rules parity.** Fact: section 8 lists six behaviours that are pinned today. Options:
 keep each and say so in the rules text; change one on purpose, with its pin changed in the same
