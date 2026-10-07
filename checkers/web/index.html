@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#121214">
+<title>Checkers</title>
+<link rel="icon" href="web/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="web/checkers.css">
+</head>
+<body>
+<div id="app" class="app" data-mode="connecting">
+  <header class="top">
+    <h1>Checkers</h1>
+    <button id="rules-open" class="btn quiet" type="button" aria-haspopup="dialog">How to play</button>
+    <button id="end" class="btn quiet" type="button" hidden>End game</button>
+  </header>
+
+  <p id="status" class="status" role="status">Connecting…</p>
+
+  <main id="table" class="table" hidden>
+    <div id="top-seat" class="seat" data-side="b">
+      <span class="chip" aria-hidden="true"></span>
+      <span class="who"><bdi id="top-name"></bdi> <span id="top-side" class="side"></span></span>
+      <span id="top-count" class="count"></span>
+      <span id="top-turn" class="to-move" hidden>To move</span>
+    </div>
+
+    <div id="board" class="board" role="group" aria-label="Board" aria-describedby="summary" tabindex="0"></div>
+
+    <div id="bottom-seat" class="seat" data-side="w">
+      <span class="chip" aria-hidden="true"></span>
+      <span class="who"><bdi id="bottom-name"></bdi> <span id="bottom-side" class="side"></span></span>
+      <span id="bottom-count" class="count"></span>
+      <span id="bottom-turn" class="to-move" hidden>To move</span>
+    </div>
+  </main>
+
+  <section id="result" class="result" aria-labelledby="result-headline" hidden>
+    <h2 id="result-headline"></h2>
+    <p id="result-detail"></p>
+    <p id="result-wait" class="wait"></p>
+    <div id="result-actions" class="row" hidden>
+      <button id="again" class="btn primary" type="button">Play again</button>
+      <button id="home" class="btn" type="button">Party Home</button>
+    </div>
+  </section>
+
+  <div class="actions">
+    <button id="resign" class="btn danger" type="button" hidden>Resign</button>
+  </div>
+
+  <p id="summary" class="sr-only"></p>
+  <p id="live" class="sr-only" aria-live="polite"></p>
+  <noscript><p class="status">Checkers needs JavaScript.</p></noscript>
+</div>
+
+<dialog id="rules" aria-labelledby="rules-title">
+  <h2 id="rules-title">How to play Checkers</h2>
+  <div id="rules-body"></div>
+  <div class="row">
+    <button id="rules-close" class="btn primary" type="button">Got it</button>
+  </div>
+</dialog>
+
+<dialog id="confirm" aria-labelledby="confirm-title" aria-describedby="confirm-body">
+  <h2 id="confirm-title"></h2>
+  <p id="confirm-body"></p>
+  <div class="row">
+    <button id="confirm-no" class="btn primary" type="button" autofocus>Keep playing</button>
+    <button id="confirm-yes" class="btn danger" type="button"></button>
+  </div>
+</dialog>
+
+<script type="module" src="web/checkers.js"></script>
+</body>
+</html>
