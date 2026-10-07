@@ -36,6 +36,38 @@
   color-scheme: dark;
 }
 
+/* Avrana shell tokens: a copy of the `avrana` theme in avrana-party web/src/party.css (UX/UI
+   redesign), under the same --color-* names, for the platform-owned chrome below (the pre-game
+   layer at the end of this file). Nothing else reads them, so each game keeps its own palette.
+   Update a value only to follow Party, together with tests/shell_tokens_snapshot.json; a test
+   (tests/test_platform_palette.py) pins the two and keeps colour literals out of that layer.
+   web/avrana-integration.css carries the same names for the pages that do not link this file. */
+:root {
+  --color-base-100: #0d0d0f;           /* the ground */
+  --color-base-200: #161618;           /* a raised surface */
+  --color-base-300: #1e1e21;           /* fields, and the step above a surface */
+  --color-base-content: #edeae4;       /* main text */
+  --color-primary: #edeae4;            /* ink: the one main action of a region */
+  --color-primary-content: #121214;
+  --color-accent: #b9a9e8;             /* Atomic Purple: focus, selection, quiet icons; never a region fill */
+  --color-success: oklch(76% 0.11 158);
+  --color-error: #f08a7e;
+  --color-error-content: #121214;
+  --color-muted: #aeaba7;              /* secondary text */
+  --color-faint: #8f8c89;              /* quiet labels */
+  --color-line-strong: rgb(255 255 255 / 0.18);
+  --color-control: #6e6c72;            /* the edge of anything you can press: 3:1 on the ground */
+  --color-select: rgb(185 169 232 / 0.16);   /* the tint of what is chosen */
+}
+@media (prefers-contrast: more) {
+  :root {
+    --color-muted: #d2cfcb;
+    --color-faint: #b9b6b3;
+    --color-line-strong: rgb(255 255 255 / 0.5);
+    --color-control: #a5a3a8;
+  }
+}
+
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
 
@@ -218,8 +250,10 @@ input::placeholder { color: var(--faint); font-weight: 400; }
   position: absolute; z-index: 12; top: calc(12px + var(--sat)); left: 12px;
   min-width: 44px; height: 44px; padding: 0 14px 0 10px;
   display: inline-flex; align-items: center; gap: 7px;
-  border: 1px solid rgba(139,150,179,.28); border-radius: 999px;
-  color: var(--muted); background: rgba(7,11,20,.72);
+  /* the same navy values as before on a LAN Games screen (--muted at 28%, --bg at 72%), and the
+     Avrana pre-game colours inside #scr-join, where the chip always sits */
+  border: 1px solid color-mix(in srgb, var(--muted) 28%, transparent); border-radius: 999px;
+  color: var(--muted); background: color-mix(in srgb, var(--bg) 72%, transparent);
   box-shadow: 0 8px 28px rgba(0,0,0,.28);
   backdrop-filter: blur(12px); text-decoration: none;
   font: 800 9px/1 var(--mono); letter-spacing: .12em;
@@ -235,6 +269,11 @@ input::placeholder { color: var(--faint); font-weight: 400; }
   --line: #506181;
   --muted: #b7c1d9;
   --faint: #8996b4;
+  /* the Avrana tokens' more-contrast values, so this switch reaches the pre-game layer too */
+  --color-muted: #d2cfcb;
+  --color-faint: #b9b6b3;
+  --color-line-strong: rgb(255 255 255 / 0.5);
+  --color-control: #a5a3a8;
 }
 .lg-high-contrast .btn, .lg-high-contrast .icon-btn,
 .lg-high-contrast input { border-width: 2px; }
@@ -326,21 +365,41 @@ img.pfp {
 /* ---- Avrana pre-game shell -------------------------------------------------------------
    The join and lobby screens (#scr-join, #scr-lobby) are Avrana system UI: who is here,
    the rules, the options and the one button that starts things. They take the Avrana Party
-   prototype theme (avrana-party docs/UI-DESIGN-SYSTEM.md): charcoal surfaces, hairline
-   borders, one muted-purple primary action, 44 px+ targets, system type, line icons.
+   shell's look (avrana-party docs/UI-DESIGN-SYSTEM.md; the --color-* tokens at the top of this
+   file): near-black neutrals, hairline borders, ink on the ground for the one primary action,
+   a muted-purple accent for focus, 44 px+ targets, system type, line icons.
    Gameplay screens keep each game's own look; the game's wordmark and key art stay its own.
-   Scoped with :root :is(...) so it outranks per-game sheets without touching them. */
+   Scoped with :root :is(...) so it outranks per-game sheets without touching them.
+   No colour literal in this layer: every colour is one of those tokens. The old per-game names
+   (--bg, --surface, ...) are pointed at them inside the two screens, so a game's lobby rules
+   written with those names follow the shell there. */
 :root :is(#scr-join, #scr-lobby) {
-  --bg: #121218; --surface: #1b1b23; --raised: #262730; --line: #34343f; --text: #eeebe5;
-  --muted: #b0afc0; --faint: #8f8da0; --cyan: #c5b3e8; --violet: #c5b3e8; --green: #70c696;
-  --danger: #e66e6d; --av-primary: #765fb8; --av-primary-ink: #faf9fe;
+  --bg: var(--color-base-100); --surface: var(--color-base-200); --raised: var(--color-base-300);
+  /* --line is a hairline and a control edge in game sheets alike: the stronger hairline keeps it
+     at least as visible as before; this layer's own controls use --color-control (3:1) below */
+  --line: var(--color-line-strong); --text: var(--color-base-content);
+  --muted: var(--color-muted); --faint: var(--color-faint);
+  --cyan: var(--color-accent); --violet: var(--color-accent); --green: var(--color-success);
+  --danger: var(--color-error);
   --av-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  background: #121218; color: var(--text); font-family: var(--av-sans);
+  background: var(--color-base-100); color: var(--text); font-family: var(--av-sans);
 }
-body:has(:is(#scr-join, #scr-lobby):not([hidden])) { background: #121218; }
+body:has(:is(#scr-join, #scr-lobby):not([hidden])) { background: var(--color-base-100); }
 body:has(:is(#scr-join, #scr-lobby):not([hidden])) .bg-fx { display: none; }
 .ui-ic { width: 1.2em; height: 1.2em; flex: none; vertical-align: -0.22em; }
 :root :is(#scr-join, #scr-lobby) [data-icon] .ui-ic { color: var(--cyan); }
+
+/* A notice or the connection line shown over a pre-game screen is the platform's too. They sit
+   on the body, outside the two screens, so they name the tokens themselves. */
+body:has(:is(#scr-join, #scr-lobby):not([hidden])) .toast {
+  background: var(--color-base-200); border-color: var(--color-line-strong); color: var(--color-base-content);
+}
+body:has(:is(#scr-join, #scr-lobby):not([hidden])) .toast.err {
+  border-color: var(--color-error); color: var(--color-error);
+}
+body:has(:is(#scr-join, #scr-lobby):not([hidden])) .conn-banner {
+  background: var(--color-error); color: var(--color-error-content);
+}
 
 /* type: readable, not tiny; section labels are quiet eyebrows */
 :root :is(#scr-join, #scr-lobby) :is(.tagline, .seat-note) {
@@ -369,45 +428,53 @@ body:has(:is(#scr-join, #scr-lobby):not([hidden])) .bg-fx { display: none; }
 :root :is(#scr-join, #scr-lobby) .pc-name { font-family: var(--av-sans); font-size: 15px; }
 :root :is(#scr-join, #scr-lobby) .pc-status { font-family: var(--av-sans); font-size: 13px; color: var(--muted); }
 :root :is(#scr-join, #scr-lobby) .pc-status.rdy { color: var(--green); }
+/* the picker's cells: the ground, not the LAN Games navy gradient (a chosen cell keeps the
+   game's own ring, gameart.css) */
+:root :is(#scr-join, #scr-lobby) .avatar-cell { background: var(--bg); }
 
-/* controls: 44 px+, calm, one clear primary */
+/* controls: 44 px+, calm, one clear primary. The edge of anything pressable or typed in is
+   --color-control (3:1 on the ground), as in the shell; --line stays for cards and rules. */
 :root :is(#scr-join, #scr-lobby) .icon-btn {
   display: inline-grid; place-items: center; width: 44px; height: 44px; font-size: 20px;
-  background: var(--surface); border: 1px solid var(--line); border-radius: 12px; color: var(--text);
+  background: var(--surface); border: 1px solid var(--color-control); border-radius: 12px; color: var(--text);
 }
 :root :is(#scr-join, #scr-lobby) :is(input[type="text"], input:not([type])) {
-  background: #121218; border: 1px solid var(--line); border-radius: 12px; font-family: var(--av-sans);
+  background: var(--bg); border: 1px solid var(--color-control); border-radius: 12px; font-family: var(--av-sans);
   font-size: 17px; min-height: 48px;
 }
-:root :is(#scr-join, #scr-lobby) :is(input, button, a):focus-visible { outline: 3px solid var(--cyan); outline-offset: 2px; }
+:root :is(#scr-join, #scr-lobby) :is(input, button, a):focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
 :root :is(#scr-join, #scr-lobby) .btn {
   font-family: var(--av-sans); letter-spacing: 0.02em; min-height: 48px; border-radius: 12px;
-  background: var(--raised); border: 1px solid var(--line); color: var(--text); box-shadow: none;
+  background: var(--raised); border: 1px solid var(--color-control); color: var(--text); box-shadow: none;
 }
 :root :is(#scr-join, #scr-lobby) .btn-big { min-height: 56px; border-radius: 14px; font-size: 18px; }
 :root :is(#scr-join, #scr-lobby) :is(.btn-primary, .btn-ready, .btn-go) {
-  background: var(--av-primary); border-color: transparent; color: var(--av-primary-ink);
+  background: var(--color-primary); border-color: transparent; color: var(--color-primary-content);
   box-shadow: none; animation: none;
 }
 :root :is(#scr-join, #scr-lobby) .btn-ready.is-ready {
   background: transparent; border: 2px solid var(--green); color: var(--green); box-shadow: none;
 }
 :root :is(#scr-join, #scr-lobby) .seg {
-  background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 3px; gap: 3px;
+  background: var(--surface); border: 1px solid var(--color-control); border-radius: 12px; padding: 3px; gap: 3px;
 }
 :root :is(#scr-join, #scr-lobby) .seg button {
   min-height: 44px; min-width: 44px; padding: 0 12px; border-radius: 9px; font-family: var(--av-sans);
   font-size: 15px; font-weight: 650; letter-spacing: 0.02em; color: var(--muted); box-shadow: none;
 }
+/* the chosen segment: the shell's chosen-choice look (a tint, a light edge, heavier type), so ink
+   stays the one main action of the screen */
 :root :is(#scr-join, #scr-lobby) .seg button.sel {
-  background: color-mix(in srgb, var(--av-primary) 55%, var(--raised)); color: var(--av-primary-ink);
-  box-shadow: inset 0 0 0 1px var(--av-primary);
+  background: var(--color-select); color: var(--color-base-content); font-weight: 750;
+  box-shadow: inset 0 0 0 1px var(--color-base-content);
 }
 :root :is(#scr-join, #scr-lobby) .stepper button {
   width: 44px; height: 44px; border-radius: 12px; background: var(--surface);
-  border: 1px solid var(--line); color: var(--text);
+  border: 1px solid var(--color-control); color: var(--text);
 }
-:root :is(#scr-join, #scr-lobby) .pfp-btn { font-family: var(--av-sans); font-size: 14px; min-height: 44px; }
+:root :is(#scr-join, #scr-lobby) .pfp-btn {
+  font-family: var(--av-sans); font-size: 14px; min-height: 44px; border-color: var(--color-control);
+}
 @media (prefers-reduced-motion: reduce) {
   :root :is(#scr-join, #scr-lobby) * { animation: none !important; transition: none !important; }
 }
