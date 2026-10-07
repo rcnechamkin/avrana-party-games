@@ -57,6 +57,14 @@ const phase = (page) => page.evaluate(() => (typeof ST !== "undefined" && ST ? S
 const waitFor = async (page, fn, arg, ms = 8000) => {
   await page.waitForFunction(fn, { timeout: ms, polling: 100 }, arg);
 };
+// A dialog's close event is sent with the next frame, and the briefing takes a close it did not ask
+// for as the browser closing it. A step that reopens the dialog inside that frame would then have
+// its state cleared by the late event (the last card read "Got it"): let the event land first.
+const frames = (page, n = 2) => page.evaluate((count) => new Promise((resolve) => {
+  const tick = (left) => (left <= 0 ? resolve() : requestAnimationFrame(() => tick(left - 1)));
+  tick(count);
+  setTimeout(resolve, 500);
+}), n);
 const clickBar = (page, text) => page.evaluate((t) => {
   const b = [...document.querySelectorAll("#bar button")].find((x) => x.textContent.includes(t));
   if (b) b.click();
@@ -175,6 +183,7 @@ try {
   check(await pa.evaluate(() => localStorage.getItem("bluff-briefed") === null), "Not now is not an acknowledgement");
   check(await pa.evaluate(() => document.activeElement && document.activeElement.id === "rules"),
     "focus returns to the ? button");
+  await frames(pa);
 
   check(await clickBar(pa, "I'M READY"), "the lobby's I'M READY button is there");
   await waitFor(pa, () => document.getElementById("briefing")?.open);
