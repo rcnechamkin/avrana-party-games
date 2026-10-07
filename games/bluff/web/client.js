@@ -99,11 +99,14 @@ function readyAfterBriefing() {
 // handler registered for it in the latest render, so a control that was not rebuilt (its markup
 // did not change) still does what the newest state says.
 const HANDLERS = Object.create(null);
+// The two results buttons the Party Host has go to the Party (party-follow.js), not over this table's
+// socket: a table that is out of reach does not stop them, and they are not dimmed with the moves.
+const PARTY_KEYS = new Set(["bar:play-again", "bar:party-home"]);
 document.addEventListener("click", (e) => {
   const t = e.target.closest && e.target.closest("[data-k]");
   if (!t || t.disabled || t.getAttribute("aria-disabled") === "true") return;
   const run = HANDLERS[t.dataset.k];
-  if (run && !offline()) run(e);
+  if (run && (!offline() || PARTY_KEYS.has(t.dataset.k))) run(e);
 });
 // Escape cancels aiming (and closes the claim menu); a dialog keeps its own Escape.
 document.addEventListener("keydown", (e) => {
@@ -153,10 +156,18 @@ function focusPrompt() {
   const kind = me.prompt && me.prompt.kind;
   if (kind === "lose") return focusFirst("#hand button.card", true);
   if (kind === "exchange") return focusFirst("#sheet button.card", true);
+  // Challenging and blocking are the moves that cost something; passing and allowing are not. A new
+  // prompt starts on the one that commits to nothing, so a stray Enter (one held down from the
+  // last prompt) never challenges or blocks. Tab order is the page's: Challenge, then Pass.
+  if (kind === "challenge") return focusFirst('#bar [data-k="bar:pass"]', true);
+  if (kind === "block") return focusFirst('#bar [data-k="bar:allow"]', true);
   return focusFirst("#bar .act:not([aria-disabled='true'])", true);
 }
 function settleFocus(keep) {
   if (document.querySelector("dialog[open]")) return;
+  // the history drawer has just been closed by this render (its X): focus goes back to the button
+  // that opened it, not to the nearest move (the drawer's own controls are gone with it)
+  if (keep && /^(#drawer|drawer:)/.test(keep)) { focusReq = null; focusEl($("history")); return; }
   if (focusReq === "targets" || (stepChanged && wantsPrompt())) { focusReq = null; if (focusPrompt()) return; }
   focusReq = null;
   const now = focusKey();
@@ -224,9 +235,15 @@ function fit() {
   app.style.setProperty("--head-h", headH + "px");
   app.style.setProperty("--dock-h", dockH + "px");
   app.style.setProperty("--room", Math.max(room, 240) + "px");
-  // the felt's lower edge crosses the top of the hand, as it always has
-  const hand = $("hand"), a = app.getBoundingClientRect(), h = hand.getBoundingClientRect();
-  app.style.setProperty("--felt-b", Math.max(0, Math.round(a.bottom - (h.top + h.height * .4))) + "px");
+  // The felt's lower edge crosses the top of the hand, as it always has. Without a hand (a Party
+  // spectator, a watcher, the lobby, or a page not yet drawn) there is nothing to cross: the felt
+  // then ends just above the moves, so the table never loses it.
+  const box = (id) => { const r = $(id).getBoundingClientRect(); return r.width > 0 && r.height > 0 ? r : null; };
+  const a = app.getBoundingClientRect(), hand = box("hand"), dock = box("dock"), moves = box("bar-note") || box("bar");
+  let edge = null;
+  if (hand) edge = hand.top + hand.height * .4;
+  else if (moves) edge = Math.max(moves.top - 8, dock ? dock.top : 0);
+  if (edge !== null) app.style.setProperty("--felt-b", Math.max(0, Math.round(a.bottom - edge)) + "px");
 }
 function fitSoon() {
   if (fitQueued) return;
@@ -326,6 +343,7 @@ function render() {
   const keep = focusKey();
   paint();
   fit();
+  syncOffline();
   // a new step: the end of the table, where the story and the question are, is in view
   if (stepChanged) { const sc = $("app").dataset.dock === "flow" ? $("app") : $("stage"); sc.scrollTop = sc.scrollHeight; }
   settleFocus(keep);
@@ -407,16 +425,21 @@ function renderOpponents() {
   const targets = targetsFor(picking);
   swap(box, (probe) => opp.forEach((s, i) => {
     const aim = targets.has(s.pid);
-    const seat = el(aim ? "button" : "div", "seat" + (s.turn ? " turn" : "") + (s.alive ? "" : " out") + (aim ? " targetable" : ""));
+    // While aiming every seat is a button, so the row is the same kind of thing from end to end:
+    // the ones that can be targeted are tap and Tab stops, the others are disabled (and say so).
+    const seat = el(picking ? "button" : "div", "seat" + (s.turn ? " turn" : "") + (s.alive ? "" : " out") + (aim ? " targetable" : ""));
     placeSeat(seat, opp.length, i);
+    if (picking) seat.type = "button";
     if (aim) {
-      seat.type = "button";
       seat.dataset.k = "seat:" + s.pid;
       seat.setAttribute("aria-label", `Target ${s.name}, ${plural(s.coins, "coin", "coins")}`);
       HANDLERS["seat:" + s.pid] = () => {
         const a = picking; picking = null; pickFrom = "";
         gsend({ t: "act", action: a, target: s.pid });
       };
+    } else if (picking) {
+      seat.disabled = true;
+      seat.setAttribute("aria-label", seatLabel(s, waiting.has(s.pid)) + ", can't be targeted");
     } else {
       seat.setAttribute("role", "img");
       seat.setAttribute("aria-label", seatLabel(s, waiting.has(s.pid)));
@@ -449,23 +472,38 @@ function targetsFor(action) {
 
 // ---- what just happened, from the public log -------------------------------------------------
 // The log is a run of short stories: an action opens one, the lines after it say what became of it.
-// These markers open one (tests/test_bluff_story.py pins them to what game.py writes). The table
+// These words open one (tests/test_bluff_story.py pins them to what game.py writes). The table
 // shows the latest story, line for line as the server wrote it, until the next action opens another.
-const OPENERS = [" takes Income (", " launches a Coup", " asks for Foreign Aid (", " claims ", "Game on: "];
-const isOpener = (line) => OPENERS.some((m) => line.includes(m));
+// A line begins with the name of the player it is about, and a name is the player's own words (up to
+// 14 letters and spaces: " claims " can be one). So a line is read only where a seat's name ends: what
+// follows that name is the verb, and a claim is read whole (art, one of the table's roles, " to ").
+const OPENERS = [" takes Income (", " launches a Coup", " asks for Foreign Aid ("];
+const OPENING_LINE = "Game on: ";
+const CLAIM_AT = /^ claims \S+ ([A-Za-z]+) to /;
+const BLOCK_AT = /^ blocks, claiming \S+ ([A-Za-z]+)\./;
+// what is left of a line after each seat name it starts with (the longer name may be the player's, the shorter another's)
+const afterNames = (line) => ((g() && g().seats) || []).filter((s) => s.name && line.startsWith(s.name)).map((s) => line.slice(s.name.length));
+// the role a claim or a block names, if it is one of this table's roles
+const roleIn = (rest, phrase) => {
+  const m = rest.match(phrase);
+  return m && Object.keys((g() && g().roles) || {}).includes(m[1]) ? m[1] : null;
+};
+const isOpener = (line) => line.startsWith(OPENING_LINE)
+  || afterNames(line).some((rest) => OPENERS.some((m) => rest.startsWith(m)) || roleIn(rest, CLAIM_AT));
 function story() {
   const log = (g() && g().log) || [];
   let i = log.length - 1;
   while (i >= 0 && !isOpener(log[i])) i--;
   if (i < 0) return { lines: [], role: null, block: false };
   if (i > 0 && log[i - 1].startsWith("⏱")) i--;          // "took too long" leads into the move it forced
-  const lines = log.slice(i), names = Object.keys(g().roles || {});
+  const lines = log.slice(i);
   let rl = null, block = false;
   for (const line of lines) {                                  // the last claim made (a block is a claim too)
-    let m = line.match(/ blocks, claiming \S+ ([A-Za-z]+)\./);
-    if (m && names.includes(m[1])) { rl = m[1]; block = true; continue; }
-    m = line.match(/ claims \S+ ([A-Za-z]+) to /);
-    if (m && names.includes(m[1])) { rl = m[1]; block = false; }
+    for (const rest of afterNames(line)) {
+      const blocked = roleIn(rest, BLOCK_AT), claimed = blocked ? null : roleIn(rest, CLAIM_AT);
+      if (blocked) { rl = blocked; block = true; break; }
+      if (claimed) { rl = claimed; block = false; break; }
+    }
   }
   return { lines, role: rl, block };
 }
@@ -744,9 +782,12 @@ function syncDrawer() {
   }
 }
 drawer.addEventListener("close", () => {
+  if (drawer.open) return;                 // opened again before this event came
   drawerOpen = false;
   drawerCall();
-  if (!document.activeElement || document.activeElement === document.body) $("history").focus();
+  // Whatever closed it (Escape, X), focus lands on the button that opened it. A browser puts it back
+  // on whatever had focus when the drawer opened, and a tap does not focus a button in every browser.
+  if (!document.querySelector("dialog[open]")) focusEl($("history"));
 });
 // While a prompt's timer runs, the drawer says the call is waiting (and for how long). It is part
 // of the dialog's description, not a live region: a countdown that is read out every second would
@@ -820,14 +861,20 @@ function confirmAction({ title, body, yes }, run) {
 // moves, in sentence case, and the moves are dimmed and ignored while the table is out of reach.
 const banner = $("conn-banner");
 const offline = () => !!(banner && !banner.hidden);
+// The bar is dimmed and ignored while the table is out of reach, unless all it holds is the Party's
+// own buttons (PARTY_KEYS); it is looked at again whenever the line or the bar changes.
+function syncOffline() {
+  const bar = $("bar"), acts = [...bar.querySelectorAll(".act")];
+  const partyOnly = acts.length > 0 && acts.every((b) => PARTY_KEYS.has(b.dataset.k));
+  if (offline() && !partyOnly) bar.setAttribute("aria-disabled", "true"); else bar.removeAttribute("aria-disabled");
+}
 if (banner) {
   $("dock").insertBefore(banner, $("bar"));
   const SENTENCES = { "RECONNECTING…": "Reconnecting…", "CAN'T REACH THE PARTY — CHECK WI-FI": "Can't reach the Party. Check your Wi-Fi." };
   const tidy = () => {
     const t = banner.textContent, s = SENTENCES[t] || (t === t.toUpperCase() && /[A-Z]/.test(t) ? t.charAt(0) + t.slice(1).toLowerCase() : t);
     if (t !== s) banner.textContent = s;
-    const bar = $("bar");
-    if (banner.hidden) bar.removeAttribute("aria-disabled"); else bar.setAttribute("aria-disabled", "true");
+    syncOffline();
   };
   new MutationObserver(tidy).observe(banner, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["hidden"] });
   tidy();
@@ -939,7 +986,7 @@ function renderLobby(st) {
     minus.dataset.k = "lobby:fewer"; plus.dataset.k = "lobby:more";
     HANDLERS["lobby:fewer"] = () => send({ t: "settings", patch: { bots: Math.max(0, bots - 1) } });
     HANDLERS["lobby:more"] = () => send({ t: "settings", patch: { bots: Math.min(5, bots + 1) } });
-    step.append("Test bots", minus, el("b", null, String(bots)), plus);
+    step.append(el("span", "stepper-label", "Test bots"), minus, el("b", null, String(bots)), plus);
     probe.appendChild(step);
   });
   caption.textContent = st.phase === "countdown" ? "Starting…" : `${n} of ${st.players.length} ready`;

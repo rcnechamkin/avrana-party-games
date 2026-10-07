@@ -24,12 +24,20 @@
 //                overflow, the table scrolls when it cannot fit; side safe-area insets
 //   motion       reduced motion: zero running animations and no confetti; a long winner name keeps
 //                its crown; a spectator's mini cards have names in the accessibility tree
+//   felt         the felt is behind the table for a Party spectator, a watcher and the lobby, where
+//                nobody has a hand (and the layout holds there too)
+//   fixes        the review of AVR-313's first push: the drawer's X and Escape return focus to its
+//                button; a new challenge or block prompt starts on Pass or Allow; a stray Enter
+//                commits to nothing; seats that cannot be aimed at are disabled buttons; a name
+//                such as "Bo claims Ag" does not cut a story; the Party's results buttons work
+//                while the table's socket is down
 //
 // Environment: CHROME_PATH and GAMEHUB_NODE_MODULES (tests/_resolve.mjs); GAMEHUB_PYTHON (the
 // helper's Python); BLUFF_STATES_JSON (a saved helper output, to skip playing the sessions);
 // BLUFF_LAYOUT_ONLY (a regexp over the section names: matrix reveal operability focus tabwalk live contrast
-// legibility overlays drawer party insets motion); BLUFF_LAYOUT_VP (a regexp over viewport names);
-// BLUFF_LAYOUT_SHOTS=0 (no screenshots). Writes layout-results.json (every state at every viewport)
+// legibility overlays drawer party insets motion felt); BLUFF_LAYOUT_VP (a regexp over viewport names);
+// BLUFF_LAYOUT_SHOTS=0 (no screenshots); BLUFF_LAYOUT_URL / BLUFF_LAYOUT_OUT (the server and the screenshot
+// directory, for `node --test tests/bluff_layout_test.mjs`, which passes no arguments). Writes layout-results.json (every state at every viewport)
 // and layout-metrics.json (the numbers a review quotes, the contrast table among them) to the
 // screenshot directory. One browser at a time, closed at the end.
 import fs from "fs";
@@ -41,8 +49,8 @@ import { puppeteer, CHROME_PATH } from "./_resolve.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
-const BASE = process.argv[2] || "http://127.0.0.1:8198";
-const OUT = process.argv[3] || path.join(os.homedir(), "tmp", "ghshot-bluff-layout");
+const BASE = process.argv[2] || process.env.BLUFF_LAYOUT_URL || "http://127.0.0.1:8198";
+const OUT = process.argv[3] || process.env.BLUFF_LAYOUT_OUT || path.join(os.homedir(), "tmp", "ghshot-bluff-layout");
 fs.mkdirSync(OUT, { recursive: true });
 fs.mkdirSync(path.join(os.homedir(), "tmp"), { recursive: true });
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -175,7 +183,7 @@ async function show(page, scenarioKey, label, opts = {}) {
   const last = LAST_SHOWN.get(page) || { tag: null, n: 0 };
   if (last.tag !== tag) { last.tag = tag; last.n += 1; }
   LAST_SHOWN.set(page, last);
-  st.game.pending.step += last.n * 1000;
+  if (st.game && st.game.pending) st.game.pending.step += last.n * 1000;     // a lobby has no game
   st.now = Date.now();
   st.deadline = st.phase === "playing" && opts.deadline !== false ? st.now + 14000 : null;
   if (opts.edit) opts.edit(st);
@@ -281,9 +289,9 @@ const MEASURE = () => {
     if (!vis(e)) continue;
     if (e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1) cut.push(`${e.id || e.dataset.k || (e.textContent || "").trim().slice(0, 16)} ${e.scrollWidth}x${e.scrollHeight}>${e.clientWidth}x${e.clientHeight}`);
   }
-  // a word of a move's label or of a role's name is never broken in two (a player's own name may be)
+  // a word of a move's label, of a role's name or of the lobby's title is never broken in two (a player's own name may be)
   const broken = [];
-  for (const e of document.querySelectorAll("#bar .act, #sheet .act, #sheet h3, #drawer-actions .act, #hand .chip, #app .card .nm")) {
+  for (const e of document.querySelectorAll("#bar .act, #sheet .act, #sheet h3, #drawer-actions .act, #hand .chip, #app .card .nm, .lobby-title")) {
     if (!vis(e)) continue;
     const tw = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
     for (let tn; (tn = tw.nextNode());) {
@@ -295,6 +303,14 @@ const MEASURE = () => {
     }
   }
   const text = (id) => ((document.getElementById(id) || {}).textContent || "").trim();
+  // the felt: the table's backdrop. Pinned, #felt has a height and reaches from under the header
+  // to the table's lower edge; as one page (flow) #felt is off and the table paints the felt itself.
+  const feltEl = document.getElementById("felt"), fr = feltEl.getBoundingClientRect(), tbl = document.getElementById("table");
+  const felt = flow
+    ? { mode: "flow", h: Math.round(tbl.getBoundingClientRect().height),
+      ok: /radial-gradient/.test(getComputedStyle(tbl).backgroundImage) && tbl.getBoundingClientRect().height > 0 }
+    : { mode: "pinned", h: Math.round(fr.height), top: Math.round(fr.top), bottom: Math.round(fr.bottom),
+      ok: getComputedStyle(feltEl).display !== "none" && fr.height > 0 && fr.top <= sR.top + 24 && fr.bottom >= sR.bottom - 1 };
   return {
     W, H, mode: flow ? "flow" : "pinned", rootPx: parseFloat(getComputedStyle(document.documentElement).fontSize),
     docOverflowX: document.documentElement.scrollWidth - W,
@@ -306,7 +322,7 @@ const MEASURE = () => {
     maxOverlap: Math.round(maxOverlap), overlaps: [...new Set(pairs)], offscreen: off, wide: wide.slice(0, 8),
     minFont: Math.min(...Object.keys(sizes).map(Number)), small: small.slice(0, 8),
     smallTargets: tt, cut, broken: broken.slice(0, 6),
-    caption: text("caption"), reveal: text("reveal"), bar: text("bar"),
+    caption: text("caption"), reveal: text("reveal"), bar: text("bar"), felt,
   };
 };
 
@@ -376,7 +392,7 @@ async function matrix() {
   for (const v of VIEWPORTS) {
     if (ONLY_VP && !ONLY_VP.test(v.name)) continue;
     const { ctx, page, errors } = await phone(v);
-    const flagged = [], small = [], cut = [], broke = [];
+    const flagged = [], small = [], cut = [], broke = [], feltGone = [];
     let worst = 0, off = 0, side = 0, flows = 0, scrolls = 0, minFont = 99;
     for (const [key, label] of SCENARIOS) {
       await show(page, key, label);
@@ -394,16 +410,18 @@ async function matrix() {
       if (m.offscreen.length) problems.push(`off-screen ${m.offscreen[0]}`);
       if (m.docOverflowX > 0 || m.bodyOverflowX > 0 || m.appOverflowX > 0 || m.stageOverflowX > 0) problems.push(`sideways overflow ${m.docOverflowX}/${m.appOverflowX}/${m.stageOverflowX}`);
       if (m.wide.length) problems.push(`wider than the screen: ${m.wide[0]}`);
+      if (!m.felt.ok) feltGone.push(`${key}/${label}: ${m.felt.mode} felt ${m.felt.h}px`);
       if (problems.length) flagged.push(`${key}/${label}: ${problems.join("; ")}`);
       if (m.minFont < 11.99) small.push(`${key}/${label}: ${m.small[0]}`);
       if (m.cut.length) cut.push(`${key}/${label}: ${m.cut[0]}`);
       if (m.broken.length) broke.push(`${key}/${label}: ${m.broken[0]}`);
     }
-    METRICS.matrix[v.name] = { states: SCENARIOS.length, flagged: flagged.length, worstOverlapPx2: worst, offscreen: off, maxSidewaysPx: side, minFontPx: minFont, flowStates: flows, scrollingStates: scrolls, cutLabels: cut.length, brokenWords: broke.length };
+    METRICS.matrix[v.name] = { states: SCENARIOS.length, flagged: flagged.length, worstOverlapPx2: worst, offscreen: off, maxSidewaysPx: side, minFontPx: minFont, flowStates: flows, scrollingStates: scrolls, cutLabels: cut.length, brokenWords: broke.length, feltMissing: feltGone.length };
     check(flagged.length === 0, `${v.name}: no overlap above 20px2, nothing off-screen, no sideways overflow in ${SCENARIOS.length} states (worst overlap ${worst}px2; ${scrolls} scroll, ${flows} as one page)${CAPPED(flagged, 4) ? " | " + CAPPED(flagged, 4) : ""}`);
     check(small.length === 0, `${v.name}: no text under 12px (smallest ${minFont}px)${small.length ? " | " + CAPPED(small) : ""}`);
     check(cut.length === 0, `${v.name}: no control label is cut${cut.length ? " | " + CAPPED(cut) : ""}`);
     check(broke.length === 0, `${v.name}: no word of a move label or role name is broken in two${broke.length ? " | " + CAPPED(broke) : ""}`);
+    check(feltGone.length === 0, `${v.name}: the felt is behind the table in all ${SCENARIOS.length} states${feltGone.length ? " | " + CAPPED(feltGone) : ""}`);
     check(errors.length === 0, `${v.name}: no page errors (${errors.slice(0, 2).join(" | ")})`);
     await ctx.close();
   }
@@ -416,6 +434,8 @@ const REVEAL_CASES = [
   ["lose_true", "lose", "Banker"], ["lose_bluff", "lose", "Banker"], ["lose_strike", "lose", "Agent"], ["lose_coup", "lose", null],
   ["block_challenge", "block_challenge", "Smuggler"], ["block_challenge_long", "block_challenge", "Smuggler"],
   ["turn_after_bluff", "turn", "Banker"], ["turn_after_true", "turn", "Banker"],
+  // a player whose own name reads like a log verb: every line that names them is still one of the story's
+  ["spoofed_name_bluff", "lose", "Banker"], ["spoofed_name_after", "turn", "Banker"],
 ];
 async function reveal() {
   for (const name of ["390x844", "390x664", "320x568", "844x390", "zoom200-195x332"]) {
@@ -459,7 +479,7 @@ async function reveal() {
       }
     }
     METRICS.reveal[name] = { linesChecked: seen.lines, minFontPx: seen.minPx, notFullyInView: seen.notInView.length };
-    check(bad.length === 0, `${name}: reveal lines == the session's own log lines, >=14px (smallest ${seen.minPx}px), claimed card is the right role and next to them, in 8 stages x every viewer${bad.length ? " | " + CAPPED(bad, 4) : ""}`);
+    check(bad.length === 0, `${name}: reveal lines == the session's own log lines, >=14px (smallest ${seen.minPx}px), claimed card is the right role and next to them, in ${REVEAL_CASES.length} stages x every viewer${bad.length ? " | " + CAPPED(bad, 4) : ""}`);
     if (["390x844", "390x664"].includes(name)) check(seen.notInView.length === 0, `${name}: the whole reveal is in view without scrolling${seen.notInView.length ? " | " + CAPPED(seen.notInView) : ""}`);
     check(errors.length === 0, `${name}: reveal: no page errors (${errors.slice(0, 2).join(" | ")})`);
     // until the next prompt: a new action takes the old lines away
@@ -515,6 +535,26 @@ async function operability() {
   await page.mouse.click(box.x, box.y);
   sent = await sentMsgs(page);
   check(sent.length === 1 && sent[0].action === "coup", "a tap on a target still sends the Coup");
+
+  // one opponent is out: while aiming every seat is a button, and the one that cannot be aimed at is disabled
+  await show(page, "turn_coup_one_out", "player");
+  const still = await page.evaluate(() => [...document.querySelectorAll("#opponents .seat")].map((e) => e.tagName + ":" + e.getAttribute("role")));
+  check(still.length === 3 && still.every((x) => x === "DIV:img"), `not aiming: the seats are described, not pressed (${still.join(", ")})`);
+  await focusK(page, "bar:coup"); await press(page, "Enter");
+  const aimed = await ax(page, "#opponents .seat");
+  check(aimed.length === 3 && aimed.every((n) => n.role === "button") && JSON.stringify(aimed.map((n) => !!n.disabled)) === "[false,false,true]",
+    `aiming: all three seats are buttons and only the one that is out is disabled (${JSON.stringify(aimed.map((n) => n.role + (n.disabled ? "/disabled" : "")))})`);
+  check(/Dee/.test(aimed[2].name) && /out of the game/.test(aimed[2].name) && /can't be targeted/.test(aimed[2].name), `...and it says why in its name: "${aimed[2].name}"`);
+  check(await activeK(page) === "seat:p2", `...focus starts on the first target (${await activeK(page)})`);
+  await press(page, "Tab");
+  const t2 = await activeK(page);
+  await press(page, "Tab");
+  const t3 = await activeK(page);
+  check(t2 === "seat:p3" && t3 === "bar:cancel", `...Tab goes target, target, Cancel: the disabled seat is not a stop (${t2}, ${t3})`);
+  await clearSent(page);
+  const off1 = await page.evaluate(() => { const r = document.querySelector("#opponents button.seat:disabled").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+  await page.mouse.click(off1.x, off1.y);
+  check((await sentMsgs(page)).length === 0 && await page.evaluate(() => document.querySelectorAll("#opponents button.seat").length) === 3, "...a tap on the disabled seat sends nothing and aiming goes on");
 
   // giving up a card
   const lose = await show(page, "lose_true", "player");
@@ -580,16 +620,29 @@ async function focus() {
   await stays("the history drawer", "drawer:leave", async () => { await show(page, "turn_mine_poor", "player"); await page.evaluate(() => document.getElementById("history").click()); await sleep(80); });
   await page.evaluate(() => document.getElementById("drawer-close").click());
   await sleep(60);
-  // each new prompt: its first control
-  const prompts = [["waiting_other_turn", "challenge_prompt", "bar:challenge"], ["challenge_prompt", "lose_true", "hand:0"],
-    ["lose_true", "exchange_prompt", "xc:0"], ["exchange_prompt", "turn_mine_poor", "bar:income"], ["turn_mine_poor", "block_prompt_aid", "bar:block:Banker"],
-    ["block_prompt_aid", "block_prompt_steal", "bar:block:Smuggler"]];
+  // each new prompt: its first control; a challenge and a block start on the answer that commits to nothing
+  const prompts = [["waiting_other_turn", "challenge_prompt", "bar:pass"], ["challenge_prompt", "lose_true", "hand:0"],
+    ["lose_true", "exchange_prompt", "xc:0"], ["exchange_prompt", "turn_mine_poor", "bar:income"], ["turn_mine_poor", "block_prompt_aid", "bar:allow"],
+    ["block_prompt_aid", "block_prompt_steal", "bar:allow"]];
   for (const [from, to, want] of prompts) {
     await show(page, from, "player");
     await show(page, to, "player");
     const got = await activeK(page);
-    check(got === want, `new prompt ${to}: focus on its first control ${want} (${got})`);
+    check(got === want, `new prompt ${to}: focus starts on ${want} (${got})`);
   }
+  // a stray Enter (one held down from the last prompt) commits to nothing: it passes, it allows
+  await show(page, "waiting_other_turn", "player"); await show(page, "challenge_prompt", "player");
+  await clearSent(page); await press(page, "Enter");
+  let stray = await sentMsgs(page);
+  check(stray.length === 1 && stray[0].t === "respond" && stray[0].choice === "pass", `a stray Enter on a new challenge prompt passes; it never challenges (${JSON.stringify(stray[0])})`);
+  await show(page, "turn_mine_poor", "player"); await show(page, "block_prompt_steal", "player");
+  await clearSent(page); await press(page, "Enter");
+  stray = await sentMsgs(page);
+  check(stray.length === 1 && stray[0].t === "respond" && stray[0].choice === "allow", `...and on a new block prompt it allows; it never blocks (${JSON.stringify(stray[0])})`);
+  // the order of the controls is still the page's: Challenge, then Pass
+  await show(page, "waiting_other_turn", "player"); await show(page, "challenge_prompt", "player");
+  await page.keyboard.down("Shift"); await press(page, "Tab"); await page.keyboard.up("Shift");
+  check(await activeK(page) === "bar:challenge", `...and Challenge is still first in the order: Shift+Tab from Pass reaches it (${await activeK(page)})`);
   // a move is made and the table moves on: focus does not fall to the page
   await show(page, "challenge_prompt", "player");
   await focusK(page, "bar:pass"); await clearSent(page); await press(page, "Enter");
@@ -634,6 +687,7 @@ async function tabwalk() {
     ["a turn", "turn_mine_rich", "player", null, [...HEAD, "bar:income", "bar:aid", "bar:coup", "bar:claim"]],
     ["a turn with Coup not on offer", "turn_mine_poor", "player", null, [...HEAD, "bar:income", "bar:aid", "bar:coup", "bar:claim"]],
     ["aiming a Coup", "turn_mine_rich", "player", async () => { await focusK(page, "bar:coup"); await press(page, "Enter"); }, [...HEAD, "seat:p2", "seat:p3", "seat:p4", "seat:p5", "seat:p6", "bar:cancel"]],
+    ["aiming a Coup with one opponent out", "turn_coup_one_out", "player", async () => { await focusK(page, "bar:coup"); await press(page, "Enter"); }, [...HEAD, "seat:p2", "seat:p3", "bar:cancel"]],
     ["a challenge", "challenge_prompt", "player", null, [...HEAD, "bar:challenge", "bar:pass"]],
     ["a block", "block_prompt_steal", "player", null, [...HEAD, "bar:block:Smuggler", "bar:block:Broker", "bar:allow"]],
     ["giving up a card", "lose_true", "player", null, [...HEAD, "hand:0", "hand:1"]],
@@ -918,6 +972,21 @@ async function overlays() {
     await sleep(900);
     const back = await page.evaluate(() => ({ hidden: document.getElementById("conn-banner").hidden, aria: document.getElementById("bar").getAttribute("aria-disabled") }));
     check(back.hidden && back.aria === null, `${name}: back online the line goes and the bar works again (${JSON.stringify(back)})`);
+    // the Party Host's two results buttons go to the Party, not over the table's socket: they work while it is down
+    await show(page, "results", "player");
+    await page.evaluate(() => { window.__party.again = 0; window.__party.home = 0; window.__sockets[window.__sockets.length - 1].close(); });
+    await sleep(120);
+    const pb = await page.evaluate(() => {
+      const bar = document.getElementById("bar"), ban = document.getElementById("conn-banner");
+      return { offline: !ban.hidden, aria: bar.getAttribute("aria-disabled"), op: parseFloat(getComputedStyle(bar).opacity), labels: [...bar.querySelectorAll(".act")].map((b) => b.textContent.trim()) };
+    });
+    await page.click('[data-k="bar:play-again"]'); await page.click('[data-k="bar:party-home"]');
+    const pc = await page.evaluate(() => ({ again: window.__party.again, home: window.__party.home }));
+    check(pb.offline && pb.aria === null && pb.op === 1 && JSON.stringify(pb.labels) === '["Play again","Party Home"]' && pc.again === 1 && pc.home === 1,
+      `${name}: with the socket down the host's Play again and Party Home are not dimmed and still work (${JSON.stringify({ ...pb, ...pc })})`);
+    await page.evaluate(() => { window.AvranaParty.isHost = () => false; render(); });
+    const gb = await page.evaluate(() => ({ aria: document.getElementById("bar").getAttribute("aria-disabled"), buttons: document.querySelectorAll("#bar button").length }));
+    check(gb.aria === "true" && gb.buttons === 0, `${name}: ...a guest's waiting line is still dimmed while it is down (${JSON.stringify(gb)})`);
     check(errors.length === 0, `${name}: overlays: no page errors (${errors.slice(0, 2).join(" | ")})`);
     await ctx.close();
   }
@@ -951,6 +1020,28 @@ async function drawer() {
     await press(page, "Escape");
     const closed = await page.evaluate(() => ({ open: document.getElementById("drawer").open, active: document.activeElement.id }));
     check(!closed.open && closed.active === "history", `${name}: Escape closes it and focus returns to the button (${JSON.stringify(closed)})`);
+    // ...and so does every other way out: the X tapped, the X by keyboard, and both when the page never had
+    // the button focused (a tap does not focus a button in every browser): the render that closes it
+    // must not send focus to the moves
+    const home = () => page.evaluate(() => ({ open: document.getElementById("drawer").open, active: document.activeElement && document.activeElement.id }));
+    await page.click("#history"); await sleep(80);
+    await page.click("#drawer-close"); await sleep(80);
+    let h1 = await home();
+    check(!h1.open && h1.active === "history", `${name}: the X, tapped, closes it and focus returns to #history (${JSON.stringify(h1)})`);
+    await page.focus("#history"); await press(page, "Enter"); await sleep(60);
+    const onX = await page.evaluate(() => document.activeElement.id);
+    await press(page, "Enter"); await sleep(80);
+    h1 = await home();
+    check(onX === "drawer-close" && !h1.open && h1.active === "history", `${name}: the X, by keyboard (Enter), closes it and focus returns to #history (${onX} -> ${JSON.stringify(h1)})`);
+    for (const how of ["Escape", "the X"]) {
+      await focusK(page, "bar:pass");
+      await page.evaluate(() => document.getElementById("history").click());
+      await sleep(80);
+      if (how === "Escape") await press(page, "Escape"); else await page.click("#drawer-close");
+      await sleep(80);
+      const h = await home();
+      check(!h.open && h.active === "history", `${name}: opened without the button focused, ${how} still returns focus to #history (${JSON.stringify(h)})`);
+    }
     // no timer, no nudge
     await show(page, "challenge_prompt", "player", { deadline: false });
     await page.evaluate(() => document.getElementById("history").click());
@@ -971,8 +1062,9 @@ async function drawer() {
     check(await page.evaluate(() => document.getElementById("confirm").open), `${name}: Leave game asks first`);
     await page.click("#confirm-yes"); await sleep(60);
     check((await sentMsgs(page)).some((m) => m.t === "leave_game") && await page.evaluate(() => document.getElementById("drawer").open), `${name}: confirming sends leave_game and the drawer is still open`);
-    await page.click("#drawer-close"); await sleep(60);
-    check(!(await page.evaluate(() => document.getElementById("drawer").open)), `${name}: #drawer-close closes it`);
+    await page.click("#drawer-close"); await sleep(80);
+    const fin = await home();
+    check(!fin.open && fin.active === "history", `${name}: after Leave game, #drawer-close closes it and focus is on #history (${JSON.stringify(fin)})`);
     check(errors.length === 0, `${name}: drawer: no page errors (${errors.slice(0, 2).join(" | ")})`);
     await ctx.close();
   }
@@ -1171,6 +1263,75 @@ async function motion() {
   await sp.ctx.close();
 }
 
+// ---------------------------------------------------------------- 12. the felt, where nobody has a hand
+// The felt is the table's backdrop; its lower edge crosses the player's hand. A page with no hand (a Party
+// spectator, a watcher, the lobby) once lost it: bare wood behind the seats. Pinned, #felt has a height and
+// reaches from under the header to the table's lower edge; when the page flows instead, #felt is off and the
+// table paints the felt itself. Every one of these states at every size, and the layout checks again.
+const FELT_STATES = [
+  ["spectator_full_table", "spectator"], ["challenge_prompt", "spectator"], ["lose_true", "spectator"],
+  ["spectator_full_table", "watcher"], ["challenge_prompt", "watcher"], ["waiting_other_turn", "watcher"],
+  ["results", "watcher"], ["out_watching", "watcher"], ["paused_four", "watcher"],
+  ["lobby", "player"], ["lobby", "bystander"], ["lobby", "watcher"], ["lobby", "spectator"],
+  ["lobby_party", "player"], ["lobby_party", "watcher"],
+];
+const FELT_KINDS = {
+  "Party spectator": (k, l) => l === "spectator" && !k.startsWith("lobby"),
+  "watcher": (k, l) => l === "watcher" && !k.startsWith("lobby"),
+  "lobby": (k) => k.startsWith("lobby"),
+};
+async function felt() {
+  METRICS.felt = {};
+  for (const v of VIEWPORTS) {
+    if (ONLY_VP && !ONLY_VP.test(v.name)) continue;
+    const { ctx, page, errors } = await phone(v);
+    const rows = [], gone = [], flagged = [], small = [];
+    let steps = null;
+    for (const [key, label] of FELT_STATES) {
+      await show(page, key, label);
+      const m = await measure(page);
+      if (key === "lobby" && label === "player") {
+        // the lobby plate: "Test bots" on a row of its own, then minus, the count and plus together on one row
+        steps = await page.evaluate(() => {
+          const r = (e) => e.getBoundingClientRect();
+          const lab = document.querySelector(".stepper-label"), ctl = [...document.querySelectorAll(".stepper button, .stepper b")];
+          if (!lab || ctl.length !== 3) return { ok: false, why: "no label, or not three controls" };
+          const mids = ctl.map((e) => Math.round(r(e).top + r(e).height / 2));
+          const above = r(lab).bottom <= Math.min(...ctl.map((e) => r(e).top)) + 1, one = Math.max(...mids) - Math.min(...mids) <= 4;
+          // at 200 % text on the smallest phone the row of three may give way: the label is still above them
+          return { ok: above && (one || document.documentElement.style.fontSize === "32px"), above, one };
+        });
+      }
+      if (SHOTS && ["360x640", "390x844", "844x390"].includes(v.name)) await page.screenshot({ path: path.join(OUT, `felt-${key}-${label}-${v.name}.png`) });
+      rows.push({ key, label, ...m.felt });
+      if (!m.felt.ok) gone.push(`${key}/${label}: ${m.felt.mode} felt ${m.felt.h}px`);
+      const problems = [];
+      if (m.maxOverlap > 20) problems.push(`overlap ${m.maxOverlap}px2 (${m.overlaps[0]})`);
+      if (m.offscreen.length) problems.push(`off-screen ${m.offscreen[0]}`);
+      if (m.docOverflowX > 0 || m.bodyOverflowX > 0 || m.appOverflowX > 0 || m.stageOverflowX > 0) problems.push("sideways overflow");
+      if (m.wide.length) problems.push(`wider than the screen: ${m.wide[0]}`);
+      if (m.broken.length) problems.push(`a word broken in two: ${m.broken[0]}`);
+      if (problems.length) flagged.push(`${key}/${label}: ${problems.join("; ")}`);
+      if (m.minFont < 11.99) small.push(`${key}/${label}: ${m.small[0]}`);
+    }
+    METRICS.felt[v.name] = rows;
+    // the two sizes a review asks about: a height, in pixels, for each kind of table without a hand
+    if (["360x640", "390x844"].includes(v.name)) {
+      for (const [kind, of] of Object.entries(FELT_KINDS)) {
+        const sel = rows.filter((r) => of(r.key, r.label));
+        check(sel.length > 0 && sel.every((r) => r.mode === "pinned" && r.h > 0 && r.ok),
+          `${v.name}: a ${kind}'s table has its felt: #felt is ${sel.map((r) => r.h).join("/")}px high in ${sel.length} states`);
+      }
+    }
+    check(gone.length === 0, `${v.name}: the felt is behind the table in all ${FELT_STATES.length} states without a hand (${rows.filter((r) => r.mode === "flow").length} as one page)${gone.length ? " | " + CAPPED(gone) : ""}`);
+    check(flagged.length === 0, `${v.name}: those states: no overlap, nothing off-screen, no sideways overflow, no word broken in two (the lobby's BLUFF)${flagged.length ? " | " + CAPPED(flagged, 4) : ""}`);
+    check(small.length === 0, `${v.name}: those states: no text under 12px${small.length ? " | " + CAPPED(small) : ""}`);
+    check(steps && steps.ok, `${v.name}: the lobby's Test bots label is a row of its own over minus, count and plus (one row, but at 200 % text on the smallest phone) (${JSON.stringify(steps)})`);
+    check(errors.length === 0, `${v.name}: felt: no page errors (${errors.slice(0, 2).join(" | ")})`);
+    await ctx.close();
+  }
+}
+
 // ---------------------------------------------------------------- run
 try {
   await run("matrix", matrix);
@@ -1186,6 +1347,7 @@ try {
   await run("party", partySurface);
   await run("insets", insets);
   await run("motion", motion);
+  await run("felt", felt);
 } finally {
   fs.writeFileSync(path.join(OUT, "layout-results.json"), JSON.stringify(results, null, 1));
   fs.writeFileSync(path.join(OUT, "layout-metrics.json"), JSON.stringify(METRICS, null, 1));

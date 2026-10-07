@@ -82,17 +82,21 @@ Phone-size screenshots were taken with headless Playwright/Chromium (2–6 playe
 360×740, 390×664). Chromium is **not** iOS Safari; see "real-device checks" below.
 
 The table itself (AVR-313: reveal, buttons and focus, live region, contrast, overlays, drawer,
-reflow at eight phone sizes and 200 % text, insets, reduced motion) is checked in a real browser
+reflow at eight phone sizes and 200 % text, insets, reduced motion, the felt where nobody has a
+hand: a Party spectator, a watcher, the lobby) is checked in a real browser
 against real server states: `tests/bluff_states.py` plays the real session and the page's socket
 is a stub, so no game runs. Run it against any server that serves the page (screenshots go to the
 directory, `GAMEHUB_NODE_MODULES` and `CHROME_PATH` as for the other `.mjs` tests):
 
 ```sh
 node tests/bluff_layout_test.mjs http://127.0.0.1:8198 /tmp/bluff-layout
+node --test tests/bluff_layout_test.mjs     # no arguments: BLUFF_LAYOUT_URL / BLUFF_LAYOUT_OUT, else port 8198
 ```
 
-`tests/test_bluff_story.py` pins the log wording the reveal reads (`OPENERS` in `web/client.js`)
-to `game.py`.
+`tests/test_bluff_story.py` pins the log wording the reveal reads (`OPENERS`, `OPENING_LINE`,
+`CLAIM_AT` and `BLOCK_AT` in `web/client.js`) to `game.py`. A log line starts with a player's own
+name, and a name can contain the verbs (`Bo claims Ag`), so the client reads a line only after a
+seat's name; the tests play tables with such names.
 
 ## How to play: first-play briefing and rules (AVR-90)
 

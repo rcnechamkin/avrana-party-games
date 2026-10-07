@@ -120,6 +120,8 @@ button.card { cursor: pointer; }
   display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .seat[data-side] { align-self: center; }
 button.seat { background: none; padding: 0; font: inherit; text-align: center; touch-action: manipulation; }
+/* while aiming, a seat that cannot be targeted is a disabled button: it looks as it did, and is not a stop */
+button.seat:disabled { color: inherit; cursor: default; }
 .seat .info { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px; max-width: 100%; }
 .seat .cards { display: flex; gap: 3px; }
 /* three or more opponents (or a short screen): compact seats */
@@ -270,10 +272,13 @@ button.seat { background: none; padding: 0; font: inherit; text-align: center; t
 
 /* ---- lobby ------------------------------------------------------------------- */
 /* the lobby: one plate on the felt holds the title and the table settings */
-#play.lobby { gap: 12px; padding: 16px 20px; border-radius: 20px; background: rgba(12,8,4,.5);
+#play.lobby { gap: 12px; padding: 16px clamp(6px, 2.5cqw, 20px); border-radius: 20px; background: rgba(12,8,4,.5);
   border: 1px solid var(--ink-line); }
-.lobby-title { font-size: max(32px, 2.5rem); font-weight: 900; letter-spacing: .08em; text-shadow: 0 3px 6px #000; }
+/* the title is 40 px where there is room and smaller where the plate is narrow (a small phone, four players round the table), so BLUFF stays one word on one line */
+.lobby-title { font-size: clamp(32px, 9.5cqw, 2.5rem); font-weight: 900; letter-spacing: .08em; text-shadow: 0 3px 6px #000; }
 .stepper { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; font-weight: 700; font-size: var(--fs-l); }
+/* the label is its own row, so the plate's controls are one row of three (a narrow plate wrapped them 2 + 2) */
+.stepper-label { flex: 1 0 100%; text-align: center; }
 .stepper b { min-width: 1.2em; text-align: center; font-size: var(--fs-xl); font-variant-numeric: tabular-nums; }
 .stepper button { flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
   background: var(--ink); border: 1px solid var(--ink-line); font-size: 20px; }

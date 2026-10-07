@@ -21,7 +21,8 @@ Each scenario is {"stage": ..., "chain": [log lines], "views": {label: state}}:
   views.spectator  a Party spectator (state_for(None, spectator=True): every hand is open)
 
 `chain` is the public log of the action that produced the moment, from its first line to the last,
-copied from the session's own log. The test compares what the page shows with it, so the client's
+copied from the session's own log. (A table that has not started, `lobby` and `lobby_party`, has no
+game and an empty chain.) The test compares what the page shows with it, so the client's
 reading of the log is checked against the server's, not against a second copy of the client's rule.
 """
 
@@ -275,6 +276,35 @@ def build():
     rig(s, A, {A: ["Banker", "Agent"]}, {A: 2})
     s.g["paused"] = {"remaining": 55, "since": 0}
     out["paused_four"] = scenario(s, "turn", A, B, 0)
+
+    # ---- aiming a Coup with one opponent out: that seat is on the table, and cannot be aimed at -
+    s = table(4)
+    rig(s, A, {A: ["Banker", "Agent"], B: ["Smuggler", "Guardian"], C: ["Broker", "Guardian"], D: []},
+        {A: 8, B: 3, C: 3, D: 0})
+    s.g["revealed"][D] = ["Banker", "Agent"]
+    out["turn_coup_one_out"] = scenario(s, "turn", A, B, 0)
+
+    # ---- a player whose own name reads like a log verb ("Bo claims Ag"): the story is unchanged ---
+    s = table(4, names=["Alexandria", "Bo claims Ag", "Chen", "Dee"])
+    rig(s, B, {A: ["Banker", "Agent"], B: ["Guardian", "Guardian"]}, {A: 2, B: 2})
+    since = len(s.g["log"])
+    act(s, B, "tax")
+    respond(s, A, "challenge")
+    out["spoofed_name_bluff"] = scenario(s, "lose", B, D, since, challenger=A)
+    s.game_action(B, {"t": "lose", "card": 0})
+    out["spoofed_name_after"] = scenario(s, "turn", A, D, since, challenger=B)
+
+    # ---- tables that have not started (nobody has a hand): the lobby, and the Party's "starting" ---
+    for label, party in (("lobby", False), ("lobby_party", True)):
+        s = BluffSession(rng=random.Random(2))
+        for i, (tok, name) in enumerate(zip(TOKENS[:4], NAMES)):
+            s.join(tok, name)
+            s.players[tok].pfp = "/shared/avatars/gaze-%02d.svg" % (i + 1)
+        s.set_ready(B, True)
+        s.set_ready(C, True)
+        s.party_round = party
+        assert s.phase == "lobby", s.phase
+        out[label] = {"stage": "lobby", "chain": [], "views": views(s, A, B)}
 
     return out
 
