@@ -3,9 +3,11 @@
 Observed 2026-10-07 at avrana-party-games `a448972` (origin/main) and avrana-party `75b5062`.
 Historical evidence, not a plan and not a decision record: it says what Spades needs from a
 native platform so that AVR-41 can start from facts. Nothing in `games/spades/`, `core/`,
-`provider/`, the registry or any catalog changed, the retired LAN Games runtime is not
-revived, and Spades stays unreachable from Party Home. The only code this work adds is two
-test files (section 10).
+`provider/`, the registry or any catalog changed, the LAN Games runtime is not revived (it is
+retiring, not retired: ADR 0014 is accepted direction and not implemented), and Spades stays
+unreachable from Party Home in source (what Party changed for that in AVR-259 is "not deployed"
+by Party's own text, `party:docs/design/NATIVE-GAMES.md:95`, so nothing here says what the Pi
+serves today). The only code this work adds is two test files (section 10).
 
 How to read it:
 
@@ -21,7 +23,14 @@ How to read it:
 - A **Proposal** is a labelled suggestion for the owner. No proposal here is a decision and
   none changes an Open Decision elsewhere.
 - Party-side behaviour was read from source at `75b5062`. Nothing was run on the Pi, nothing was
-  deployed, and no browser or phone was used.
+  deployed, and no browser or phone was used. Party's documents carry a status, and the packet
+  repeats it where it first leans on one. ADR 0015 is accepted (by the owner on 2026-10-03; what
+  is deployed is SYSTEM's to say, `ADR 0015:3-5`). ADR 0014 is accepted as direction, with its
+  mechanisms proposed, and is not implemented (`ADR 0014:3`; `party:docs/SYSTEM.md:9-16`): the
+  LAN Games runtime and hub are retiring, not retired. ADR 0010 is implemented and merged
+  (`ADR 0010:5-7`). AVR-259's grants and routing are in Party's source and "not deployed"
+  (`party:docs/design/NATIVE-GAMES.md:95`), and `party:docs/runbooks/provision-game.md` is a
+  proposed procedure that has not been run on the appliance (`:3-8` of that file).
 
 ## 1. Summary
 
@@ -30,18 +39,21 @@ How to read it:
   outside `games.spades` (`games/spades/rules.py:9`, `games/spades/bots.py:22-24`). The session
   is a subclass of the fork's `GameSession` (`games/spades/game.py:29`) and the page is a client
   of the shared `hubnet.js` (`games/spades/web/index.html:136-138`).
-- Spades cannot be launched by a Party today: it has no party side
-  (`core/party_session.py:53`), its launch route answers 404 `no_party_session`
-  (`server.py:189-192`, `:162-164`), Party Home grants only three games
-  (`party:contracts/appliances/avrana-pi4.json:67-94`) and nginx sends `/games/spades/` to a
-  socket nobody provisioned (`party:deploy/games/nginx-native-games.location:20-25`).
+- Spades cannot be launched by a Party in source: it has no party side
+  (`core/party_session.py:53`) and its launch route answers 404 `no_party_session`
+  (`server.py:189-192`, `:162-164`). Party's own source also grants only three games
+  (`party:contracts/appliances/avrana-pi4.json:67-94`) and sends `/games/spades/` to a socket
+  nobody provisioned (`party:deploy/games/nginx-native-games.location:20-25`), but both are
+  AVR-259 changes that Party's own text marks "In source since AVR-259, not deployed"
+  (`party:docs/design/NATIVE-GAMES.md:95`), so what the Pi does today is not claimed here.
 - If a Party did seat it as it stands, a match would reach `game_end` and report nothing: the
   session never sets an outcome and has no `game_result()` (`core/session.py:193-217`, no
   override in `games/spades/game.py`). That, a one-human crash, a fifth player with no seat and
   an abandon with no outcome are pinned by tests in `tests/test_spades_session_pins.py` as
   today's gaps, not as behaviour to keep.
 - The Game Contract has no teams field (`party:avrana/contracts/game.py:60-62`) and the result
-  envelope deliberately has no team or score field (`party:docs/adr/0015-game-result-envelope.md:82-84`).
+  envelope, accepted in ADR 0015, deliberately has no team or score field
+  (`party:docs/adr/0015-game-result-envelope.md:82-84`).
   Teams, four seats with bots, private hands, a per-seat clock and a multi-hand match are what
   Spades asks of the platform that Checkers (AVR-238) does not (section 11).
 - Nine owner decisions, plus four more the issue did not list, stand between this packet and a
@@ -87,11 +99,11 @@ What else in this repository names Spades:
 | `games/registry.py:14`, `:228-242` | the registry entry: slug, `min_p` 2, `max_p` 4, blurb, `session: SpadesSession`, web directory |
 | `provider/catalog.json:435-450` | the exported catalog row `lan-spades` (launch path `/games/spades/`) |
 | `web/gameart.js:108-110` | the library artwork scene for Spades (first party, an inline spade shape) |
-| `web/hub.js:83` | the retired hub's duration label, "25-45 min" |
+| `web/hub.js:83` | the retiring hub's duration label, "25-45 min" |
 | `core/session.py:3`, `ADDING_A_GAME.md:23, 100, 273, 339, 521` | Spades is documented as the fork's reference game |
 | `games/hearts/game.py:3`, `games/euchre/game.py:3` | Hearts and Euchre are written in Spades' shape and copy its bot contract (`games/hearts/bots.py:15`, `games/euchre/bots.py:1`) |
 | `tests/test_spades.py`, `tests/test_bots.py`, `tests/test_spades_rules.py`, `tests/test_spades_session_pins.py` | Python suites (section 10) |
-| `tests/playtest_spades.mjs`, `tests/hub_profile_test.mjs:97-98`, `tests/pfp_test.mjs:102` | browser scripts against the retired hub; not run for this packet |
+| `tests/playtest_spades.mjs`, `tests/hub_profile_test.mjs:97-98`, `tests/pfp_test.mjs:102` | browser scripts against the retiring hub; not run for this packet |
 
 The shared code Spades stands on (line counts at `a448972`): `core/session.py` 492,
 `core/net.py` 644, `core/party_session.py` 234, `core/party_result.py` 181 and
@@ -118,7 +130,7 @@ legacy) is Party's: `party:docs/design/NATIVE-GAMES.md:78-93`.
 | Match end | `end_game()` enters `game_end`. In a Party round no timer runs and the results stay until the Host moves on; outside a Party the room returns to the lobby after `GAME_END_SECONDS = 20` (`core/session.py:44`, `:442-443`, `:446-453`). | Hold the results (`party:docs/design/GAME-UX-CONTRACT.md:842-846`, Rule 12.1). |
 | Outcome and result | After every mutation the binding reads `take_outcome()` and, for "completed", asks `game_result(ref)` once (`core/net.py:284-301`, `:303-332`). Spades sets and defines neither. | Report completed or abandoned, and a result (section 9). |
 | Back to lobby | The base verb `again` returns to the lobby at `game_end` (`core/net.py:642-643`); the page's "BACK TO LOBBY" sends it (`spades.js:532`). | No game-side way back to a lobby in a Party round: results are held until the Host chooses Play again, which goes to a new setup (`party:docs/design/GAME-UX-CONTRACT.md:842-846`, Rule 12.1), and no game returns phones by itself (`:866-868`, Rule 12.4, proposed for every game). |
-| Party side | `GAMES = ("bluff", "expo")` (`core/party_session.py:53`); `provider/avrana-contract.json:47` (`party_side_games`) and `:19` (`result.reported_by`) leave Spades out. A launch gets 404 (`server.py:189-192`, `:162-164`); a ticket hello is refused (`core/net.py:467-475`). | A contract file, a grant with a `runtime`, a key and provisioning (`party:docs/runbooks/provision-game.md:10-14`, `:32-45`, `:49-57`). |
+| Party side | `GAMES = ("bluff", "expo")` (`core/party_session.py:53`); `provider/avrana-contract.json:47` (`party_side_games`) and `:19` (`result.reported_by`) leave Spades out. A launch gets 404 (`server.py:189-192`, `:162-164`); a ticket hello is refused (`core/net.py:467-475`). | A contract file, a grant with a `runtime`, a key and provisioning, as Party's runbook proposes them (a proposed procedure, not run on the appliance: `party:docs/runbooks/provision-game.md:3-8`; the steps `:10-14`, `:32-45`, `:49-57`). |
 | Registry, catalog, static files | One `REGISTRY` entry (`games/registry.py:228-242`) becomes one binding (`server.py:66-70`) and one static mount (`:350-352`). | The native path's contract, grant and registry replace it. |
 | Build id | `build_id("spades")` hashes `server.py`, `requirements.txt`, `core/**/*.py`, `games/__init__.py`, `games/registry.py` and `games/spades/` without `web`, `art`, `docs` (`core/party_session.py:70-72`, `:75-108`). | Keep the layout it assumes or change it with Party (Linear AVR-238 plan, gap 5: a new top-level directory is invisible to it). |
 | Fresh room | Each launch replaces the session with `type(self.session)()` (`core/net.py:273`). | A no-argument constructor (`SpadesSession(rng=None)`, `game.py:41`, qualifies). |
@@ -197,8 +209,10 @@ Facts:
 - **What Party has already classed** (`party:docs/design/NATIVE-GAMES.md:86-87`, `:90`):
   reconnect with a fresh ticket and the server-clock offset are pattern donors; `wc-*` identity,
   manifest and icon injection and the hub's toasts and chrome are not carried;
-  `avrana-integration.js` is legacy compatibility replaced by the ADR 0013 seam; `brag.js` and
-  `brand.js` belong to the legacy hub runtime. A native Spades therefore brings its own
+  `avrana-integration.js` is legacy compatibility, replaced in Party's design by the ADR 0013
+  seam (accepted; steps 1 to 3 in source, not deployed:
+  `party:docs/adr/0013-party-and-game-browser-origins.md:3`); `brag.js` and `brand.js` belong to
+  the legacy hub runtime. A native Spades therefore brings its own
   announce/toast, celebration (or none), avatar rendering (the Party's 32 bundled Gaze avatars,
   `docs/ASSETS.md:5-16`) and share card (or drops it).
 - **Game-owned and staying in the game.** Card faces and suits drawn as text in CSS
@@ -218,7 +232,7 @@ Provenance and licence:
 |---|---|
 | Code | MIT. A fork of LAN Games by BEACNpool; modifications under the same terms (`NOTICE.md:3-14`, `LICENSE:1-3`). `games/spades` imports no third-party package. |
 | Fonts | Sora and JetBrains Mono, SIL OFL 1.1, bundled in `web/fonts` (`NOTICE.md:21-27`). |
-| Art | None in `games/spades/`. Cards are typographic. The library scene is a first-party inline spade shape (`web/gameart.js:108-110`), and `docs/ASSETS.md` has no Spades row. Party exported that scene as `lan:spades` and removed it with the grant in AVR-259 (Party commit `a5e122f`; `party:contracts/artwork.json:3-8` lists three games today). |
+| Art | None in `games/spades/`. Cards are typographic. The library scene is a first-party inline spade shape (`web/gameart.js:108-110`), and `docs/ASSETS.md` has no Spades row. Party exported that scene as `lan:spades` and, in its source, removed it with the grant in AVR-259 (Party commit `a5e122f`; `party:contracts/artwork.json:3-8` lists three games at `75b5062`; Party's own text marks AVR-259 "In source since AVR-259, not deployed", `party:docs/design/NATIVE-GAMES.md:95`). |
 | Names and text | Bot names VEGA, ONYX, JINX, NOVA (`game.py:26`) and all on-screen copy are the fork's own. `NOTICE.md:33-36` says Avrana games use their own names, text and assets, so rules text is written fresh (S8). |
 
 Proposal: draw the table from the game's own code and tokens, take Party's primitives for
@@ -386,7 +400,8 @@ What Spades produces today:
   pinned: `test_a_party_seated_game_reaches_game_end_with_no_outcome_and_no_result_to_report`,
   `test_everyone_leaving_returns_to_the_lobby_with_no_outcome_to_report`.
 
-What the Party accepts (`party:docs/adr/0015-game-result-envelope.md`, reference code
+What the Party accepts (`party:docs/adr/0015-game-result-envelope.md`: accepted by the owner on
+2026-10-03, with what is deployed left to SYSTEM, `ADR 0015:3-5`; reference code
 `core/party_result.py`):
 
 - `schema`, `game{id, build, content?}`, `mode` (`competitive` or `cooperative`), `standings`,
@@ -469,7 +484,7 @@ python -m pytest -q tests/test_spades.py tests/test_bots.py tests/test_spades_ru
 ```
 
 Not covered by any Python test, and not run here: the page itself and the shared client
-(`tests/playtest_spades.mjs` drives the retired hub in a browser). A native build needs its own
+(`tests/playtest_spades.mjs` drives the retiring hub in a browser). A native build needs its own
 browser proof (the Checkers D10 analogue, section 13.3).
 
 ## 11. What an SDK primitive must express that Checkers does not
@@ -478,7 +493,8 @@ Checkers here means the approved decisions D1 to D10 and the plan on Linear AVR-
 and 2026-10-07); its implementation is in progress and was not read. These are observations about
 what Spades needs. They do not propose shared code: Party's rule is that a pattern is promoted
 only on repeated evidence (`party:docs/design/NATIVE-GAMES.md:112-114`; ADR 0014 decision 12,
-`party:docs/adr/0014-native-games-isolated-lan-games-retired.md:96-99`).
+`party:docs/adr/0014-native-games-isolated-lan-games-retired.md:96-99`; ADR 0014 is accepted
+direction with its mechanisms proposed, and is not implemented).
 
 | # | Needs | Checkers (per the decisions) | Spades (fact) |
 |---|---|---|---|
@@ -596,7 +612,7 @@ evidence that Checkers (AVR-238) has not produced yet.
   `difficulty`; `turn_seconds` 10 to 60 (`game.py:32-61`). `nil_bonus` and `nil_penalty` are
   defaults that `validate_settings` never accepts (`:37-38`, `:47-61`; pinned). In a Party round
   the settings verb is refused, so the defaults (500, partners, standard, 30 s) always apply
-  (`core/session.py:391-397`; `party:docs/adr/0010-party-pregame.md:45-48`). The retired hub
+  (`core/session.py:391-397`; `party:docs/adr/0010-party-pregame.md:45-48`). The retiring hub
   labels a Spades game "25-45 min" (`web/hub.js:83`). The session protocol carries no settings
   to a game, and host settings in the briefing are a deferred platform question
   (`party:docs/design/GAME-UX-CONTRACT.md:364-379`, `:1187`); EXPO's setup stays inside EXPO "for
@@ -701,8 +717,9 @@ evidence that Checkers (AVR-238) has not produced yet.
 **S9. Art provenance**
 
 - Facts. Section 5: no art files; cards are typographic; the library scene is a first-party inline
-  shape that Party stopped using in AVR-259; `docs/ASSETS.md` has no Spades row; sounds are
-  synthesized. The artwork contract says a game without an entry shows a generic icon
+  shape that Party's source stopped using in AVR-259 (not deployed); `docs/ASSETS.md` has no
+  Spades row; sounds are synthesized. The artwork contract says a game without an entry shows a
+  generic icon
   (`party:contracts/artwork.json:3`); its sources are `lan:<slug>` (a GameArt scene, "prototype
   era, not final logos") and `kenney:<icon>` (CC0) (`:3`). Rule 13.1 says no emoji is implicitly
   required as game art; Rule 13.2 (proposed) allows card suits as notation and wants a placeholder
@@ -718,7 +735,8 @@ evidence that Checkers (AVR-238) has not produced yet.
 
 **S10. Persistence across a process restart.** Fact: the match is memory only
 (`games/spades/game.py:43`); EXPO's snapshot is standalone only and its Party tables are not saved
-(`games/expo/game.py:93-109`); a native game gets a state directory of its own
+(`games/expo/game.py:93-109`); a native game gets a state directory of its own, in Party's
+proposed provisioning procedure, which has not been run
 (`party:docs/runbooks/provision-game.md:70-72`). Options: accept the loss, snapshot after each
 hand, or snapshot after every action. Proposal: decide after the first native game has run on the
 appliance, since a restart mid-match is a property of how the unit is restarted.
@@ -765,7 +783,7 @@ Fact: AVR-155 (Backlog) names Classics as a candidate tier, "a quieter Classics 
 than hero tiles", lists Spades among the familiar games, and asks that catalog metadata can
 represent the tiers and that Classics not compete visually with showcase games (Linear AVR-155).
 None of the existing places can carry that tag. The registry's `category` and `hidden` fields
-(`games/registry.py:231`, `:241`) belong to the retired hub. An appliance `collections[]` entry
+(`games/registry.py:231`, `:241`) belong to the retiring hub. An appliance `collections[]` entry
 is a hub that is not a game, with its own entry path and required runtimes
 (`party:contracts/README.md:136`; `party:avrana/contracts/appliance.py:124-135`). The grant's
 `tier` is a trust tier, `builtin`, `trusted` or `community`
@@ -776,7 +794,8 @@ Proposal: a Classics shelf is a tag on native games, carried by the Game Contrac
 extension (the contract already has reverse-DNS `extensions`, `party:avrana/contracts/game.py:313-319`,
 and the Party validator that reads the `net.avrana.party` one would need a new key,
 `party:avrana/contracts/party_config.py:30`), plus a grouping in the Library. It is never the LAN
-hub, which ADR 0014 retires as a runtime, and not `collections[]` or `party_session.GAMES`.
+hub, which ADR 0014 retires as a runtime (accepted direction, not implemented), and not
+`collections[]` or `party_session.GAMES`.
 Whether Spades is Classics or Featured is AVR-155's decision; nothing here pre-empts it.
 
 ## 15. Limits of this packet
