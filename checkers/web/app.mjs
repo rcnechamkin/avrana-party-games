@@ -409,6 +409,20 @@ export function createApp(env = {}) {
     S.poll = null;
   }
 
+  /** The game is over and the Party holds the results. The Host's Play again shows here as the Party
+   * being in a game of this kind once more after it had left the last one; the page then asks for a
+   * seat in the new game. (Party Home, or a new briefing, takes the page away: the shim does it.) */
+  async function nextGame() {
+    let left = false;
+    for (;;) {
+      const at = partyAt();
+      const here = at.at === 'game' && at.game === GAME;
+      if (!here && at.at !== null) left = true;
+      else if (here && left) return;
+      await changeOrDelay(RETRY_MS);
+    }
+  }
+
   async function run() {
     const origin = await partyOrigin();
     if (!origin || origin === here) {
@@ -426,7 +440,7 @@ export function createApp(env = {}) {
         continue;
       }
       await follow();
-      if (S.view && S.view.result) return;          // over: the Party decides what comes next
+      if (S.view && S.view.result) await nextGame();   // over: the Party decides what comes next
     }
   }
 

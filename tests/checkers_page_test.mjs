@@ -339,7 +339,10 @@ const scenarios = {
       assert.equal(side.status(), 'Game over.');
       assert.deepEqual(side.movable(), []);
     }
-    await Promise.all([ana.run, ben.run]);                           // the pages stop asking: the Party takes it from here
+    await until(() => ana.S.poll === null && ben.S.poll === null, 'the pages to stop asking');
+    const asked = ana.asked('api/poll').length;
+    await quiet(100);
+    assert.equal(ana.asked('api/poll').length, asked);               // the Party takes it from here
     assert.equal(ana.text('result-wait'), 'Recording the result…');
   },
 
@@ -380,6 +383,46 @@ const scenarios = {
     ana.el.again.click();
     ana.el.home.click();
     await until(() => ana.party.calls.includes('playAgain') && ana.party.calls.includes('goHome'), 'the Host verbs');
+  },
+
+  // Play again: the Party leaves the game for the results and comes back to a new one; the page asks for a seat in it.
+  async again() {
+    const ana = phone([...SETUP.tickets.ana.one, ...SETUP.tickets.ana.next]);
+    const ben = phone([...SETUP.tickets.ben.one, ...SETUP.tickets.ben.next]);
+    ana.start();
+    ben.start();
+    await until(() => ana.S.view && ben.S.view, 'both players to be seated');
+    const at = (where) => ({ location: { at: where, game: 'checkers' }, hostName: 'Ana', host: true });
+    ana.party.push(at('game'));
+    ben.party.push(at('game'));
+    ben.el.resign.click();
+    await until(() => ben.el.confirm.open, 'the confirmation');
+    ben.el['confirm-yes'].click();
+    await until(() => ana.S.view.result && ben.S.view.result, 'the end');
+    assert.equal(ana.text('result-wait'), 'Recording the result…');
+    ana.party.push(at('results'));
+    ben.party.push(at('results'));
+    assert.equal(ana.el['result-actions'].hidden, false);
+    await quiet(100);
+    assert.equal(ana.party.calls.filter((c) => c === 'ticket').length, 1);   // still on the results: no new seat is asked for
+    // The Host chooses Play again: the Party starts the game again (here, the players the other way round).
+    ana.el.again.click();
+    await until(() => ana.party.calls.includes('playAgain'), 'the Host verb');
+    assert.equal(await party(LAUNCH, SETUP.launch2), 200);
+    ana.party.push(at('game'));
+    ben.party.push(at('game'));
+    await until(() => ana.S.view && !ana.S.view.result && ben.S.view && !ben.S.view.result && ana.S.view.v === 1 && ben.S.view.v === 1,
+      'both phones to be seated in the new game');
+    assert.equal(ana.S.view.seat, 'b');
+    assert.equal(ben.S.view.seat, 'w');
+    assert.equal(ana.el.result.hidden, true);
+    assert.equal(ben.el.result.hidden, true);
+    assert.equal(ben.status(), 'Your move.');
+    assert.equal(ana.status(), 'Waiting for Ben.');
+    assert.equal(ana.darkCells()[0].dataset.sq, '62');
+    assert.equal(ben.el.resign.hidden, false);
+    await play(ben, sq(5, 2), sq(4, 3), () => ben.S.view.v === 2);     // and it can be played
+    await until(() => ana.S.view.v === 2, 'Ana to hear of the move');
   },
 
   // The rules, from the same file the Party reads, filled in with its facts.
