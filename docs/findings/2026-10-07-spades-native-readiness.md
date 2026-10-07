@@ -11,7 +11,10 @@ serves today). The only code this work adds is two test files (section 10).
 
 How to read it:
 
-- `path:line` is this repository at `a448972`. `party:path:line` is avrana-party at `75b5062`.
+- `path:line` is this repository at `a448972`, except in the two new test files,
+  `tests/test_spades_rules.py` and `tests/test_spades_session_pins.py`: they do not exist at
+  `a448972`, so their lines are those of the files on this branch,
+  `feat/avr-312-spades-readiness`. `party:path:line` is avrana-party at `75b5062`.
   `ADR 0015:N`, `ADR 0014:N` and `ADR 0010:N` are line N of
   `party:docs/adr/0015-game-result-envelope.md`,
   `party:docs/adr/0014-native-games-isolated-lan-games-retired.md` and
@@ -108,7 +111,8 @@ What else in this repository names Spades:
 The shared code Spades stands on (line counts at `a448972`): `core/session.py` 492,
 `core/net.py` 644, `core/party_session.py` 234, `core/party_result.py` 181 and
 `core/party_protocol.py` 490 (the last two are vendored byte-identical from Party,
-`core/party_session.py:3-4`); in `web/`: `hubnet.js` 850, `shared.css` 413, `brag.js` 272,
+`party:docs/design/NATIVE-GAMES.md:80`; `core/party_session.py:3-4` names `party_protocol.py` and
+`:20` names `party_result.py`); in `web/`: `hubnet.js` 850, `shared.css` 413, `brag.js` 272,
 `avrana-integration.js` 185 and `.css` 61, `avrana-party-bridge.js` 143, `brand.js` 100,
 `gameart.js` 264 and `.css` 103.
 
@@ -179,9 +183,11 @@ Facts:
   the button sends `again`, which returns a Party-seated room to a lobby whose verbs are all
   refused (`core/net.py:642-643`; pinned by
   `test_party_settings_and_lobby_verbs_are_refused_so_the_fork_defaults_stand`). The shared
-  "Round over" panel with the Host's Play again and Party Home appears only after a
-  `party_ended` fx (`web/hubnet.js:626-628`, `:668-737`), which needs an outcome Spades never
-  records.
+  "Round over" panel with the Host's Play again and Party Home is drawn by `showEnded`, which
+  runs after a `party_ended` fx (`web/hubnet.js:626-628`, `:668-737`) or when the Party answers
+  that this tab's remembered session is over (`:436-440`, `:585-586`). The server sends
+  `party_ended` when the game reports an outcome, which Spades never records, or when the Host
+  ends the round for everyone (`core/net.py:236-261`, `:284-301`, `:334-345`).
 
 Proposal: a native Spades takes identity from the Party only (no join screen, avatar picker or
 photo upload: Rules 6.1 and 6.2), shows the Party name beside each human seat, gives non-hosts
@@ -595,9 +601,12 @@ evidence that Checkers (AVR-238) has not produced yet.
   are the 1st and 3rd and the 2nd and 4th (`games/spades/game.py:73-76`). With three humans the
   bot at seat 3 partners the second human; with two, the `seating` setting makes them partners
   (seats 0 and 2) or opponents (0 and 1), default partners (`game.py:34`, `:77-80`; layouts
-  checked by running them). Nobody chooses a partner: no lobby control does it
-  (`index.html:35-72`). The first dealer is random (`game.py:93`), so the first bidder is not the
-  first-listed player. The fork announces the teams in a toast (`game.py:99-100`).
+  checked by running them). That setting is the lobby's only partner choice: the "2-HUMAN
+  SEATING" row, shown only while exactly two humans are present (`index.html:55-56`;
+  `spades.js:147`, `:149`), and a Party round refuses it (S3). With three or four humans nobody
+  chooses a partner, and no other lobby control does it (`index.html:35-72`). The first dealer is
+  random (`game.py:93`), so the first bidder is not the first-listed player. The fork announces
+  the teams in a toast (`game.py:99-100`).
 - Options. (a) roster order as it is. (b) the Host or the players choose partners in the briefing
   (a Party-drawn control, or a game-side step like EXPO's). (c) a seeded random draw. (d) for two
   humans, fix partners or opponents (the `seating` setting goes away if settings do, S3).
