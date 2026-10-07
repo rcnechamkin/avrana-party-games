@@ -27,9 +27,10 @@ from games.spades.game import SpadesSession
 
 # ---------------- tables and moves ----------------
 
-def table(humans=2, seed=11, target=500, difficulty="standard"):
+def dealt(humans=2, seed=11, target=500, difficulty="standard"):
     """A dealt table through the fork's own lobby: `humans` ready players join in order, the
-    start's countdown is run out, hand 1 is in bidding. Returns (session, human tokens)."""
+    start's countdown is run out, hand 1 is in bidding. Returns (session, human tokens, the fx the
+    deal returned)."""
     s = SpadesSession(rng=random.Random(seed))
     toks = []
     for i in range(humans):
@@ -40,8 +41,14 @@ def table(humans=2, seed=11, target=500, difficulty="standard"):
     s.settings["target"] = target
     s.settings["difficulty"] = difficulty
     s.start(toks[0])
-    s.tick(s.gen)
+    fx = s.tick(s.gen)
     assert s.phase == "bidding" and s.g["hand_no"] == 1
+    return s, toks, fx
+
+
+def table(**options):
+    """`dealt` without the deal's fx: the table most tests start from. Returns (session, tokens)."""
+    s, toks, _ = dealt(**options)
     return s, toks
 
 
@@ -63,11 +70,12 @@ def bid_all(s, value=3):
 
 
 def play_card(s):
-    """The seat to move plays its first legal card."""
+    """The seat to move plays its first legal card. Returns the fx of that play."""
     seat = s.g["turn"]
     card = rules.legal_plays(s.g["hands"][seat], s.g["trick"], s.g["spades_broken"])[0]
     fx = s._do_play(seat, card)
     assert not any(f["kind"] == "invalid" for f in fx), fx
+    return fx
 
 
 def play_hand(s):
@@ -251,39 +259,71 @@ def check_views(s):
             assert tok not in blob, (label, "carries a player token")
 
 
-def walk_one_hand_checking_views(s):
-    """Bidding (before and after every bid), playing (after every card) and the recap."""
+def check_fx(s, fx, label):
+    """What a phone is sent beside the state. core.net.push_all sends each fx without its routing
+    key `to`, to everyone or only to the one player `to` names. Like a state, it carries no card
+    that is still in a hand (a card just played is public) and no player token; an fx for one seat
+    may carry that seat's own cards, nobody else's."""
+    g = s.g
+    for f in fx:
+        seat = g["seats"].index(f["to"]) if f.get("to") in g["seats"] else None
+        blob = json.dumps({k: v for k, v in f.items() if k != "to"})
+        what = (label, f["kind"])
+        for other, cards in g["hands"].items():
+            if other != seat:
+                assert not [c for c in cards if '"%s"' % c in blob], (what, "holds seat %d's cards" % other)
+        for tok in s.players:
+            assert tok not in blob, (what, "carries a player token")
+
+
+def walk_one_hand_checking_views(s, deal_fx=()):
+    """Bidding (before and after every bid), playing (after every card) and the recap: every viewer's
+    state, and the fx the deal, each bid and each card returned, are checked at every step."""
+    check_fx(s, deal_fx, "the deal")
     check_views(s)
     assert s.phase == "bidding"
     for _ in range(4):
-        s._do_bid(s.g["turn"], 3)
+        check_fx(s, s._do_bid(s.g["turn"], 3), "a bid")
         check_views(s)
     assert s.phase == "playing"
     while s.phase == "playing":
-        play_card(s)
+        check_fx(s, play_card(s), "a card")
         check_views(s)
     assert s.phase == "hand_end"
     assert all(h == [] for h in s.g["hands"].values())
 
 
+def walk_one_hand_by_the_clock(s):
+    """The same checks on a hand nobody plays: the turn clock runs out at every seat and the
+    autopilot bids and plays, one tick at a time (core.net calls tick(gen) at each deadline). A seat
+    with a connected human is also told in a toast that its time ran out."""
+    check_views(s)
+    while s.phase in ("bidding", "playing"):
+        check_fx(s, s.tick(s.gen), "the turn clock")
+        check_views(s)
+    assert s.phase == "hand_end"
+
+
 def test_every_seat_sees_only_its_own_hand_in_every_phase_and_nobody_else_sees_any():
-    s, toks = table(humans=5, seed=21)                    # four seats, all human, and a fifth who watches
+    s, toks, deal_fx = dealt(humans=5, seed=21)           # four seats, all human, and a fifth who watches
     assert [s.players[t].is_bot for t in s.g["seats"]] == [False] * 4 and toks[4] not in s.g["seats"]
     assert len(every_viewer(s)) == 4 + 1 + 3
-    walk_one_hand_checking_views(s)
+    walk_one_hand_checking_views(s, deal_fx)
     s.g["scores"] = scores(520, 400)
-    s.tick(s.gen)                                         # the recap ends the match
+    check_fx(s, s.tick(s.gen), "the end of the match")    # the recap ends the match
     assert s.phase == "game_end"
     check_views(s)
 
 
 def test_the_private_view_holds_at_a_table_with_bots_too():
-    s, toks = table(humans=2, seed=22)
+    s, toks, deal_fx = dealt(humans=2, seed=22)
     assert sum(1 for t in s.g["seats"] if s.players[t].is_bot) == 2
     assert len(every_viewer(s)) == 2 + 3
-    walk_one_hand_checking_views(s)
-    s.tick(s.gen)
-    check_views(s)                                        # and the next hand's deal, straight after the recap
+    walk_one_hand_checking_views(s, deal_fx)
+    check_fx(s, s.tick(s.gen), "the next deal")           # the recap is over: hand 2 is dealt, straight away
+    assert (s.phase, s.g["hand_no"]) == ("bidding", 2)
+    check_views(s)
+    walk_one_hand_by_the_clock(s)                         # and hand 2 is played by the turn clock alone
 
 
 # ---------------- seats, teams, settings, pacing ----------------
