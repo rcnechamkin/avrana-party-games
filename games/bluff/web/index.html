@@ -10,39 +10,60 @@
 </head>
 <body>
 <div data-avrana-viewport data-avrana-party-shell id="app">
-  <div id="felt"><div id="felt-mark" data-art="cards_fan" aria-hidden="true"></div></div>
+  <div id="felt" aria-hidden="true"><div id="felt-mark" data-art="cards_fan"></div></div>
 
-  <button data-avrana-global id="home" class="round-btn" aria-label="Back to games"><span data-icon="house"></span></button>
-  <button id="rules" class="round-btn" aria-label="How to play" aria-haspopup="dialog"><span data-icon="circle-help"></span></button>
-  <button id="history" class="round-btn" aria-label="What happened"><span data-icon="scroll-text"></span></button>
-  <button id="party-end" class="round-btn" aria-label="End game for everyone" hidden><span data-icon="circle-stop"></span></button>
-  <div id="timer" class="corner-box red" hidden></div>
+  <!-- One column, top to bottom: the header, the table (it scrolls where it cannot fit), and the
+       dock (you: coins, hand, moves). Nothing on the table is placed by pixels, so nothing can
+       sit on top of anything else; client.js measures the dock to pin it or let it scroll. -->
+  <header id="head">
+    <button data-avrana-global id="home" class="round-btn" aria-label="Back to games"><span data-icon="house"></span></button>
+    <button id="rules" class="round-btn" aria-label="How to play" aria-haspopup="dialog"><span data-icon="circle-help"></span></button>
+    <button id="party-end" class="round-btn" aria-label="End game for everyone" hidden><span data-icon="circle-stop"></span></button>
+    <div id="head-r">
+      <div id="timer" class="corner-box red" hidden></div>
+      <button id="history" class="round-btn" aria-label="What happened" aria-haspopup="dialog"><span data-icon="scroll-text"></span></button>
+    </div>
+  </header>
 
-  <div id="opponents"></div>
-
-  <div id="piles">
-    <div class="pile"><div class="back mini"></div><div class="back mini"></div><div class="back mini"></div><span id="deck-n"></span></div>
+  <div id="stage">
+    <main id="table" aria-label="The table">
+      <div id="opponents" role="group" aria-label="Other players"></div>
+      <div id="center">
+        <div id="play"></div>
+        <div id="caption"></div>
+      </div>
+      <ol id="reveal" aria-label="What just happened"></ol>
+    </main>
   </div>
 
-  <div id="center">
-    <div id="play"></div>
-    <div id="caption"></div>
+  <div id="dock">
+    <div id="me-row">
+      <div id="coins" class="corner-box blue" hidden></div>
+      <div id="me-seat"></div>
+      <div id="me-side">
+        <div id="lost"></div>
+        <div id="piles">
+          <div class="pile"><div class="back mini"></div><div class="back mini"></div><div class="back mini"></div><span id="deck-n"></span></div>
+        </div>
+      </div>
+    </div>
+    <div id="hand" role="group" aria-label="Your cards"></div>
+    <p id="bar-note" hidden></p>
+    <div id="sheet" hidden></div>
+    <div id="bar" role="group" aria-label="Your moves"></div>
   </div>
 
-  <div id="me-seat"></div>
-  <div id="coins" class="corner-box blue" hidden></div>
-  <div id="hand"></div>
-  <div id="lost"></div>
+  <!-- What the table says to everyone, in words (client.js writes it; nothing private goes here) -->
+  <div id="live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  <div id="live-urgent" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
 
-  <div id="sheet" hidden></div>
-  <div id="bar"></div>
-
-  <aside id="drawer" hidden aria-labelledby="drawer-title">
+  <dialog id="drawer" aria-labelledby="drawer-title">
     <div class="drawer-head"><h2 id="drawer-title">What happened</h2><button id="drawer-close" class="round-btn small" aria-label="Close"><span data-icon="x"></span></button></div>
+    <p id="drawer-call" class="drawer-call" hidden></p>
     <ol id="log"></ol>
     <h3 class="drawer-sub">Roles</h3>
     <div id="rolehelp"></div>
-  </aside>
+  </dialog>
 
   <dialog id="confirm" aria-labelledby="confirm-title" aria-describedby="confirm-body">
     <form method="dialog">
@@ -58,7 +79,7 @@
   <!-- How to play: the first-play briefing and the rules sheet (briefing.js fills it) -->
   <dialog id="briefing" aria-labelledby="briefing-title"></dialog>
 </div>
-<canvas id="confetti"></canvas>
+<canvas id="confetti" aria-hidden="true"></canvas>
 <script src="/shared/hubnet.js?v=avrana1"></script>
 <script src="icons.js"></script>
 <script src="art.js"></script>
