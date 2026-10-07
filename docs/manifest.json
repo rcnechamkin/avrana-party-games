@@ -28,6 +28,7 @@
     {"path": "games/expo/docs/STATE_DRIVEN_GAMEPLAY_BEHAVIOR_SPEC.md", "class": "reference", "status": "historical", "notes": "NON-CANONICAL draft (AVR-246): product intent for state-driven presentation. The code and the canonical EXPO documents win; see RECONCILIATION E-X1."},
     {"path": "games/expo/docs/MISSION_GAMEPLAY_UI_UX_SPEC.md", "class": "reference", "status": "historical", "notes": "NON-CANONICAL draft (AVR-246): design intent for the mission screen. The code and the canonical EXPO documents win; see RECONCILIATION E-X1."},
     {"path": "games/bluff/PLAYTEST-BRIEFING.md", "class": "reference", "status": "current"},
+    {"path": "docs/findings/2026-10-07-spades-native-readiness.md", "class": "evidence", "status": "historical", "last_verified": "2026-10-07", "notes": "AVR-312: what a native Spades needs from the platform and the owner decisions a build needs, observed at a448972. Evidence for AVR-41; not a plan or a decision record."},
     {"path": "ops/lab/README.md", "class": "guide", "status": "mixed", "notes": "Pi lab helpers; dated sprint notes inside are historical."}
   ]
 }
