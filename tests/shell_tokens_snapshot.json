@@ -1,5 +1,5 @@
 {
-  "description": "The Avrana shell's colour tokens as the Games copy them (AVR-291): the `avrana` theme and @theme tokens of avrana-party web/src/party.css, under the same names, at the Party commit named below. web/shared.css (the pre-game layer) and web/avrana-integration.css (the Back to Party bar and what hubnet.js draws in it) each declare the subset they use; tests/test_platform_palette.py holds every declaration to this file, and this file to Party's own party.css when a checkout is available. To follow a Party change: update the three places together and re-run that test.",
+  "description": "The Avrana shell's colour tokens as the Games copy them (AVR-291): the `avrana` theme and @theme tokens of avrana-party web/src/party.css, under the same names, at the Party commit named below. web/shared.css (the pre-game layer) and web/avrana-integration.css (the Back to Party bar and what hubnet.js draws in it) each declare the subset they use; tests/test_platform_palette.py holds every declaration to this file, and this file to Party's own party.css when a checkout is available. A token the shell writes in a colour function older browsers cannot read (oklch) is declared in shared.css twice: its plain `fallbacks` value in :root, and the shell's own value inside an @supports gate; the test holds the fallback to the shell's value converted to hex. To follow a Party change: update the three places together and re-run that test.",
   "party_commit": "75b5062769f92cd9cfaac0e1cc8458174f98742e",
   "tokens": {
     "--color-base-100": "#0d0d0f",
@@ -17,6 +17,9 @@
     "--color-line-strong": "rgb(255 255 255 / 0.18)",
     "--color-control": "#6e6c72",
     "--color-select": "rgb(185 169 232 / 0.16)"
+  },
+  "fallbacks": {
+    "--color-success": "#70c696"
   },
   "more_contrast": {
     "--color-muted": "#d2cfcb",

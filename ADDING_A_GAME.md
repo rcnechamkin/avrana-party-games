@@ -284,11 +284,20 @@ a token already covers.
 **The Avrana shell's palette (AVR-291).** The end of `shared.css` re-points those
 names to the shell's tokens (`--color-base-100`, `--color-primary`,
 `--color-accent`, … the names in avrana-party `web/src/party.css`) inside
-`#scr-join` and `#scr-lobby`, and `avrana-integration.css` does the same for the
-Back to Party bar and the round-over panel. That is platform chrome: write it
-with those tokens, never a hex literal. Your title's own CSS, accent and board
-stay yours. `tests/test_platform_palette.py` pins the token values to
-`tests/shell_tokens_snapshot.json` and fails a literal colour in that chrome.
+`#scr-join` and `#scr-lobby`. `avrana-integration.css` re-points nothing: it
+declares the tokens it needs and uses them directly, for the Back to Party bar
+and the round-over panel. That is platform chrome: write it with those tokens,
+never a hex literal. Your title's own CSS, accent and board stay yours.
+`tests/test_platform_palette.py` pins the token values to
+`tests/shell_tokens_snapshot.json`, fails a literal colour in that chrome, and
+holds its main rules to the tokens they use.
+
+The shell's newer colour functions need a gate in either chrome file. Put a
+`color-mix()` inside `@supports (color: color-mix(in srgb, red 50%, blue))` (an
+`oklch()` inside `@supports (color: oklch(0% 0 0))`), with a plain hex or rgba
+value for the same property outside it. A declaration that holds a `var()` is
+accepted whole at parse time, so a plain line written before it is never the
+fallback. The test checks this.
 
 ### `/shared/hubnet.js` — the `Hub` module (identity + connection)
 - `Hub.identity` — `{name, avatar}` persisted in `localStorage` (keys shared
