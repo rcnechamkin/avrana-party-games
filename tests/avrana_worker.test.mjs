@@ -3,13 +3,16 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 const source = readFileSync('web/sw.js', 'utf8');
+// The cache this worker keeps, whatever number it is on: bumping it (when shared CSS changes) must
+// not need an edit here.
+const CURRENT = /const CACHE = "(lan-games-shell-v\d+)"/.exec(source)[1];
 function worker(client = null) {
   const handlers = {}, deleted = [], requests = [];
   vm.runInNewContext(source, {
     URL, location: { origin: 'https://party.avrana.net' },
     self: { addEventListener: (name, fn) => { handlers[name] = fn; }, skipWaiting() {},
       clients: { claim: async () => {}, get: async () => client } },
-    caches: { keys: async () => ['avrana-party-shell-dev','lan-games-shell-v3','lan-games-shell-v4','other'],
+    caches: { keys: async () => ['avrana-party-shell-dev','lan-games-shell-v3',CURRENT,'other'],
       delete: async (key) => { deleted.push(key); },
       match: async () => { throw new Error('Integrated request reached cache'); } },
     fetch: async (request) => { requests.push(request.url); return { ok: true }; },

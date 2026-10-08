@@ -1,6 +1,6 @@
 /* LAN Games app shell. Multiplayer state is always live and never cached;
    only the lightweight interface/assets are kept for fast repeat launches. */
-const CACHE = "lan-games-shell-v4";
+const CACHE = "lan-games-shell-v5";
 const SHELL = [
   "/",
   "/offline",
