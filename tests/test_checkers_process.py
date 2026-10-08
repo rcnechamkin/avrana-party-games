@@ -376,7 +376,7 @@ def test_a_token_is_only_good_if_this_session_handed_it_out(rig):
     ana = rig.seat(ANA)
     derivable = protocol.game_token(rig.key, SID, BEN)       # only the key can make it; Ben never redeemed
     for token in (derivable, "avr-" + "0" * 40, "", "x" * 5000, ana["token"] + "0", ana["token"][:-1],
-                  ana["token"].upper(), "avr-é"):
+                  ana["token"].upper(), "avr-ÃƒÂ©"):
         assert rig.post("poll", token=token, since=0)[0] == 403, token
         assert rig.post("move", token=token, v=1, move=[1, 2])[0] == 403, token
         assert rig.post("resign", token=token)[0] == 403, token
@@ -491,6 +491,42 @@ def test_a_party_has_room_for_a_few_waiting_polls_and_no_more(monkeypatch):
     for thread in threads:
         thread.join(5)
     assert rig.app.pollers == 0 and [a[0] for a in answers] == [403, 403]
+
+
+def test_idle_exit_obeys_authoritative_session_and_result_delivery():
+    now = [0.0]
+    rig = Rig()
+    rig.app.clock = lambda: now[0]
+    rig.app.idle_since = 0.0
+    now[0] = server.IDLE_SECONDS - 1
+    assert not rig.app.claim_idle_stop()
+    rig.launch()
+    now[0] += server.IDLE_SECONDS * 10
+    assert not rig.app.claim_idle_stop()  # no phones have redeemed: it still holds a match
+    rig.end()
+    now[0] += server.IDLE_SECONDS - 1
+    assert not rig.app.claim_idle_stop()
+    now[0] += 1
+    assert rig.app.claim_idle_stop()
+    assert rig.launch()[0] == 503       # a racing launch retries on the socket's next activation
+
+
+def test_pending_result_delivery_prevents_idle_exit():
+    now = [0.0]
+    started, release = threading.Event(), threading.Event()
+    rig = Rig()
+    rig.app.clock = lambda: now[0]
+    rig.app.report = lambda message: (started.set(), release.wait(5), (200, "accepted"))[-1]
+    ana, ben = rig.two()
+    assert rig.post("resign", token=ben["token"])[0] == 200
+    assert started.wait(3)
+    now[0] = server.IDLE_SECONDS * 2
+    try:
+        assert not rig.app.claim_idle_stop()
+    finally:
+        release.set()
+        assert rig.app.wait_for_reports()
+    assert rig.app.claim_idle_stop()
 
 
 # ---- the end of a game ------------------------------------------------------------------------
@@ -831,6 +867,30 @@ def play_out(live, tokens, views, rng, cap=900):
         assert status == 200, body
         views[other] = body["view"]
     raise AssertionError("the game did not finish")
+
+
+def test_default_32_http_pollers_leave_room_for_a_move_and_release_all(live):
+    assert server.MAX_POLLERS == 32
+    ana, ben = live.two()
+    answers = []
+    threads = []
+    try:
+        for i in range(32):
+            thread = threading.Thread(target=lambda: answers.append(live.post("poll", token=ben["token"], since=1)), daemon=True)
+            threads.append(thread)
+            thread.start()
+            wait_until(lambda: live.app.pollers == i + 1, timeout=5, what="each HTTP poll to wait")
+        status, body = live.post("poll", token=ben["token"], since=1)
+        assert (status, body["error"]) == (503, "busy")
+        assert live.post("move", token=ana["token"], v=1, move=ana["view"]["moves"][0])[0] == 200
+        for thread in threads:
+            thread.join(5)
+        assert len(answers) == 32 and all(a[0] == 200 and a[1]["view"]["v"] == 2 for a in answers)
+        assert live.app.pollers == 0
+    finally:
+        live.end()
+        for thread in threads:
+            thread.join(5)
 
 
 @pytest.mark.parametrize("seed", (1, 2, 3))
@@ -1212,6 +1272,24 @@ def run_main(environ, fake, monkeypatch):
     return made, thread, result
 
 
+def test_main_returns_success_and_closes_listener_after_idle_exit(tmp_path, monkeypatch, fake_party):
+    protocol.write_key(str(tmp_path / "checkers.key"), protocol.new_key())
+    real_app = server.App
+    monkeypatch.setattr(server, "App", lambda *args, **kwargs: real_app(*args, idle_seconds=0.15, **kwargs))
+    made, thread, outcome = run_main({"AVRANA_PARTY_KEYS": str(tmp_path), "AVRANA_PARTY_SOCKET": "unused"},
+                                     fake_party, monkeypatch)
+    try:
+        assert Client(made["port"], made["app"].side.key).call("GET", server.PAGE)[0] == 200
+        thread.join(3)
+        assert not thread.is_alive()
+        assert outcome["code"] == 0
+        assert made["httpd"].socket.fileno() == -1
+    finally:
+        made["httpd"].shutdown()
+        thread.join(3)
+        made["httpd"].server_close()
+
+
 def test_main_wires_the_key_the_origin_and_the_report_to_the_party(tmp_path, monkeypatch, fake_party):
     key = protocol.new_key()
     protocol.write_key(str(tmp_path / "checkers.key"), key)
@@ -1278,6 +1356,9 @@ def launcher():
     return ("import os, runpy, sys\n"
             "os.dup2(int(sys.argv[1]), 3); os.set_inheritable(3, True)\n"
             "os.environ.update(LISTEN_PID=str(os.getpid()), LISTEN_FDS='1')\n"
+            "if len(sys.argv) > 2:\n"
+            " import functools, checkers.server as server\n"
+            " server.App = functools.partial(server.App, idle_seconds=float(sys.argv[2]))\n"
             "runpy.run_module('checkers', run_name='__main__', alter_sys=True)\n")
 
 
@@ -1314,7 +1395,7 @@ class UnixParty:
 @pytest.mark.skipif(not UNIX, reason="Unix sockets are not available on this platform (run on Linux CI)")
 class TestTheRealProcess:
     @pytest.fixture(autouse=True)
-    def process(self):
+    def process(self, request):
         self.tmp = tempfile.mkdtemp(prefix="avr", dir="/tmp")                 # short: the socket path limit
         keys = Path(self.tmp) / "keys"
         keys.mkdir()
@@ -1331,9 +1412,10 @@ class TestTheRealProcess:
         env.pop("LISTEN_PID", None)
         env.pop("LISTEN_FDS", None)
         self.log = open(Path(self.tmp) / "game.log", "wb")
-        self.proc = subprocess.Popen([sys.executable, "-c", launcher(), str(sock.fileno())],
-                                     pass_fds=[sock.fileno()], env=env, cwd=str(ROOT), stderr=self.log)
-        sock.close()                                                           # the game holds it now
+        self.listener, self.process_env = sock, env
+        self.idle_override = getattr(request, "param", None)
+        self.start_process()
+        # The parent retains the listening socket, just as systemd does, across clean exits.
         yield
         died = self.proc.poll() is not None                                    # it should still be serving
         self.proc.terminate()
@@ -1342,10 +1424,48 @@ class TestTheRealProcess:
         except subprocess.TimeoutExpired:
             self.proc.kill()
         self.log.close()
+        self.listener.close()
         self.fake.close()
         if died:
             print((Path(self.tmp) / "game.log").read_text(encoding="utf-8", errors="replace"))   # why, if this test failed
         shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def start_process(self):
+        args = [sys.executable, "-c", launcher(), str(self.listener.fileno())]
+        if self.idle_override is not None:
+            args.append(str(self.idle_override))
+        self.proc = subprocess.Popen(args, pass_fds=[self.listener.fileno()], env=self.process_env,
+                                     cwd=str(ROOT), stderr=self.log)
+
+    @pytest.mark.parametrize("process", [0.3], indirect=True)
+    def test_idle_clean_exit_and_same_socket_reactivation(self):
+        assert self.request("GET", server.PAGE)[0] == 200
+        assert self.proc.wait(5) == 0
+        self.start_process()
+        launch = protocol.launch_message(self.key, GAME, SID, ROSTER)
+        assert self.request("POST", party.LAUNCH, {"message": launch})[0] == 200
+        time.sleep(0.8)  # longer than idle expiry, without any connected phones
+        assert self.proc.poll() is None
+        ana = self.post("redeem", ticket=self.ticket(ANA))[1]
+        assert ana["view"]["seat"] == "w"
+        end = protocol.end_message(self.key, GAME, SID)
+        assert self.request("POST", party.END, {"message": end})[0] == 200
+        assert self.proc.wait(5) == 0
+        self.start_process()
+        newer = protocol.launch_message(self.key, GAME, SID2, ROSTER)
+        assert self.request("POST", party.LAUNCH, {"message": newer})[0] == 200
+        assert self.post("redeem", ticket=protocol.mint_ticket(self.key, GAME, SID2, ANA, "player"))[0] == 200
+        assert self.post("poll", token=ana["token"], since=0)[0] == 403
+
+    @pytest.mark.parametrize("process", [0.3], indirect=True)
+    def test_completed_match_reports_then_exits_cleanly(self):
+        launch = protocol.launch_message(self.key, GAME, SID, ROSTER)
+        assert self.request("POST", party.LAUNCH, {"message": launch})[0] == 200
+        ben = self.post("redeem", ticket=self.ticket(BEN))[1]
+        assert self.post("resign", token=ben["token"])[0] == 200
+        wait_until(lambda: self.fake.received, timeout=5, what="completion report")
+        assert self.proc.wait(5) == 0
+        assert len(self.fake.received) == 1
 
     def request(self, method, path, body=None, headers=None):
         conn = party.UnixHTTPConnection(self.game_socket, 10)
@@ -1471,3 +1591,14 @@ def test_the_protocol_modules_are_the_vendored_files_and_nothing_here_forks_them
     for name in ("party_protocol.py", "party_result.py"):
         assert not (ROOT / "checkers" / name).exists()
     assert party.protocol is protocol and party.result is party_result
+
+
+@pytest.mark.parametrize("origin", ["http://[::1]", "http://[::1]:8080", "https://[2001:db8::1]:443"])
+def test_ipv6_party_origins_are_bare_and_usable_in_page_policy(origin):
+    assert party.valid_origin(origin) == origin
+    assert f"frame-src {origin};" in server.page_policy(origin)
+
+
+@pytest.mark.parametrize("origin", ["http://[::1]/", "http://[::1]:0", "http://[::1]:65536", "http://[::1]?x=1", "http://user@[::1]", "http://[::1]#x", "http://[nope]", "http://party:65536"])
+def test_invalid_ipv6_and_port_origins_are_refused(origin):
+    assert party.valid_origin(origin) is None

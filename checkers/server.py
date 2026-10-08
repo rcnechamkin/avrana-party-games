@@ -78,6 +78,7 @@ FILES = {                                                    # exactly these, an
 
 POLL_SECONDS = 25            # how long a poll waits for a change before answering "nothing new"
 MAX_POLLERS = 32             # waiting polls at once: a party is a handful of phones
+IDLE_SECONDS = 60            # no authoritative session: release the socket-activated process
 
 
 def page_policy(party_origin):
@@ -104,13 +105,16 @@ class App:
     match from the two players (tests give it a position other than the opening)."""
 
     def __init__(self, side, report, party_origin=None, new_match=Match, poll_seconds=POLL_SECONDS,
-                 sleep=time.sleep):
+                 sleep=time.sleep, clock=time.monotonic, idle_seconds=IDLE_SECONDS):
         self.side = side
         self.report = report
         self.party_origin = party_origin        # the Party's browser origin as handed to this process
         self.new_match = new_match
         self.poll_seconds = poll_seconds
         self.sleep = sleep
+        self.clock, self.idle_seconds = clock, idle_seconds
+        self.idle_since = clock()
+        self.stopping = False
         self.cond = threading.Condition()       # guards everything below
         self.match = None                       # the running (or just finished) match
         self.tokens = {}                        # game token -> (participant, seat or None), this session
@@ -156,6 +160,8 @@ class App:
         except Bad:
             return bad_json()
         with self.cond:
+            if self.stopping:
+                return json_reply(503, {"ok": False, "message": "The game is restarting. Try again."})
             try:
                 return self._launch(message) if path == LAUNCH else self._end(message)
             except protocol.Invalid as e:
@@ -165,6 +171,7 @@ class App:
     def _forget(self):
         self.match, self.finished_sid = None, None
         self.tokens.clear()
+        self.idle_since = self.clock()
         self.cond.notify_all()                  # waiting polls find their match gone
 
     def _launch(self, message):
@@ -312,6 +319,7 @@ class App:
             log.error("the end could not be reported (%s)", e)
             return None
         self.finished_sid = sid
+        self.idle_since = self.clock()
         log.info("finished (%s after %d moves)", match.ending, match.plies)
         return message
 
@@ -328,6 +336,18 @@ class App:
         else:
             # The phones still show the final board; the Party shows the game as on until the Host's End.
             log.warning("the party did not accept the report (status %s, result %s)", status, verdict)
+
+    def claim_idle_stop(self):
+        """Atomically stop admission after a bounded interval without an authoritative session.
+        An active match never expires, even with no phones. Finished-board reads do not keep an
+        ended match resident forever; pending result delivery must finish before exit."""
+        with self.cond:
+            if self.side.sid is not None or any(t.is_alive() for t in self.reporters):
+                return False
+            if self.clock() - self.idle_since < self.idle_seconds:
+                return False
+            self.stopping = True
+            return True
 
     def wait_for_reports(self, timeout=10):
         """Block until every report thread has finished (tests; nothing in production waits)."""
@@ -352,5 +372,9 @@ def main(environ=os.environ):
         return 2
     origin = party.valid_origin(environ.get(party.ENV_ORIGIN))
     app = App(protocol.GameSide(key, GAME), lambda message: party.report_to(party_socket, message), origin)
-    party.make_server(3, app).serve_forever()
+    httpd = party.make_server(3, app)
+    try:
+        httpd.serve_forever()
+    finally:
+        httpd.server_close()
     return 0

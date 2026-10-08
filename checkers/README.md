@@ -69,7 +69,8 @@ shared: Checkers and the stand-in game in avrana-party each have it (the fork's 
 freeze an interface. [The findings note](../docs/findings/2026-10-07-checkers-native-findings.md)
 lists what overlaps with file and line on both sides, what a package would have to express that
 today's boundary does not, which Party rules are accepted and which proposed, the owner decisions
-this raises (D11 to D15 are new) and what stays unproven until the Party half runs.
+this raises (D11 to D15 are new) and what stays unproven until the Party half runs. The [sprint follow-up](../docs/findings/2026-10-07-checkers-native-sprint-followup.md)
+records subsequent idle-exit, HTTP-load and IPv6 fixes.
 
 ## Known limits
 
@@ -79,12 +80,14 @@ this raises (D11 to D15 are new) and what stays unproven until the Party half ru
   has no seat and no board. The Party holds the results on this game's page (ADR 0011), and the page
   shows what the Party's bridge says there: the Host's Play again and Party Home, or who the others
   are waiting for.
-- The process does not stop itself when idle (ADR 0016 section 4 asks games to): nothing says
-  after how long, or on what signal.
+- The process exits cleanly 60 seconds after launch refusal, Host End or completion leaves no
+  authoritative session, once result delivery finishes. A launched match never times out, even
+  with no connected phones. Finished-board reads do not reset this interval; Party retains the
+  result and a later launch socket-activates a fresh process. This is a game-local field-test
+  policy, not an SDK idle convention.
 - `BUILD` in `party.py` (what `game.build` says) is a constant to change by hand with the rules.
 - No reconnect timer: a player who never comes back keeps the game waiting for the Host to end it.
-- A Party origin written as an IPv6 literal (`http://[::1]:8080`) does not pass `BARE_ORIGIN` in
-  `party.py`, so the page is told there is no Party. The origins in use are names and IPv4 addresses.
-- Long polls wait up to 25 s and at most 32 wait at once (`MAX_POLLERS`). The limit is tested with
-  it lowered to 2, against the App; nothing sends a burst of more than 32 real connections through
-  the HTTP server, so a full house of waiters plus a move arriving is reasoned, not measured.
+- Party origins may use names, IPv4 or bracketed IPv6 literals, with an optional valid port.
+- Long polls wait up to 25 s and at most 32 wait at once (`MAX_POLLERS`). Tests cover the App at a
+  lowered limit and 32 concurrent HTTP long polls, overflow refusal,
+  and a move waking every waiter. Raspberry Pi resource measurements remain AVR-261.

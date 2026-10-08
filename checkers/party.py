@@ -27,12 +27,14 @@ from __future__ import annotations
 import http.client
 import http.server
 import json
+import ipaddress
 import logging
 import os
 import re
 import socket
 import sys
 import time
+import threading
 from typing import NamedTuple
 
 from core import party_protocol as protocol
@@ -43,7 +45,7 @@ GAME = "checkers"
 # constant for now, to be changed whenever the rules or the session change what a result says;
 # recomputing it from the sources is the fork's way (core/party_session.build_id) and a question
 # for the SDK.
-BUILD = "checkers-0.1.0"
+BUILD = "checkers-0.1.1"
 DATA_SCHEMA = "checkers.result/v1"
 
 BASE = f"/games/{GAME}"                       # where the front door and Party Core put the game
@@ -146,7 +148,23 @@ def read_key(keys_dir):
 def valid_origin(value):
     """`value` when it is an origin and nothing else (scheme, host, optional port), else None.
     The page is told this and nothing else decides where the Party is."""
-    return value if isinstance(value, str) and BARE_ORIGIN.fullmatch(value) else None
+    if not isinstance(value, str):
+        return None
+    named = BARE_ORIGIN.fullmatch(value)
+    if named:
+        port = named.group(1)
+        return value if port is None or 1 <= int(port[1:]) <= 65535 else None
+    # A literal is bracketed and contains only an address: no credentials, path, zone identifier,
+    # query or fragment. ipaddress validates the full address without DNS or network imports.
+    literal = re.fullmatch(r"https?://\[([0-9A-Fa-f:.]+)\](?::([0-9]{1,5}))?", value)
+    if not literal:
+        return None
+    try:
+        ipaddress.IPv6Address(literal.group(1))
+    except ValueError:
+        return None
+    port = literal.group(2)
+    return value if port is None or 1 <= int(port) <= 65535 else None
 
 
 # ---- the result ---------------------------------------------------------------------------------
@@ -293,6 +311,13 @@ def make_handler(app):
 class _Server(http.server.ThreadingHTTPServer):
     daemon_threads = True
 
+    def service_actions(self):
+        # shutdown() must run outside serve_forever's thread. Admission is already closed under
+        # the App lock, so a simultaneous launch is refused and can retry on socket reactivation.
+        if self.idle_check is not None and self.idle_check():
+            self.idle_check = None
+            threading.Thread(target=self.shutdown, name="checkers-idle-stop", daemon=True).start()
+
     def handle_error(self, request, client_address):
         # A phone that goes away mid-request is routine. One line, the kind of failure only: never
         # a traceback (which could carry a request line) and never the address.
@@ -322,4 +347,5 @@ def make_server(listener, app, families=None):
     server = server_class(sock.getsockname(), make_handler(app), bind_and_activate=False)
     server.socket.close()                               # the one it made for itself
     server.socket = sock
+    server.idle_check = getattr(app, "claim_idle_stop", None)
     return server
