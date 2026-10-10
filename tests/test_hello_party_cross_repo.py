@@ -79,7 +79,8 @@ class Stack:
         return self.svc.launch(self.devices[host_name], GAME, self.svc.core.party.version)
 
     def ticket(self, name):
-        """What the Party's ticket route mints for this device (it raises for a device with no seat)."""
+        """Party's own session lookup (participant_for, which raises for a device with no seat) plus the
+        vendored mint. The HTTP ticket route itself (cookie, origin checks) is NOT exercised here."""
         with self.svc.lock:
             s, p = self.svc.core.participant_for(self.devices[name], GAME)
             host = p.member_id == self.svc.core.party.host_id

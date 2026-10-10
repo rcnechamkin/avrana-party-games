@@ -52,6 +52,11 @@ browser you need the real Party service running locally and registered with a ga
 path is described in [Adding a game](https://github.com/rcnechamkin/avrana-party/blob/main/docs/runbooks/add-a-game.md)
 and has not been exercised through a browser by this slice.
 
+**Known limits:** the Hello page has not been opened in a browser and has no page-logic test (CI only
+syntax-checks it). Windows was exercised locally and Linux in CI; macOS is expected to work but is
+untested. The "real Party test" step needs a Party checkout with a local, uncommitted copy of the
+contract and has not been exercised outside CI.
+
 ## Test it
 
 ```text
@@ -63,7 +68,7 @@ python -m pytest -q tests/test_gamekit.py tests/test_hello_party.py
 | `tests/test_gamekit.py`: JSON bounds, the two defect cases, config, server bounds, idle stop, another game on the kit | every OS |
 | `tests/test_hello_party.py`: rules, admission, isolation, validation, finish with result, Host end, reconnect, a real process over loopback, `--dev-tcp` guards | every OS |
 | `tests/test_hello_party.py`: the real process on an inherited fd-3 Unix socket; no IP socket; SIGTERM | Linux only (skipped on Windows: no `AF_UNIX`) |
-| `tests/test_hello_party_cross_repo.py`: the **real Party service** launches Hello Party, mints its tickets, accepts its result, ends it for the Host | every OS, with a Party checkout (`AVRANA_PARTY_REPO`, or a sibling `../avrana-party`); CI only |
+| `tests/test_hello_party_cross_repo.py`: the **real Party service** launches Hello Party, looks up its participants (the HTTP ticket route is not exercised), accepts its result, ends it for the Host | with a Party checkout (`AVRANA_PARTY_REPO`, or a sibling `../avrana-party`); CI only |
 
 The cross-repository test needs the paired Party branch for `contracts/games/hello.json` (a test
 fixture; nothing about Hello Party is in Party Core).

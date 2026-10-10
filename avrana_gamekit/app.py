@@ -189,11 +189,15 @@ class GameApp:
             if session is None:
                 return json_reply(409, {"ok": False, "message": "There is no game."})
             seated = who["participant"] in self.players
-            if who["role"] == "player" and not seated:     # a seat the roster never gave
-                log.warning("ticket refused (not on the roster)")
+            # One token per participant and session, so the ticket's role must agree with the
+            # roster: a "player" ticket for someone never seated, or a "spectator" ticket for a
+            # seated player, is not something Party mints. Both are refused, so a token can never
+            # be downgraded by (or its player view reached through) a spectator redeem.
+            if (who["role"] == "player") != seated:
+                log.warning("ticket refused (role disagrees with the roster)")
                 return json_reply(403, {"ok": False, "message": "Refused."})
             self.tokens.add(who["token"], who["participant"])
-            role = "player" if seated and who["role"] == "player" else "spectator"
+            role = "player" if seated else "spectator"
             view = session.view(who["participant"] if role == "player" else None)
         log.info("ticket redeemed (%s)", role)
         return json_reply(200, {"ok": True, "token": who["token"], "role": role, "view": view})

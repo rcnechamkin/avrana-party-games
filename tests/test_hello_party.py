@@ -121,7 +121,8 @@ def test_admission_private_views_and_a_spectator():
     assert ben["view"]["you"]["secret"] not in json.dumps(ana) + json.dumps(cy)
     assert redeem(app, 5, "player")[0] == 403                          # a player nobody seated
     assert redeem(app, 5, "spectator")[0] == 200                       # a late member watches
-    assert redeem(app, 0, "spectator")[1]["role"] == "spectator"       # never more than the ticket says
+    assert redeem(app, 0, "spectator")[0] == 403                       # a seated player is never admitted as a watcher
+    assert call(app, "api/poll", {"token": ana["token"], "since": 0})[1]["view"]["seat"] == 0   # and their token is untouched
     assert call(app, "api/greet", {"token": cy["token"], "text": "hi"})[0] == 403
     assert call(app, "api/greet", {"token": ana["token"], "text": "hi"})[0] == 200
 

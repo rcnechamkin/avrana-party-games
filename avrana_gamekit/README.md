@@ -89,6 +89,13 @@ Party's result check; `Phone` plays a browser. `hello_party/conformance.py` is a
 It is a stand-in, not Party Core: the proof against the real implementation is
 `tests/test_hello_party_cross_repo.py`, which starts the real Party service.
 
+## Platforms
+
+Windows was exercised locally and Linux in CI (including the real Unix-socket process); macOS is
+expected to work but is untested. The cross-repository test against the real Party service is not
+exercised outside CI. It mints tickets with Party's session lookup plus the vendored mint; the HTTP
+ticket route itself is not exercised.
+
 ## Follow-ups (not done)
 
 Move Checkers onto the kit (and delete the copies in `checkers/party.py`); wrap the Host question;

@@ -214,8 +214,10 @@ def configure(slug, argv=(), environ=os.environ):
         target = None
         if args.dev_party:
             host, _, port = args.dev_party.rpartition(":")
-            if not host or not port.isdigit():
+            if not host or not port.isdigit() or not 0 < int(port) <= 65535:
                 raise SystemExit(f"{slug}: --dev-party is HOST:PORT")
+            if host.strip("[]") not in ("127.0.0.1", "localhost", "::1"):
+                raise SystemExit(f"{slug}: --dev-party must be a loopback address (development only)")
             target = (host, int(port))
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

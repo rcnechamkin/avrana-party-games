@@ -148,6 +148,14 @@ def test_dev_mode_needs_both_flags_and_listens_on_loopback_only(tmp_path):
         runtime.configure("hello", ["--dev-key-file", str(tmp_path / "k")], {})
     with pytest.raises(SystemExit):
         runtime.configure("hello", ["--dev-tcp", "99999", "--dev-key-file", str(tmp_path / "k")], {})
+    for party_arg in ("10.0.0.5:8190", "example.com:8190", "0.0.0.0:80", "127.0.0.1:0", "127.0.0.1:x", ":80"):
+        with pytest.raises(SystemExit):
+            runtime.configure("hello", ["--dev-tcp", "0", "--dev-key-file", str(tmp_path / "k"),
+                                        "--dev-party", party_arg], {})
+    for party_arg in ("localhost:8190", "[::1]:8190"):
+        cfg = runtime.configure("hello", ["--dev-tcp", "0", "--dev-key-file", str(tmp_path / "k"),
+                                          "--dev-party", party_arg], {})
+        cfg.listener.close()
     cfg = runtime.configure("hello", ["--dev-tcp", "0", "--dev-key-file", str(tmp_path / "k"),
                                       "--dev-party", "127.0.0.1:9", "--dev-origin", "http://127.0.0.1:8190",
                                       "--dev-idle-seconds", "3"], {})
