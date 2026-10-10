@@ -1,0 +1,17 @@
+{
+  "schema": "avrana.onboarding/v0",
+  "game": "hello",
+  "title": "Hello Party",
+  "premise": "A test game for developers. Everyone says hello once; then it is over.",
+  "ack": { "key": "hello-briefed", "version": "1" },
+  "facts": {},
+  "rules": [
+    { "title": "Your card",
+      "points": ["You are dealt one secret word. Only you can see it."] },
+    { "title": "Say hello",
+      "points": ["Type a short hello and send it. Everyone sees it on the board.",
+                 "Each player says hello once. When all have, the game is over."] },
+    { "title": "Ending early",
+      "points": ["The Host can end the game from the Party at any time."] }
+  ]
+}
