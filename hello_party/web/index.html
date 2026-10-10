@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Hello Party</title>
+<link rel="icon" href="web/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="web/hello.css">
+</head>
+<body>
+<main id="app" class="app">
+  <h1>Hello Party</h1>
+  <p id="status" class="status" role="status">Connecting…</p>
+
+  <section id="card" class="card" aria-labelledby="card-title" hidden>
+    <h2 id="card-title">Your card</h2>
+    <p>Only you can see this word: <strong id="secret"></strong></p>
+  </section>
+
+  <section id="board-section" aria-labelledby="board-title" hidden>
+    <h2 id="board-title">Greetings</h2>
+    <ul id="board" class="board"></ul>
+    <p id="waiting" class="status"></p>
+  </section>
+
+  <form id="say" class="say" autocomplete="off" hidden>
+    <label for="text">Say hello</label>
+    <input id="text" name="text" maxlength="40" required>
+    <button id="send" class="btn primary" type="submit">Send</button>
+  </form>
+  <p id="problem" class="problem" role="alert"></p>
+
+  <section id="done" class="card" aria-labelledby="done-title" hidden>
+    <h2 id="done-title">All said hello</h2>
+    <p id="done-detail"></p>
+    <div id="host-actions" class="row" hidden>
+      <button id="again" class="btn primary" type="button">Play again</button>
+      <button id="home" class="btn" type="button">Party Home</button>
+    </div>
+  </section>
+
+  <div class="row"><button id="end" class="btn quiet" type="button" hidden>End game for everyone</button></div>
+  <noscript><p class="status">Hello Party needs JavaScript.</p></noscript>
+</main>
+<script type="module" src="web/hello.mjs"></script>
+</body>
+</html>

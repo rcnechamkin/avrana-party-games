@@ -54,3 +54,4 @@ dev.pid
 /context/graphify/*
 !/context/graphify/semantic-graph.json
 !/context/graphify/semantic-receipt.json
+.dev/

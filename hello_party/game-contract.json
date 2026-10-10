@@ -1,0 +1,24 @@
+{
+  "contract": "avrana.game/v0",
+  "id": "hello",
+  "name": "Hello Party (developer reference)",
+  "summary": "Say hello once. A test game that shows a developer the whole native-game path.",
+  "kind": "native",
+  "players": {"min": 1, "max": 6},
+  "screen": "no_tv_needed",
+  "input": {"model": "browser_native"},
+  "late_join": "spectator_only",
+  "spectators": "watch",
+  "private_player_ui": true,
+  "runtime": {"type": "external", "start": "service", "permissions": ["party_roster"]},
+  "presentations": [{
+    "id": "phone_table", "method": "browser_native", "roles": ["player", "spectator"],
+    "requires": {"device": []}
+  }],
+  "fallback": "spectate",
+  "accessibility": {"timing_pressure": false, "audio_required": false},
+  "extensions": {
+    "net.avrana.party": {"pregame": false},
+    "net.avrana.test": {"test_only": true}
+  }
+}
