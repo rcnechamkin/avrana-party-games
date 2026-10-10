@@ -1,0 +1,29 @@
+{
+  "schema": "avrana.onboarding/v0",
+  "game": "checkers",
+  "title": "Checkers",
+  "premise": "Two players, one board. Jump the other side's pieces, or leave them with nowhere to go.",
+  "ack": { "key": "checkers-briefed", "version": "1" },
+  "facts": { "men": 12, "drawEach": 40 },
+  "rules": [
+    { "title": "Win by leaving no move",
+      "points": ["Each side starts with {men} pieces. White moves first.",
+                 "You win when the other side has no pieces, or none that can move."] },
+    { "title": "Moving",
+      "points": ["Move a piece one square diagonally onto an empty dark square.",
+                 "Plain pieces move and jump forward only. Kings go any diagonal way."] },
+    { "title": "Capturing",
+      "points": ["Jump a piece next to you, onto the empty square just beyond it.",
+                 "A capture is compulsory. If you can capture, you must.",
+                 "Keep jumping with the same piece for as long as you can."] },
+    { "title": "Kings",
+      "points": ["A plain piece that reaches the far row becomes a king.",
+                 "Reaching that row ends your move, even if another jump is open."] },
+    { "title": "Ending a game",
+      "points": ["You can resign at any time. The other side wins.",
+                 "It is a draw if {drawEach} moves each go by with no capture and no plain piece moving."] },
+    { "title": "On your phone",
+      "points": ["Tap a piece that is outlined, then tap where it goes.",
+                 "A jump of several squares is one move: tap where the piece ends up."] }
+  ]
+}

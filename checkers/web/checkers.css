@@ -1,0 +1,311 @@
+/* Checkers (AVR-238). A neutral, quiet page: a near-black ground, warm off-white text, one muted
+   violet used only for the things you can pick, what you picked and keyboard focus. Geist where the
+   phone has it, the system face otherwise. Text is in rem so it follows the phone's text size;
+   the board is sized in px because it has to be squares; targets are at least 44px on a phone
+   360px wide. Nothing here depends on colour alone: pieces differ in shape and name, a king has a
+   crown, what you can pick has an outline, what the last move did has a line style, and every state
+   is also said in words by the status line and the squares' names. */
+
+:root {
+  color-scheme: dark;
+  --bg: #121214;
+  --panel: #1c1c20;
+  --line: #3a3a41;
+  --text: #ece9e2;
+  --muted: #b6b3ab;
+  --accent: #a89fe0;
+  --danger: #f1a79f;
+  --playable: #2a2d33;
+  --unplayed: #6d7179;
+  --white-piece: #f3efe6;
+  --white-edge: #9d9686;
+  --black-piece: #0f0f11;
+  --black-edge: #d6d1c5;
+  --cell: min(calc((100vw - 8px) / 8), max(44px, calc((100vh - 15rem) / 8)), 64px);
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --cell: min(calc((100vw - 8px) / 8), max(44px, calc((100dvh - 15rem) / 8)), 64px);
+  }
+}
+
+* { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+
+html { background: var(--bg); }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Geist, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 1rem;
+  line-height: 1.4;
+  -webkit-text-size-adjust: 100%;
+}
+
+.app {
+  min-height: 100vh;
+  min-height: 100dvh;
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: env(safe-area-inset-top) calc(4px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(4px + env(safe-area-inset-left));
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+h1, h2, h3, p { margin: 0; }
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem 0;
+}
+
+.top h1 {
+  flex: 1;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.status {
+  min-height: 1.5rem;
+  padding: 0 0.5rem;
+  font-size: 1.0625rem;
+}
+
+.table {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: center;
+}
+
+/* ---- buttons ------------------------------------------------------------------------------ */
+
+.btn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn.primary { background: var(--text); border-color: var(--text); color: var(--bg); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn.quiet { background: transparent; font-weight: 500; }
+.btn.danger { border-color: var(--danger); color: var(--danger); background: transparent; }
+
+.actions { display: flex; justify-content: center; padding: 0 0.5rem; }
+
+.row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---- the people --------------------------------------------------------------------------- */
+
+.seat {
+  width: calc(var(--cell) * 8);
+  max-width: 100%;
+  min-height: 2.25rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  padding: 0 0.25rem;
+}
+
+.chip {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--white-edge);
+  background: var(--white-piece);
+}
+
+.seat[data-side="b"] .chip { border-color: var(--black-edge); background: var(--black-piece); }
+
+.who { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.side, .count { color: var(--muted); font-weight: 400; font-size: 0.9375rem; }
+.count { margin-left: auto; }
+
+.to-move {
+  padding: 0 0.5rem;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--accent);
+  font-size: 0.875rem;
+}
+
+/* ---- the board ---------------------------------------------------------------------------- */
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(8, var(--cell));
+  grid-auto-rows: var(--cell);
+  width: calc(var(--cell) * 8);
+  box-shadow: 0 0 0 2px var(--line);
+  touch-action: manipulation;
+}
+
+.sq {
+  position: relative;
+  width: var(--cell);
+  height: var(--cell);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sq.light { background: var(--unplayed); }
+.sq.dark { background: var(--playable); cursor: default; }
+
+/* A piece: a disc with an edge, so it is a shape and not only a colour. */
+.sq[data-piece]::before {
+  content: "";
+  position: absolute;
+  inset: 12%;
+  border-radius: 50%;
+  border: 3px solid;
+}
+
+.sq[data-piece="w"]::before, .sq[data-piece="W"]::before { background: var(--white-piece); border-color: var(--white-edge); }
+.sq[data-piece="b"]::before, .sq[data-piece="B"]::before { background: var(--black-piece); border-color: var(--black-edge); }
+
+/* A king wears a crown. */
+.sq[data-piece="W"]::after, .sq[data-piece="B"]::after {
+  content: "";
+  position: absolute;
+  inset: 32% 29% 35% 29%;
+  clip-path: polygon(0 100%, 0 22%, 26% 56%, 50% 0, 74% 56%, 100% 22%, 100% 100%);
+}
+
+.sq[data-piece="W"]::after { background: #3b3732; }
+.sq[data-piece="B"]::after { background: var(--black-edge); }
+
+/* What the last move did: a dashed outline where it began, a solid one where it ended, a cross
+   where it took a piece. */
+.sq[data-last="from"] { outline: 2px dashed var(--muted); outline-offset: -4px; }
+.sq[data-last="to"] { outline: 2px solid var(--muted); outline-offset: -4px; }
+.sq[data-last="taken"]::after {
+  content: "\00d7";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: calc(var(--cell) * 0.55);
+  line-height: 1;
+}
+
+/* What you can pick up, what you hold, and where it can go. */
+.sq[data-movable] { cursor: pointer; box-shadow: inset 0 0 0 2px var(--accent); }
+.sq[data-sel] { background: #3d4150; box-shadow: inset 0 0 0 4px var(--accent); }
+
+.sq[data-target] { cursor: pointer; }
+.sq[data-target]::after {
+  content: "";
+  position: absolute;
+  inset: 35%;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.sq[data-target="jump"]::after, .sq[data-target="hop"]::after {
+  inset: 20%;
+  background: transparent;
+  border: 3px solid var(--accent);
+}
+
+.sq[data-target="hop"]::after { border-style: dashed; }
+
+.sq.dark:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+  z-index: 1;
+}
+
+.board:focus-visible { outline-offset: 4px; }
+
+/* ---- the result --------------------------------------------------------------------------- */
+
+.result {
+  margin: 0 0.5rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  display: grid;
+  gap: 0.5rem;
+}
+
+.result h2 { font-size: 1.5rem; line-height: 1.2; }
+.result .wait { color: var(--muted); }
+
+/* ---- sheets ------------------------------------------------------------------------------- */
+
+dialog {
+  width: min(28rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
+dialog h2 { margin-bottom: 0.5rem; font-size: 1.25rem; }
+dialog h3 { margin: 1rem 0 0.25rem; font-size: 1rem; }
+dialog ul { margin: 0; padding-left: 1.25rem; }
+dialog li + li { margin-top: 0.25rem; }
+dialog .row { margin-top: 1rem; }
+.premise { color: var(--muted); }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- the phone's own preferences ---------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+
+@media (prefers-contrast: more) {
+  :root { --line: #8a8a92; --muted: #d4d1c9; --playable: #1a1c20; --unplayed: #8e929a; }
+  .sq[data-last="from"], .sq[data-last="to"] { outline-width: 3px; }
+}
+
+@media (forced-colors: active) {
+  .sq[data-piece]::before { forced-color-adjust: none; }
+  .sq[data-movable], .sq[data-sel] { outline: 3px solid Highlight; outline-offset: -3px; }
+  .sq[data-target]::after { forced-color-adjust: none; }
+}
