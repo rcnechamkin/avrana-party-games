@@ -163,6 +163,8 @@ class App:
             if self.stopping:
                 return json_reply(503, {"ok": False, "message": "The game is restarting. Try again."})
             try:
+                if not message.isascii():                       # a signed message is ASCII; the protocol
+                    raise protocol.Invalid("shape")             # module would raise ValueError, not Invalid
                 return self._launch(message) if path == LAUNCH else self._end(message)
             except protocol.Invalid as e:
                 log.warning("control message refused (%s)", e)
@@ -228,6 +230,8 @@ class App:
             return bad_json()
         with self.cond:
             try:
+                if not ticket.isascii():                        # as in _control: refuse, do not raise
+                    raise protocol.Invalid("shape")
                 who = self.side.present(ticket)
             except protocol.Invalid as e:
                 log.warning("ticket refused (%s)", e)

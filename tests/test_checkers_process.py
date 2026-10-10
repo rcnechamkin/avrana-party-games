@@ -203,6 +203,13 @@ def test_bodies_are_strict_json(rig):
         assert rig.call("POST", redeem, data=raw)[0] == 400, raw
     assert rig.call("POST", party.LAUNCH, data=rb'{"message": "\ud800"}')[0] == 400
     assert rig.call("POST", poll, data=rb'{"token": "\ud800", "since": 1}')[0] == 400
+    # Text that is not ASCII is well-formed JSON but can never be a signed ticket or message: it is
+    # refused like a forgery (AVR-320), not left to raise inside the vendored protocol module.
+    for raw in (rb'{"ticket": "aps0.\u00e9.x"}', b'{"ticket": "aps0.\xc3\xa9.x"}'):   # escaped, and raw UTF-8
+        assert rig.call("POST", redeem, data=raw)[0] == 403, raw
+    for path in (party.LAUNCH, party.END):
+        assert rig.call("POST", path, data=b'{"message": "apm0.\xc3\xa9.x"}')[0] == 403, path
+    assert rig.call("POST", poll, data=b'{"token": "\xc3\xa9", "since": 1}')[0] == 403
     for raw in (b'{"token": "x"}', b'{"token": "x", "since": "1"}', b'{"token": "x", "since": 1.5}',
                 b'{"token": "x", "since": true}', b'{"token": "x", "since": 1e400}',
                 b'{"token": "x", "since": 99999999999999999}', b'{"token": 1, "since": 1}'):
