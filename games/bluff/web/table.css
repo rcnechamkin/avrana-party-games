@@ -2,81 +2,97 @@
    The wood, felt and cards are BLUFF's own. The controls around them (bar, sheet, drawer,
    dialog, toasts, corner buttons) follow the Avrana system language: dark "ink" surfaces with
    one hairline border, two radii, 44 px+ targets, calm state colours, line icons (icons.js)
-   for controls, emoji only for game content. Tokens: */
+   for controls, emoji only for game content.
+
+   Layout (AVR-313): one column, top to bottom: the header, the table, the dock (you: coins, your
+   cards, your moves). The table is a grid and scrolls where it cannot fit, so nothing on it is
+   placed by percentages and nothing can sit on top of anything else. Text is in rem with a 12 px
+   floor; widths are asked of the app (a container), in rem, so a larger text size or a zoomed
+   page changes the layout the way a narrower screen does. Tokens: */
 :root {
   --ink: rgba(24, 17, 12, .94); --ink-solid: #1b1511; --ink-line: rgba(255, 238, 214, .16);
   --text: #f6f0e7; --muted: #cfc3b3;
   --go: #2f7a4b; --stop: #9b2d3f; --claim: #37548f; --gold: #ffd54a;
   --r-field: 12px; --r-box: 16px;
+  /* text sizes: rem (the player's text size), never under 12 px */
+  --fs-xs: max(12px, .75rem); --fs-s: max(12px, .8125rem); --fs-m: max(14px, .875rem);
+  --fs-l: max(15px, .9375rem); --fs-xl: max(18px, 1.125rem);
+  /* the notch and the home bar */
+  --st: env(safe-area-inset-top, 0px); --sb: env(safe-area-inset-bottom, 0px);
+  --sl: max(12px, env(safe-area-inset-left, 0px)); --sr: max(12px, env(safe-area-inset-right, 0px));
+  --line-strong: rgba(255, 255, 255, .12);
 }
+/* prefers-contrast: more (or the suite's own high-contrast switch): muted text and every border step up */
+@media (prefers-contrast: more) {
+  :root { --muted: #f0e8dc; --ink-line: rgba(255, 238, 214, .7); --line-strong: rgba(255, 255, 255, .6); }
+}
+:root.lg-high-contrast { --muted: #f0e8dc; --ink-line: rgba(255, 238, 214, .7); --line-strong: rgba(255, 255, 255, .6); }
+
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #3b220f;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--text);
   user-select: none; -webkit-user-select: none; touch-action: manipulation; }
 button { font: inherit; color: inherit; border: 0; cursor: pointer; }
-button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+/* a long name or word wraps rather than widening anything (200 % text, a 14-letter name) */
+#app, dialog { overflow-wrap: anywhere; }
+button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
 svg.lucide { width: 1em; height: 1em; flex: none; }
 #confetti { position: fixed; inset: 0; pointer-events: none; z-index: 50; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
 
-/* ---- wood + felt ---------------------------------------------------------- */
-/* Vertical bands, bottom-up: action bar, your hand, your "me row" (coins, avatar,
-   deck), then the opponents' zone up to the header row. Everything derives from
-   the real app height (--apph, kept current by client.js), so short Safari
-   viewports shrink the table instead of piling things on top of each other. */
-#app { --apph: 100dvh;
-  --top: calc(58px + env(safe-area-inset-top));
-  --bar: calc(96px + env(safe-area-inset-bottom));
-  --hcw: min(27vw, 128px, calc(var(--apph) * .155));
+/* ---- the app: wood, the felt behind the table, then header / table / dock ------------------- */
+#app { --app-h: 100dvh; --head-h: calc(58px + var(--st)); --dock-h: 300px; --room: 300px; --felt-b: 22%;
+  --hcw: max(min(27vw, 128px, calc(var(--app-h) * .155)), 4.2rem);
   --hand: calc(var(--hcw) * 1.42 + 10px);
-  --merow: 62px;
-  --zb: calc(var(--bar) + var(--hand) + var(--merow));
-  --zoneH: calc(var(--apph) - var(--top) - var(--zb));
+  container: app / inline-size;
   position: relative; height: 100vh; height: 100dvh; overflow: hidden;
+  display: flex; flex-direction: column;
   background:
     repeating-linear-gradient(95deg, rgba(0,0,0,.05) 0 3px, transparent 3px 11px),
     repeating-linear-gradient(88deg, rgba(255,255,255,.035) 0 2px, transparent 2px 17px),
     linear-gradient(180deg, #8a5226, #6b3d1a 60%, #5a3417); }
-#felt { position: absolute; left: 5%; right: 5%; top: calc(var(--top) + 18px);
-  bottom: calc(var(--bar) + var(--hand) * .6);
+/* the felt is a backdrop: client.js sets --felt-b so its lower edge crosses your hand */
+#felt { position: absolute; z-index: 0; pointer-events: none;
+  left: max(5%, var(--sl)); right: max(5%, var(--sr)); top: calc(var(--head-h) + 18px); bottom: var(--felt-b);
   border-radius: 48px; overflow: hidden;
   background: radial-gradient(ellipse at 50% 42%, #2f8f3e 0%, #237a31 45%, #17602a 100%);
   box-shadow: inset 0 0 0 5px #4a2a10, inset 0 0 40px rgba(0,0,0,.45), 0 6px 18px rgba(0,0,0,.45); }
 #felt-mark { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%);
   font-size: 34vmin; opacity: .07; filter: grayscale(1); }
 
-/* ---- corner controls ------------------------------------------------------ */
-.round-btn { position: absolute; width: 44px; height: 44px; border-radius: 50%;
+/* ---- header: the corner controls, in a row ------------------------------------------------- */
+#head { position: relative; z-index: 20; flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  min-height: var(--head-h); padding: calc(10px + var(--st)) var(--sr) 4px var(--sl); }
+#head-r { margin-inline-start: auto; display: flex; align-items: center; gap: 8px; }
+.round-btn { position: relative; flex: none; width: 44px; height: 44px; border-radius: 50%;
   display: grid; place-items: center; background: var(--ink); border: 1px solid var(--ink-line);
-  font-size: 22px; z-index: 20; box-shadow: 0 2px 6px rgba(0,0,0,.35); }
+  font-size: 22px; box-shadow: 0 2px 6px rgba(0,0,0,.35); }
 .round-btn > span { display: grid; }
-.round-btn.small { position: static; width: 44px; height: 44px; font-size: 20px; box-shadow: none; }
-#home { left: 12px; top: calc(10px + env(safe-area-inset-top)); }
-#history { right: 12px; top: calc(10px + env(safe-area-inset-top)); }
-/* The Party Host's End for everyone (avrana-party ADR 0011): in the table's own chrome. */
-#party-end { left: 64px; top: calc(10px + env(safe-area-inset-top)); }   /* beside ?, clear of the timer */
+.round-btn.small { width: 44px; height: 44px; font-size: 20px; box-shadow: none; }
 #party-end[hidden] { display: none; }
-.corner-box { position: absolute; z-index: 15; padding: 8px 16px; border-radius: var(--r-field);
-  font-weight: 800; font-size: 22px; box-shadow: 0 3px 8px rgba(0,0,0,.45); }
-/* timer: a pill in the header row, clear of every seat; red only when it matters */
-.corner-box.red { right: 64px; top: calc(10px + env(safe-area-inset-top)); height: 44px;
-  padding: 0 12px; display: flex; align-items: center; gap: 6px; font-size: 18px; border-radius: 22px;
-  font-variant-numeric: tabular-nums; background: var(--ink); border: 1px solid var(--ink-line); }
+.corner-box { padding: 8px 16px; border-radius: var(--r-field); font-weight: 800; font-size: max(22px, 1.375rem);
+  box-shadow: 0 3px 8px rgba(0,0,0,.45); }
+/* timer: a pill in the header row; red only when it matters */
+.corner-box.red { min-height: 44px; padding: 0 12px; display: flex; align-items: center; gap: 6px;
+  font-size: var(--fs-xl); border-radius: 22px; font-variant-numeric: tabular-nums;
+  background: var(--ink); border: 1px solid var(--ink-line); }
+.corner-box.red svg.lucide { width: 1.1em; height: 1.1em; }
 .corner-box.red.urgent { background: var(--stop); border-color: #ff6b7d; animation: pulse 1s infinite; }
-.corner-box.blue { left: 12px; bottom: calc(var(--bar) + var(--hand) + 8px); padding: 6px 12px;
-  font-size: 20px; background: #1f4fa3; border: 3px solid #173b7a; }
+.corner-box.blue { padding: 6px 12px; font-size: max(20px, 1.25rem); background: #1f4fa3; border: 3px solid #173b7a; }
 
 /* ---- cards ---------------------------------------------------------------- */
-.card { position: relative; width: var(--cw, 92px); height: calc(var(--cw, 92px) * 1.42);
-  border-radius: 9px; background: #fbf7ec; color: #222;
-  box-shadow: 0 2px 6px rgba(0,0,0,.35); border: 1px solid #d8d0bb; flex: none; }
+.card { position: relative; display: block; width: var(--cw, 92px); height: calc(var(--cw, 92px) * 1.42);
+  padding: 0; border-radius: 9px; background: #fbf7ec; color: #222;
+  box-shadow: 0 2px 6px rgba(0,0,0,.35); border: 1px solid #d8d0bb; flex: none; font: inherit; text-align: center; }
 .card .idx { position: absolute; left: 7px; top: 5px; font-weight: 800; font-size: calc(var(--cw, 92px) * .15);
   line-height: 1.05; }
 .card .big { position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%);
   font-size: calc(var(--cw, 92px) * .48); }
 .card .nm { position: absolute; left: 3px; right: 3px; bottom: 6px; text-align: center;
-  font-weight: 800; font-size: calc(var(--cw, 92px) * .13); overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; }
+  font-weight: 800; font-size: max(12px, .75rem, calc(var(--cw, 92px) * .13)); line-height: 1.25; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
 .back { width: var(--cw, 92px); height: calc(var(--cw, 92px) * 1.42); border-radius: 7px; flex: none;
   background:
     repeating-linear-gradient(45deg, rgba(255,255,255,.28) 0 2px, transparent 2px 7px),
@@ -88,194 +104,244 @@ svg.lucide { width: 1em; height: 1em; flex: none; }
 .card.mini { border-radius: 4px; }
 .back.mini { border-width: 2px; border-radius: 4px; }
 .card.dead { filter: grayscale(.9) brightness(.8); }
+/* a card you can choose (give up, keep): a real button */
+button.card { cursor: pointer; }
 
-/* ---- opponents ------------------------------------------------------------ */
-/* the opponents' zone: seat coordinates (client.js LAYOUT) are % of this box,
-   anchored at each seat's top-centre */
-#opponents { position: absolute; left: 0; right: 0; top: var(--top); bottom: var(--zb);
-  pointer-events: none; }
-.seat { position: absolute; transform: translateX(-50%); z-index: 5; pointer-events: auto;
-  width: max-content;
+/* ---- the table: a grid; the opponents sit round it, the centre play area in the middle ----- */
+/* A seat's cell (client.js SLOTS) is its column span and row. Row 1 is the far side of the table,
+   row 2 the sides and the centre. A narrow app stacks them instead (see the end of this block). */
+#stage { position: relative; z-index: 1; flex: 1 1 0; min-height: 0; overflow-x: hidden; overflow-y: auto;
+  overscroll-behavior: contain; touch-action: pan-y; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.35) transparent; }
+#table { min-height: 100%; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); grid-template-rows: auto 1fr auto;
+  align-content: start; gap: 6px 0; padding: 22px var(--sr) 14px var(--sl); }
+#opponents { display: contents; }
+.seat { grid-column: var(--seat-col, 1 / -1); grid-row: var(--seat-row, 1); justify-self: center; align-self: start;
+  position: relative; z-index: 5; min-width: 0; max-width: 100%;
   display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.seat .info { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-/* compact seats: 3+ opponents or a short screen (about 94px tall instead of 140) */
-#opponents.compact .seat { gap: 2px; }
-#opponents.compact .avatar { width: 46px; height: 46px; font-size: 27px; border-radius: 12px; }
-#opponents.compact .seat .nm { font-size: 12px; max-width: 84px; }
-#opponents.compact .seat .info { flex-direction: row; gap: 4px; }
-#opponents.compact .back.mini, #opponents.compact .card.mini { --cw: 21px; }
-#opponents.compact .chip { font-size: 11px; padding: 1px 5px; }
+.seat[data-side] { align-self: center; }
+button.seat { background: none; padding: 0; font: inherit; text-align: center; touch-action: manipulation; }
+/* while aiming, a seat that cannot be targeted is a disabled button: it looks as it did, and is not a stop */
+button.seat:disabled { color: inherit; cursor: default; }
+.seat .info { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px; max-width: 100%; }
+.seat .cards { display: flex; gap: 3px; }
+/* three or more opponents (or a short screen): compact seats */
+#table.compact .seat { gap: 2px; }
+#table.compact .avatar { width: 46px; height: 46px; font-size: 27px; border-radius: 12px; }
+#table.compact .seat .info { flex-wrap: wrap; gap: 4px; }
+#table.compact .back.mini, #table.compact .card.mini { --cw: 21px; }
 .avatar { position: relative; width: 58px; height: 58px; border-radius: 14px;
   display: grid; place-items: center; font-size: 34px;
   background: var(--col, #2d3a8c); box-shadow: 0 3px 8px rgba(0,0,0,.45);
   border: 3px solid rgba(255,255,255,.18); }
 .avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 11px; }
 .seat.turn .avatar, #me-seat.turn .avatar { border-color: #ffd54a; box-shadow: 0 0 0 4px #ffd54a88, 0 3px 8px rgba(0,0,0,.45); }
-.seat.out { opacity: .45; filter: grayscale(1); }
+/* out: the seat is dimmed, its name is not (the name stays readable) */
+.seat.out .avatar, .seat.out .info { opacity: .45; filter: grayscale(1); }
 .seat.targetable .avatar { animation: pulse 0.9s infinite; border-color: #ff5a6e; cursor: pointer; }
-.seat .nm { font-size: 13px; font-weight: 700; text-shadow: 0 1px 2px #000; max-width: 90px;
+.seat .nm { font-size: var(--fs-s); font-weight: 700; max-width: 100%; padding: 1px 7px; border-radius: 9px;
+  background: rgba(0,0,0,.5); color: var(--text); text-shadow: 0 1px 2px #000;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chip { white-space: nowrap; font-size: 12px; font-weight: 800; padding: 1px 7px; border-radius: 10px;
-  background: rgba(0,0,0,.55); }
-.seat .cards { display: flex; gap: 3px; }
+#table.compact .seat .nm { font-size: var(--fs-xs); }
+.chip { white-space: nowrap; font-size: var(--fs-xs); font-weight: 800; padding: 1px 7px; border-radius: 10px;
+  background: rgba(0,0,0,.55); color: var(--text); }
 .bubble { position: absolute; right: -10px; top: -10px; background: #fff; color: #333;
-  border-radius: 10px; padding: 0 6px; font-weight: 900; font-size: 14px;
+  border-radius: 10px; padding: 0 6px; font-weight: 900; font-size: max(14px, .875rem);
   animation: bob 1s infinite; }
 .crown { position: absolute; left: 50%; top: -18px; transform: translateX(-50%); font-size: 20px; }
 
-/* ---- centre play area -------------------------------------------------------- */
-#center { position: absolute; left: 50%; top: calc(var(--top) + var(--zoneH) * .62);
-  transform: translate(-50%, -50%); z-index: 4;
-  display: flex; flex-direction: column; align-items: center; gap: 8px; width: 50%; }
-/* short opponents' zone (Safari with toolbars, small phones): the claimed card sits
-   beside its caption instead of above it, so the centre stays clear of the seats */
-#center.row { flex-direction: row; top: calc(var(--top) + var(--zoneH) * .66); }
-#center.row #caption { text-align: left; font-size: 13px; padding: 6px 9px; }
-#piles { position: absolute; right: 26px; bottom: calc(var(--bar) + var(--hand) + 18px); z-index: 3; }
-#piles.hide { display: none; }
-.pile { position: relative; width: 34px; height: 46px; }
-.pile .back { position: absolute; }
-.pile .back:nth-child(2) { left: 2px; top: -2px; }
-.pile .back:nth-child(3) { left: 4px; top: -4px; }
-#deck-n { position: absolute; top: 48px; left: 0; font-size: 11px; font-weight: 800; }
-#play { min-height: 20px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
-#play .claimed { --cw: clamp(60px, calc(var(--zoneH) * .25), 104px); transform: rotate(-4deg); }
+/* ---- centre play area: what is claimed, what just happened, what is asked ------------------- */
+#center { grid-column: 4 / span 6; grid-row: 2; align-self: center; z-index: 4; min-width: 0; max-width: 100%;
+  display: flex; flex-direction: column; align-items: center; gap: 8px; }
+#table[data-n="0"] #center, #table[data-n="1"] #center, #table[data-n="2"] #center { grid-column: 1 / -1; }
+#play { min-height: 20px; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+#play:empty { display: none; }
+#play .claimed { --cw: max(clamp(60px, calc(var(--room) * .25), 104px), 4.2rem); transform: rotate(-4deg); margin-top: 12px; }
 #play .claimed::after { content: "CLAIMED"; position: absolute; left: 50%; top: -12px;
-  transform: translateX(-50%); background: #ffd54a; color: #3a2a00; font-size: 10px;
-  font-weight: 900; padding: 2px 6px; border-radius: 6px; letter-spacing: .08em; }
+  transform: translateX(-50%); background: #ffd54a; color: #3a2a00; font-size: var(--fs-xs);
+  font-weight: 900; padding: 2px 6px; border-radius: 6px; letter-spacing: .08em; white-space: nowrap; }
 #play .claimed.block::after { content: "BLOCK"; background: #7dd3fc; color: #06283d; }
-#caption { text-align: center; font-weight: 700; font-size: 14px; text-shadow: 0 1px 3px #000;
+#play .claimed.past::after { content: "LAST CLAIM"; background: #e8dcc0; color: #3a2a00; }
+/* what just happened: the server's own public log lines, word for word, big enough to read at a glance.
+   Under the centre; with one or two opponents there is room beside the claimed card. */
+#reveal { grid-column: 1 / -1; grid-row: 3; justify-self: center; width: min(calc(100% - 16px), 30rem); min-width: 0; margin: 0; padding: 8px 12px;
+  list-style: none; display: grid; gap: 5px; border-radius: 12px; background: rgba(0,0,0,.42);
+  font-size: max(14px, .9rem); line-height: 1.3; font-weight: 600; text-align: left; text-shadow: 0 1px 2px #000;
+  overflow-wrap: anywhere; }
+#reveal:empty { display: none; }
+#reveal li:last-child { font-weight: 800; }
+#table:is([data-n="0"], [data-n="1"], [data-n="2"])[data-story] #center { grid-column: 1 / span 6; }
+#table:is([data-n="0"], [data-n="1"], [data-n="2"])[data-story] #reveal { grid-column: 7 / span 6; grid-row: 2; align-self: center; width: auto; }
+#caption { text-align: center; font-weight: 700; font-size: var(--fs-m); text-shadow: 0 1px 3px #000;
   background: rgba(0,0,0,.35); padding: 6px 12px; border-radius: 12px; max-width: 100%; }
 #caption:empty { display: none; }
 /* a decision is waiting on YOU: the caption turns gold and spells out the question */
-#caption.call { background: #ffd54a; color: #2a1d00; text-shadow: none; font-size: 15px;
+#caption.call { background: #ffd54a; color: #2a1d00; text-shadow: none; font-size: var(--fs-l);
   box-shadow: 0 0 0 3px #ffd54a55, 0 3px 10px rgba(0,0,0,.45); }
 #caption .q { display: block; font-weight: 900; margin-top: 2px; }
 #bar.call { box-shadow: 0 0 0 3px #ffd54a, 0 -2px 10px rgba(0,0,0,.35); }
-.winner { font-size: 26px; font-weight: 900; text-align: center; }
+.winner { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 8px;
+  max-width: 100%; font-size: max(24px, 1.625rem); font-weight: 900; text-align: center; }
+.winner .wname { min-width: 0; overflow-wrap: anywhere; }
 
-/* ---- me: avatar, coins, hand ------------------------------------------------- */
-#me-seat { position: absolute; left: 50%; bottom: calc(var(--bar) + var(--hand) + 6px); transform: translateX(-50%); z-index: 9; }
-#hand { position: absolute; left: 0; right: 0; bottom: var(--bar); height: var(--hand);
-  display: flex; justify-content: center; align-items: flex-end; z-index: 8; padding-bottom: 4px;
-  pointer-events: none; }
-#hand > * { pointer-events: auto; }
-#hand .card { --cw: var(--hcw); margin: 0 -6px; transform-origin: 50% 110%;
-  transition: transform .15s; }
+/* ---- the dock: you ---------------------------------------------------------------------- */
+/* coins, your seat and your lost cards and the deck; then your hand; then the moves. It never
+   scrolls away; if it would take too much of a small screen, client.js lets the whole table
+   scroll instead (data-dock="flow", at the end of this block). */
+#dock { position: relative; z-index: 8; flex: none; display: flex; flex-direction: column; gap: 4px;
+  padding: 0 var(--sr) calc(10px + var(--sb)) var(--sl); }
+#me-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; min-height: 62px; }
+#coins { grid-column: 1; justify-self: start; }
+#me-seat { grid-column: 2; justify-self: center; position: relative; z-index: 9; }
+#me-side { grid-column: 3; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding-right: 14px; }
+#piles { position: relative; }
+#piles.hide { display: none; }
+.pile { position: relative; width: 34px; height: 46px; margin-bottom: 14px; }
+.pile .back { position: absolute; }
+.pile .back:nth-child(2) { left: 2px; top: -2px; }
+.pile .back:nth-child(3) { left: 4px; top: -4px; }
+#deck-n { position: absolute; top: 48px; left: 0; font-size: var(--fs-xs); font-weight: 800; }
+#lost { display: flex; gap: 4px; }
+#hand { display: flex; justify-content: center; align-items: flex-end; height: var(--hand); padding-bottom: 4px;
+  position: relative; z-index: 8; }
+#hand:empty { display: none; }
+#hand .chip { white-space: normal; text-align: center; max-width: 100%; padding: 3px 10px; border-radius: 14px; }
+#hand .card { --cw: var(--hcw); margin: 0 -6px; transform-origin: 50% 110%; transition: transform .15s; }
 #hand .card:nth-child(1):not(:only-child) { transform: rotate(-5deg); }
 #hand .card:nth-child(2) { transform: rotate(5deg); }
 #hand.choosing .card { cursor: pointer; outline: 3px solid #ff5a6e; animation: lift 1s infinite; }
-#lost { position: absolute; left: calc(50% + 34px); bottom: calc(var(--bar) + var(--hand) + 10px); display: flex; gap: 4px; z-index: 7; }
+#hand.choosing .card:focus-visible { outline-color: var(--gold); }
+/* why a move is not on offer, in a sentence (never only a tooltip) */
+#bar-note { margin: 0; padding: 4px 12px; border-radius: 10px; text-align: center; background: rgba(0,0,0,.5);
+  color: var(--text); font-size: var(--fs-s); font-weight: 650; line-height: 1.3; }
 
-/* ---- bottom action bar + sheet ------------------------------------------------ */
-#bar { position: absolute; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom));
-  min-height: 76px; border-radius: var(--r-box); background: var(--ink); border: 1px solid var(--ink-line); z-index: 12;
-  display: flex; align-items: stretch; gap: 6px; padding: 6px; box-shadow: 0 -2px 10px rgba(0,0,0,.35); }
-.act { flex: 1; min-height: 44px; border-radius: var(--r-field); background: rgba(255,255,255,.07);
+/* ---- the moves bar + sheet ------------------------------------------------------------------ */
+#bar { min-height: 76px; border-radius: var(--r-box); background: var(--ink); border: 1px solid var(--ink-line);
+  display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px; padding: 6px; box-shadow: 0 -2px 10px rgba(0,0,0,.35); }
+/* offline: the moves are dimmed and ignored until the table is back (client.js sets aria-disabled) */
+#bar[aria-disabled="true"] { opacity: .45; }
+#bar[aria-disabled="true"] .act { pointer-events: none; }
+.act { flex: 1 1 4rem; min-width: 0; min-height: 44px; border-radius: var(--r-field); background: rgba(255,255,255,.07);
   border: 1px solid transparent; display: flex;
   flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  font-weight: 700; font-size: 14px; line-height: 1.15; padding: 4px; text-align: center;
-  white-space: pre-line; transition: background-color .12s, transform .12s; }
+  font-weight: 700; font-size: var(--fs-m); line-height: 1.15; padding: 4px; text-align: center;
+  white-space: pre-line; overflow-wrap: anywhere; transition: background-color .12s, transform .12s; }
 .act .ic { font-size: 24px; line-height: 1; display: grid; place-items: center; }
-.act:active:not(:disabled) { transform: scale(.97); }
-.act.primary { background: var(--go); border-color: rgba(255,255,255,.12); }
-.act.danger { background: var(--stop); border-color: rgba(255,255,255,.12); }
-.act.blue { background: var(--claim); border-color: rgba(255,255,255,.12); }
-.act:disabled { opacity: .4; }
-.bar-msg { flex: 1; display: grid; place-items: center; text-align: center; font-weight: 650;
-  font-size: 15px; color: var(--muted); padding: 0 8px; }
-#sheet { position: absolute; left: 10px; right: 10px; bottom: calc(var(--zb) - 2px);
-  max-height: calc(var(--zoneH) + 10px); overflow-y: auto; border-radius: var(--r-box); background: var(--ink-solid);
-  border: 1px solid var(--ink-line); z-index: 13; padding: 12px;
-  box-shadow: 0 -4px 16px rgba(0,0,0,.5); }
-#sheet h3 { margin: 0 0 10px; font-size: 13px; letter-spacing: .06em; color: var(--muted); }
-.sheet-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.act:active:not(:disabled):not([aria-disabled="true"]) { transform: scale(.97); }
+.act.primary { background: var(--go); border-color: var(--line-strong); }
+.act.danger { background: var(--stop); border-color: var(--line-strong); }
+.act.blue { background: var(--claim); border-color: var(--line-strong); }
+.act:disabled, .act[aria-disabled="true"] { opacity: .4; cursor: default; }
+.bar-msg { flex: 1 1 100%; display: grid; place-items: center; text-align: center; font-weight: 650;
+  font-size: var(--fs-l); color: var(--muted); padding: 0 8px; }
+/* the claim sheet and the exchange sheet sit over the table, just above the dock */
+#sheet { position: absolute; left: var(--sl); right: var(--sr); bottom: calc(100% - 4px); z-index: 13;
+  max-height: max(11rem, calc(var(--app-h) - var(--head-h) - var(--dock-h) - 6px)); overflow-y: auto;
+  border-radius: var(--r-box); background: var(--ink-solid);
+  border: 1px solid var(--ink-line); padding: 12px; box-shadow: 0 -4px 16px rgba(0,0,0,.5); }
+#sheet h3 { margin: 0 0 10px; font-size: var(--fs-s); letter-spacing: .06em; color: var(--muted); }
+#sheet h3.caps { text-transform: uppercase; }
+/* the one move, and this heading, are set in capitals by CSS (the page's own text is a sentence):
+   where 200 % text makes a word wider than its box they are sentence case, and not broken in two */
+.act[data-k="bar:challenge"] { text-transform: uppercase; }
+@container app (max-width: 8rem) { .act[data-k="bar:challenge"], #sheet h3.caps { text-transform: none; } #sheet h3.caps { letter-spacing: 0; } }
+.sheet-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); gap: 8px; }
 .sheet-grid .act { min-height: 64px; }
+.sheet-note { margin: 8px 0 0; font-size: var(--fs-s); font-weight: 650; color: var(--text); line-height: 1.3; }
 .sheet-cards { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 10px; }
-.sheet-cards .card { --cw: 70px; cursor: pointer; }
+.sheet-cards .card { --cw: max(70px, 4.2rem); cursor: pointer; }
 .sheet-cards .card.sel { outline: 4px solid #ffd54a; transform: translateY(-6px); }
 
-/* ---- drawer ------------------------------------------------------------------ */
-#drawer { position: absolute; top: 0; right: 0; bottom: 0; width: min(86vw, 360px); z-index: 30;
-  background: var(--ink-solid); border-left: 1px solid var(--ink-line);
-  padding: calc(12px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+/* ---- history drawer (a modal dialog) -------------------------------------------------------- */
+#drawer { position: fixed; inset: 0 0 0 auto; margin: 0; width: min(86vw, 360px); max-width: none;
+  height: 100%; max-height: none; z-index: 30; color: var(--text);
+  background: var(--ink-solid); border: 0; border-left: 1px solid var(--ink-line);
+  padding: calc(12px + var(--st)) max(16px, env(safe-area-inset-right, 0px)) calc(16px + var(--sb)) 16px;
   overflow-y: auto; box-shadow: -6px 0 18px rgba(0,0,0,.45); }
+#drawer::backdrop { background: rgba(0,0,0,.45); }
 .drawer-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.drawer-head h2 { margin: 0; font-size: 19px; }
+.drawer-head h2 { margin: 0; font-size: max(19px, 1.1875rem); }
+.drawer-call { margin: 0 0 8px; padding: 8px 12px; border-radius: var(--r-field); background: var(--gold); color: #2a1d00;
+  font-weight: 800; font-size: var(--fs-l); }
 .drawer-sub { margin: 16px 0 6px; padding-top: 12px; border-top: 1px solid var(--ink-line);
-  font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-#log { padding-left: 20px; font-size: 15px; line-height: 1.4; } #log li { margin: 6px 0; }
-#rolehelp { font-size: 14px; line-height: 1.4; color: var(--muted); }
+  font-size: var(--fs-s); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+#log { padding-left: 20px; font-size: var(--fs-l); line-height: 1.4; } #log li { margin: 6px 0; }
+#rolehelp { font-size: var(--fs-m); line-height: 1.4; color: var(--muted); }
 #rolehelp div { margin: 6px 0; }
+#drawer-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 10px; }
+#drawer-actions .act { min-height: 48px; }
 
 /* ---- lobby ------------------------------------------------------------------- */
 /* the lobby: one plate on the felt holds the title and the table settings */
-#play.lobby { gap: 12px; padding: 16px 20px; border-radius: 20px; background: rgba(12,8,4,.5);
+#play.lobby { gap: 12px; padding: 16px clamp(6px, 2.5cqw, 20px); border-radius: 20px; background: rgba(12,8,4,.5);
   border: 1px solid var(--ink-line); }
-.lobby-title { font-size: 40px; font-weight: 900; letter-spacing: .08em; text-shadow: 0 3px 6px #000; }
-.stepper { white-space: nowrap; display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; }
-.stepper b { min-width: 1.2em; text-align: center; font-size: 18px; font-variant-numeric: tabular-nums; }
+/* the title is 40 px where there is room and smaller where the plate is narrow (a small phone, four players round the table), so BLUFF stays one word on one line */
+.lobby-title { font-size: clamp(32px, 9.5cqw, 2.5rem); font-weight: 900; letter-spacing: .08em; text-shadow: 0 3px 6px #000; }
+.stepper { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; font-weight: 700; font-size: var(--fs-l); }
+/* the label is its own row, so the plate's controls are one row of three (a narrow plate wrapped them 2 + 2) */
+.stepper-label { flex: 1 0 100%; text-align: center; }
+.stepper b { min-width: 1.2em; text-align: center; font-size: var(--fs-xl); font-variant-numeric: tabular-nums; }
 .stepper button { flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
   background: var(--ink); border: 1px solid var(--ink-line); font-size: 20px; }
 .ready-tick { position: absolute; right: -8px; bottom: -8px; font-size: 18px; }
 
-/* ---- toasts (hubnet.js creates #toasts) --------------------------------------- */
-.toasts { position: fixed; left: 50%; top: calc(120px + env(safe-area-inset-top)); transform: translateX(-50%);
-  z-index: 40; display: flex; flex-direction: column; gap: 6px; pointer-events: none; width: min(92vw, 420px); }
-.toast { background: var(--ink-solid); border: 1px solid var(--ink-line); padding: 11px 14px;
-  border-radius: var(--r-field); font-weight: 600; font-size: 15px; box-shadow: 0 3px 10px rgba(0,0,0,.45); }
+/* ---- toasts, the reconnect line (hubnet.js creates both; client.js moves the line) ------------ */
+/* One toast at a time, in the top safe area: above the first row of seats, never over the caption or the moves. */
+.toasts { position: fixed; left: 50%; top: calc(6px + var(--st)); transform: translateX(-50%);
+  z-index: 40; display: flex; flex-direction: column; pointer-events: none; width: min(92vw, 420px); }
+.toasts .toast:not(:last-child) { display: none; }
+.toast { background: var(--ink-solid); border: 1px solid var(--ink-line); padding: 6px 12px;
+  border-radius: var(--r-field); font-weight: 600; font-size: var(--fs-m); line-height: 1.25; box-shadow: 0 3px 10px rgba(0,0,0,.45);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .toast.err { border-left: 4px solid #ff6b7d; }
+/* the reconnect line: one sentence, in the dock's flow above the moves (so never over the hand or the bar) */
+.conn-banner { position: static; transform: none; z-index: auto; align-self: center; max-width: 100%;
+  background: var(--ink-solid); border: 1px solid var(--ink-line); color: var(--text); font-weight: 700;
+  font-size: var(--fs-s); letter-spacing: 0; text-transform: none; line-height: 1.3; text-align: center;
+  border-radius: 999px; padding: 4px 14px; display: flex; align-items: center; gap: 8px; }
+.conn-banner[hidden] { display: none; }
+.conn-banner::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: #f2b84b; }
 
 @keyframes pulse { 50% { box-shadow: 0 0 0 7px rgba(255,90,110,.35), 0 3px 8px rgba(0,0,0,.45); } }
 @keyframes bob { 50% { transform: translateY(-3px); } }
 @keyframes lift { 50% { translate: 0 -6px; } }
 
-#play .chip.last { white-space: normal; font-size: 11px; font-weight: 600; opacity: .85; text-align: center; }
-
-/* ---- presence, drawer controls, reconnect banner, reduced motion ------------- */
-.presence { font-size: 11px; font-weight: 800; padding: 1px 6px; border-radius: 8px;
+/* ---- presence ---------------------------------------------------------------------------- */
+.presence { font-size: var(--fs-xs); font-weight: 800; padding: 1px 6px; border-radius: 8px;
   background: rgba(0,0,0,.6); color: #ffd54a; white-space: nowrap; }
 .presence.reconnecting { color: #cfe8ff; animation: bob 1.4s infinite; }
-.presence.left { color: #bbb; }
-#drawer-actions { display: flex; gap: 8px; margin: 4px 0 10px; }
-#drawer-actions .act { min-height: 48px; }
-.conn-banner { position: fixed; left: 50%; transform: translateX(-50%);
-  bottom: calc(96px + env(safe-area-inset-bottom)); z-index: 60; background: var(--ink-solid);
-  border: 1px solid var(--ink-line); color: var(--text); font-weight: 750; font-size: 13px; letter-spacing: .08em;
-  border-radius: 999px; padding: 9px 18px; display: flex; align-items: center; gap: 8px; }
-.conn-banner[hidden] { display: none; }
-.conn-banner::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #f2b84b; }
+.presence.left, .presence.out { color: #d6d6d6; }
 
 /* ---- confirm dialog (Leave game / End game) ------------------------------------ */
 #confirm { width: min(92vw, 360px); padding: 20px; border: 1px solid var(--ink-line); border-radius: 20px;
   background: var(--ink-solid); color: var(--text); box-shadow: 0 10px 30px rgba(0,0,0,.5); }
 #confirm::backdrop { background: rgba(0,0,0,.55); }
-#confirm h2 { margin: 0 0 8px; font-size: 20px; }
-#confirm p { margin: 0 0 18px; font-size: 15px; line-height: 1.45; color: var(--muted); }
-.dlg-actions { display: flex; gap: 8px; }
-.dlg-actions .act { min-height: 52px; font-size: 15px; }
+#confirm h2 { margin: 0 0 8px; font-size: max(20px, 1.25rem); }
+#confirm p { margin: 0 0 18px; font-size: var(--fs-l); line-height: 1.45; color: var(--muted); }
+.dlg-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.dlg-actions .act { min-height: 52px; font-size: var(--fs-l); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 .lg-reduced-fx *, .lg-reduced-fx *::before, .lg-reduced-fx *::after { animation: none !important; transition: none !important; }
 
 /* ---- BLUFF game art (art.js, Kenney Board Game Icons, CC0) -------------------------
    One flat, one-colour family for everything that is the game itself. Each role has a
-   colour, so the five cards read as one deck; coins and the crown are gold. */
+   colour, so the five cards read as one deck; coins and the crown are gold. --role colours
+   the art; --role-text is the same hue, dark enough to read as the card's name (4.5:1 on the card). */
 .bart { display: block; width: 1em; height: 1em; }
-.role-banker { --role: #a8740c; } .role-agent { --role: #b3263a; } .role-smuggler { --role: #147a73; }
-.role-broker { --role: #4a4fb8; } .role-guardian { --role: #2d7a49; } .role-unknown { --role: #6b6b6b; }
+.role-banker { --role: #a8740c; --role-text: #7a5400; } .role-agent { --role: #b3263a; --role-text: #b3263a; }
+.role-smuggler { --role: #147a73; --role-text: #147a73; } .role-broker { --role: #4a4fb8; --role-text: #4a4fb8; }
+.role-guardian { --role: #2d7a49; --role-text: #2d7a49; } .role-unknown { --role: #6b6b6b; --role-text: #555; }
 #felt-mark { color: #fff; filter: none; }
 #felt-mark .bart { width: 1em; height: 1em; }
 .card .idx .bart { width: calc(var(--cw, 92px) * .17); height: calc(var(--cw, 92px) * .17); color: var(--role); }
 .card .big .bart { width: calc(var(--cw, 92px) * .5); height: calc(var(--cw, 92px) * .5); color: var(--role); }
-.card .nm { color: var(--role, #222); }
+.card .nm { color: var(--role-text, #222); }
 .card.mini .big .bart { width: calc(var(--cw) * .62); height: calc(var(--cw) * .62); }
 .act .ic .bart { width: 26px; height: 26px; }
 .coins-chip, .coins-in { display: inline-flex; align-items: center; gap: 4px; }
 .coins-chip .bart, .coins-in .bart { width: 1.15em; height: 1.15em; color: #f2c14e; }
 .crown { top: -22px; }
 .crown .bart { width: 24px; height: 24px; color: #ffd54a; filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
-.winner { display: inline-flex; align-items: center; gap: 8px; }
-.winner .bart { width: 34px; height: 34px; color: #ffd54a; }
+.winner .bart { flex: none; width: 34px; height: 34px; color: #ffd54a; }
 #log li.marked .bart { display: inline-block; width: 1.05em; height: 1.05em; vertical-align: -0.18em;
   margin-right: 0.4em; color: var(--muted); }
 #rolehelp .role-row { display: flex; align-items: flex-start; gap: 8px; }
@@ -286,12 +352,63 @@ svg.lucide { width: 1em; height: 1em; flex: none; }
 .ready-tick { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
   background: var(--go); color: #fff; font-size: 14px; border: 2px solid rgba(0,0,0,.35); }
 
+/* ---- the table when the app is narrow or the text is large --------------------------------- */
+/* Asked of the app in rem, so 200 % text counts as a narrower screen. */
+@container app (max-width: 19rem) {
+  #table { grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr)); grid-template-rows: none; }
+  .seat { grid-column: auto; grid-row: auto; align-self: start; width: 100%; }
+  .seat[data-side] { align-self: start; }
+  #center, #table:is([data-n="0"], [data-n="1"], [data-n="2"])[data-story] #center { grid-column: 1 / -1; grid-row: auto; }
+  #reveal, #table:is([data-n="0"], [data-n="1"], [data-n="2"])[data-story] #reveal { grid-column: 1 / -1; grid-row: auto; width: min(calc(100% - 16px), 30rem); align-self: auto; }
+  /* the stamp over the claimed card is never wider than the screen */
+  #play .claimed::after { letter-spacing: 0; padding: 2px 5px; max-width: calc(100cqw - 16px); overflow: hidden; }
+  /* the history drawer takes the whole screen; its title is the size of the text under it, so
+     "happened" fits one line at 200 % on a 360 px phone, and the close button drops below it */
+  #drawer { width: 100%; }
+  .drawer-head { flex-wrap: wrap; gap: 8px; }
+  .drawer-head h2 { font-size: var(--fs-l); }
+  #drawer-close { margin-left: auto; }
+}
+
+/* the dock's first row gives way when the app is narrow or the text is large: wrap, centred */
+@container app (max-width: 18rem) {
+  #me-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px 10px; }
+  #me-side { padding-right: 0; gap: 10px; }
+}
+
+/* ---- a wide app (a phone on its side): you, your hand and your moves share one row ---------- */
+@container app (min-width: 40rem) {
+  #dock { display: grid; grid-template-columns: max-content max-content minmax(0, 1fr); align-items: end; column-gap: 12px; row-gap: 4px; }
+  #me-row { grid-column: 1; grid-row: 1 / span 3; grid-template-columns: auto auto; grid-template-rows: auto auto; min-height: 0; justify-items: center; }
+  #me-seat { grid-column: 1; grid-row: 1; }
+  #coins { grid-column: 2; grid-row: 1; justify-self: center; }
+  #me-side { grid-column: 1 / -1; grid-row: 2; padding-right: 0; gap: 12px; justify-content: center; }
+  #hand { grid-column: 2; grid-row: 1 / span 3; padding-inline: 12px; }
+  #dock > .conn-banner, #bar-note, #bar { grid-column: 3; }
+  #dock > .conn-banner { grid-row: 1; } #bar-note { grid-row: 2; } #bar { grid-row: 3; }
+  #app { --hcw: max(min(8rem, calc(var(--app-h) * .2)), 4.2rem); }
+  #bar { min-height: 0; }
+}
+
+/* ---- the whole table scrolls (data-dock="flow", set by client.js) ----------------------------- */
+/* On a screen too small for the dock and a table together (a zoomed page, a large text size), the
+   header, the table and the dock simply follow each other and the page scrolls. */
+#app[data-dock="flow"] { display: block; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; touch-action: pan-y; }
+#app[data-dock="flow"] #felt { display: none; }
+#app[data-dock="flow"] #hand { height: auto; min-height: var(--hand); flex-wrap: wrap; row-gap: 4px; padding-top: 12px; }
+#app[data-dock="flow"] #stage { overflow: visible; }
+/* a focused scroller (the keyboard can scroll it) shows its whole ring, unfaded */
+#app:not([data-dock="flow"]) #stage:focus-visible { outline: 3px solid var(--gold); outline-offset: -3px; -webkit-mask-image: none; mask-image: none; }
+#app:not([data-dock="flow"]) #stage { -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 12px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 12px), transparent 100%); }
+#app[data-dock="flow"] #table { min-height: 0; margin: 4px max(2%, var(--sr)) 8px max(2%, var(--sl)); padding-inline: 8px; border-radius: 32px;
+  background: radial-gradient(ellipse at 50% 42%, #2f8f3e 0%, #237a31 45%, #17602a 100%);
+  box-shadow: inset 0 0 0 4px #4a2a10, inset 0 0 30px rgba(0,0,0,.45); }
+
 /* ---- how to play (briefing.js, AVR-90) ------------------------------------------------
    The first-play briefing and the rules sheet: one dialog in the table's own system language
    (ink surface, hairline border, the two radii, .act buttons, BLUFF's game art, 44 px+ targets).
    Text is in rem so it follows the phone's text size; the card scrolls rather than clips. */
-#rules { left: 64px; top: calc(10px + env(safe-area-inset-top)); }
-html[data-avrana="1"] #rules { left: 12px; }          /* Back to Party replaces the home button */
 /* a bottom sheet: Back / Next stay in the same place under the thumb whatever the card's length */
 #briefing { width: min(94vw, 420px); max-height: calc(100dvh - 24px); padding: 0;
   margin: auto auto calc(10px + env(safe-area-inset-bottom));
